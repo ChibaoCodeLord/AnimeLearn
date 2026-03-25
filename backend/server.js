@@ -3,6 +3,9 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
+// Import routes
+import authRoutes from './routes/auth.js';
+
 // Load environment variables
 dotenv.config();
 
@@ -27,7 +30,15 @@ mongoose.connect(process.env.MONGO_URI)
     console.error('❌ Error connecting to MongoDB:', error.message);
   });
 
+// Routes
+app.use('/api/auth', authRoutes);
+
 // Basic test route
 app.get('/api/health', (req, res) => {
   res.status(200).json({ message: 'AnimeLearn API is running smoothly!' });
+});
+
+// 404 error handler
+app.use((req, res) => {
+  res.status(404).json({ message: 'Route not found' });
 });

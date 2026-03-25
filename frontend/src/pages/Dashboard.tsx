@@ -203,7 +203,7 @@ export default function Dashboard() {
               <Clock className="w-5 h-5 text-blue-500" />
               Video học gần đây
             </h3>
-            <Link to="/Home" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">Xem tất cả</Link>
+            <Link to="/home" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">Xem tất cả</Link>
           </div>
           
           <div className="flex-1">
@@ -246,7 +246,7 @@ export default function Dashboard() {
       {/* Quick Actions */}
       <h3 className="font-bold text-slate-900 mb-4 text-lg">Hành động nhanh</h3>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Link to="/Home">
+        <Link to="/home">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-emerald-300 hover:shadow-md transition-all group h-full flex flex-col relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -z-10 group-hover:scale-110 transition-transform" />
             <h4 className="font-bold text-slate-800 flex items-center justify-between z-10">

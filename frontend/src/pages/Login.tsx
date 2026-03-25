@@ -47,9 +47,10 @@ export default function Login() {
       if (response.ok) {
         const data = await response.json()
         localStorage.setItem('token', data.token)
-        navigate('/Home')
+        navigate('/home')
       } else {
-        setErrors({ email: 'Invalid email or password', password: '' })
+        const errorData = await response.json()
+        setErrors({ email: errorData.message || 'Invalid email or password', password: '' })
       }
     } catch (error) {
       setErrors({ email: 'Connection error. Please try again.', password: '' })

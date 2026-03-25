@@ -91,7 +91,7 @@ export default function VideosByLevel({ videos = [], isLoading }: VideosByLevelP
                   </Badge>
                   <h2 className="text-2xl font-bold text-slate-900">{levelNames[level]}</h2>
                 </div>
-                <Link to={`/Home?jlpt=${level}`} className="text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+                <Link to={`/home?jlpt=${level}`} className="text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
                   Xem tất cả
                   <ChevronRight className="w-4 h-4" />
                 </Link>

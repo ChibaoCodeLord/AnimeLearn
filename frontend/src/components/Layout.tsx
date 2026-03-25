@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
 
 const navItems = [
-  { path: '/Home', label: 'Trang chủ', icon: Home },
+  { path: '/home', label: 'Trang chủ', icon: Home },
   { path: '/Vocabulary', label: 'Flashcard', icon: Brain }  ,
   { path: '/VocabularyNotebook', label: 'Sổ tay từ vựng', icon: BookOpen },
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -79,7 +79,7 @@ export default function Layout() {
       {/* Left Sidebar */}
       <aside className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-emerald-100 transition-all duration-300 flex flex-col shrink-0 ${sidebarOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-full lg:translate-x-0'}`}>
         <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 shrink-0">
-          <Link to="/Home" className={`flex items-center gap-2 overflow-hidden transition-all ${sidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'}`}>
+          <Link to="/home" className={`flex items-center gap-2 overflow-hidden transition-all ${sidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'}`}>
             <img 
               src={animeLogo} 
               alt="MyAnime Logo" 

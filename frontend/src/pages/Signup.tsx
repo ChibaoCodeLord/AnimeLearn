@@ -95,11 +95,12 @@ export default function Signup() {
       if (response.ok) {
         const data = await response.json()
         localStorage.setItem('token', data.token)
-        navigate('/Home')
+        navigate('/home')
       } else {
+        const errorData = await response.json()
         setErrors(prev => ({
           ...prev,
-          email: 'Email already registered. Please login instead.',
+          email: errorData.message || 'Error registering user',
         }))
       }
     } catch (error) {

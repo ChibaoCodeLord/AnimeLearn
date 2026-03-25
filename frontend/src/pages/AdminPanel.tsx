@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Shield, Users, Video, Flag, Trash2, CheckCircle2, XCircle, AlertCircle, Eye, Search } from 'lucide-react';
+import { Shield, Users, Video, Flag, Trash2, CheckCircle2, XCircle, AlertCircle, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import moment from 'moment';
 
@@ -35,7 +35,7 @@ export interface ReportItem {
 }
 
 // --- 2. MOCK DATA ---
-let mockUsers: UserItem[] = [
+const mockUsers: UserItem[] = [
   { id: 'u1', email: 'admin@myanime.com', full_name: 'Thân Ngọc Hậu', role: 'admin', created_date: '2026-01-01T10:00:00Z' },
   { id: 'u2', email: 'user1@test.com', full_name: 'Nguyễn Văn A', role: 'user', created_date: '2026-02-15T08:30:00Z' },
   { id: 'u3', email: 'user2@test.com', full_name: 'Trần Thị B', role: 'user', created_date: '2026-03-01T14:15:00Z' },
@@ -46,8 +46,7 @@ let mockVideos: VideoItem[] = [
   { id: 'v2', title: 'Từ vựng N3 - Frieren: Beyond Journey\'s End', thumbnail_url: '', created_by: 'Thân Ngọc Hậu', created_date: '2026-03-12T09:15:00Z', status: 'approved' },
   { id: 'v3', title: 'Test upload video rác', thumbnail_url: '', created_by: 'Trần Thị B', created_date: '2026-03-13T10:00:00Z', status: 'rejected' },
 ];
-
-let mockReports: ReportItem[] = [
+const mockReports: ReportItem[] = [
   { id: 'r1', status: 'pending', created_date: '2026-03-13T16:45:00Z', reason: 'Nội dung không phù hợp', description: 'Video chứa hình ảnh nhạy cảm ở phút 2:15', reporter_email: 'admin@myanime.com' },
   { id: 'r2', status: 'resolved', created_date: '2026-03-10T09:00:00Z', reason: 'Sai phụ đề', description: 'Dịch sai nghĩa hoàn toàn đoạn hội thoại đầu.', reporter_email: 'user1@test.com' },
 ];
