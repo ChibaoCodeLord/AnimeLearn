@@ -116,7 +116,7 @@
   }
 }
 
-#root {
+/* #root {
   width: 1126px;
   max-width: 100%;
   margin: 0 auto;
@@ -174,7 +174,7 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
-}
+} */
 
 .dark {
   --background: oklch(0.145 0 0);
