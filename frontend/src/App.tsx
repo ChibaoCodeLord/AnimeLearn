@@ -12,6 +12,8 @@ import QuizPage from './pages/QuizPage';
 import Dashboard from './pages/Dashboard';
 import AIChatTutor from './pages/AIChatTutor';
 import AdminPanel from './pages/AdminPanel';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
 import Layout from './components/Layout';
 
 // Mock Component cho trường hợp 404
@@ -29,6 +31,10 @@ const AuthenticatedApp = () => {
   
   return (
     <Routes>
+      {/* Routes cho Login & Signup (không bọc trong Layout) */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+
       {/* Route chính bọc trong Layout (Sidebar + Header) */}
       <Route element={<Layout />}>
         {/* Điều hướng mặc định */}
