@@ -41,16 +41,18 @@ export default function Login() {
       const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       })
 
       if (response.ok) {
         const data = await response.json()
+        // Save token to localStorage
         localStorage.setItem('token', data.token)
         navigate('/home')
       } else {
         const errorData = await response.json()
-        setErrors({ email: errorData.message || 'Invalid email or password', password: '' })
+        setErrors({ email: errorData.error || 'Invalid email or password', password: '' })
       }
     } catch (error) {
       setErrors({ email: 'Connection error. Please try again.', password: '' })
@@ -134,36 +136,36 @@ export default function Login() {
             {/* Các trường input của bạn ở đây */}
  
            {/* Email Field */}
-<div className="space-y-1.5 text-left">
-  <label
-    htmlFor="email"
-    className="block text-sm font-semibold text-slate-700"
-  >
-    Email
-  </label>
+            <div className="space-y-1.5 text-left">
+              <label
+                htmlFor="email"
+                className="block text-sm font-semibold text-slate-700"
+              >
+                Email
+              </label>
 
-  <div className="relative">
-    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
 
-    <Input
-      id="email"
-      type="email"
-      placeholder="name@example.com"
-      value={email}
-      onChange={(e) => setEmail(e.target.value)}
-      className={`pl-11 text-left h-11 bg-slate-100 border rounded-lg transition-all
-      ${
-        errors.email
-          ? 'border-red-500 focus:ring-red-500'
-          : 'border-slate-200 focus:ring-red-500'
-      }`}
-    />
-  </div>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={`pl-11 text-left h-11 bg-slate-100 border rounded-lg transition-all
+                  ${
+                    errors.email
+                      ? 'border-red-500 focus:ring-red-500'
+                      : 'border-slate-200 focus:ring-red-500'
+                  }`}
+                />
+              </div>
 
-  {errors.email && (
-    <p className="text-xs text-red-600">{errors.email}</p>
-  )}
-</div>
+              {errors.email && (
+                <p className="text-xs text-red-600">{errors.email}</p>
+              )}
+            </div>
             {/* Password Field */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
