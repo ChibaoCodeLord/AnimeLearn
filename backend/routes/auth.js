@@ -1,176 +1,79 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import authenticateToken from '../middleware/auth.js';
+import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Secret key for JWT
-const JWT_SECRET = process.env.JWT_SECRET || 'your_secret_key';
-
-/**
- * @route   POST /api/auth/signup
- * @desc    Register a new user
- * @access  Public
- */
-router.post('/signup', async (req, res) => {
-  try {
-    const { fullName, email, password } = req.body;
-
-    // Validation
-    if (!fullName || !email || !password) {
-      return res.status(400).json({ message: 'All fields are required' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ message: 'Email already registered. Please login instead.' });
-    }
-
-    // Create new user
-    const newUser = new User({
-      fullName,
-      email,
-      password
-    });
-
-    await newUser.save();
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: newUser._id, email: newUser.email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.status(201).json({
-      message: 'User registered successfully',
-      token,
-      user: {
-        id: newUser._id,
-        fullName: newUser.fullName,
-        email: newUser.email,
-        jlptLevel: newUser.jlptLevel
-      }
-    });
-  } catch (error) {
-    console.error('Signup error:', error);
-    res.status(500).json({ message: 'Error registering user', error: error.message });
-  }
-});
-
-/**
- * @route   POST /api/auth/login
- * @desc    Login user
- * @access  Public
- */
+// Login route
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validation
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
-    }
-
-    // Find user and select password field
     const user = await User.findOne({ email }).select('+password');
-
     if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Check password
-    const isPasswordValid = await user.matchPassword(password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+    // Use matchPassword method (from User.js)
+    const isValid = await user.matchPassword(password);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Generate JWT token
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
-      JWT_SECRET,
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '7d' }
     );
 
-    res.status(200).json({
-      message: 'Login successful',
-      token,
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      success: true,
+      token: token,
       user: {
         id: user._id,
-        fullName: user.fullName,
         email: user.email,
-        jlptLevel: user.jlptLevel
-      }
+        fullName: user.fullName,
+      },
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ message: 'Error logging in', error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
-/**
- * @route   GET /api/auth/profile
- * @desc    Get current user profile (protected route)
- * @access  Private
- */
-router.get('/profile', authenticateToken, async (req, res) => {
+// Get current user profile
+router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
-    
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    res.status(200).json({
-      message: 'User profile retrieved successfully',
-      user: {
-        id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        jlptLevel: user.jlptLevel,
-        bio: user.bio,
-        profilePicture: user.profilePicture,
-        createdAt: user.createdAt
-      }
-    });
-  } catch (error) {
-    console.error('Profile error:', error);
-    res.status(500).json({ message: 'Error fetching profile', error: error.message });
-  }
-});
-
-/**
- * @route   POST /api/auth/logout
- * @desc    Logout user (optional - mainly handled on frontend)
- * @access  Private
- */
-router.post('/logout', authenticateToken, (req, res) => {
-  // Token is removed from frontend localStorage
-  res.status(200).json({ message: 'Logout successful' });
-});
-
-/**
- * @route   POST /api/auth/reset-db
- * @desc    Reset database - DELETE ALL USERS (Development only)
- * @access  Public (⚠️ Remove in production!)
- */
-router.post('/reset-db', async (req, res) => {
-  try {
-    const result = await User.deleteMany({});
+    const user = await User.findById(req.user.id);
     
-    res.status(200).json({
-      message: 'Database reset successfully',
-      deletedCount: result.deletedCount
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      id: user._id,
+      email: user.email,
+      fullName: user.fullName,
+      jlptLevel: user.jlptLevel,
+      profilePicture: user.profilePicture,
+      bio: user.bio,
+      role: user.role || 'user',
     });
   } catch (error) {
-    console.error('Reset DB error:', error);
-    res.status(500).json({ message: 'Error resetting database', error: error.message });
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

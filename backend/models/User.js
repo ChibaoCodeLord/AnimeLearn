@@ -64,6 +64,10 @@ userSchema.pre('save', async function(next) {
 });
 
 // Method to compare passwords
+userSchema.methods.comparePassword = async function(enteredPassword) {
+  return await bcryptjs.compare(enteredPassword, this.password);
+};
+
 userSchema.methods.matchPassword = async function(enteredPassword) {
   return await bcryptjs.compare(enteredPassword, this.password);
 };

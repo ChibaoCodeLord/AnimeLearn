@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState} from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, Menu, X, GraduationCap, ChevronRight } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, Menu, GraduationCap, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
 
 const navItems = [
   { path: '/home', label: 'Trang chủ', icon: Home },
-  { path: '/Vocabulary', label: 'Flashcard', icon: Brain }  ,
+  { path: '/Vocabulary', label: 'Flashcard', icon: Brain },
   { path: '/VocabularyNotebook', label: 'Sổ tay từ vựng', icon: BookOpen },
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
   { path: '/AIChatTutor', label: 'AI Tutor', icon: MessageCircle },
@@ -15,41 +16,54 @@ const navItems = [
 interface User {
   id: string;
   email: string;
-  full_name: string;
-  role: 'user' | 'admin';
+  fullName: string;
+  jlptLevel?: string;
+  profilePicture?: string | null;
+  bio?: string;
+  role?: 'user' | 'admin';
 }
+
+// Fetch user profile from backend
+const fetchUserProfile = async (): Promise<User> => {
+  const response = await fetch('http://localhost:5000/api/auth/me', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include', // Important: send cookies
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch user: ${response.status}`);
+  }
+
+  return response.json();
+};
 
 export default function Layout() {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
+  
+  const { data: user, isLoading, error } = useQuery<User>({
+    queryKey: ['current-user'],
+    queryFn: fetchUserProfile,
+    staleTime: 10 * 60 * 1000,
+    retry: 2, // Retry 2 times
+  });
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('my_anime_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    } else {
-      const mockUser: User = {
-        id: 'u123',
-        email: 'it.engineer@japan.com',
-        full_name: 'Ngọc Hậu',
-        role: 'admin'
-      };
-      setUser(mockUser);
-    }
-  }, []);
+  // Debug log
+  console.log('User data:', { user, isLoading, error });
 
   const handleLoginClick = () => {
-    alert('Chuyển hướng đến trang Đăng nhập...');
+    window.location.href = '/Login';
   };
 
   const isAdmin = user?.role === 'admin';
 
   return (
-    // 1. ROOT: Sửa thành flex-col, min-h-screen và overflow-x-hidden để tránh lỗi cuộn ngang
     <div className="flex flex-col min-h-screen w-full bg-linear-to-br from-emerald-50 via-teal-50 to-green-50 overflow-x-hidden">
       
-      {/* Top Header - Đã đẩy nút Menu Mobile sang trái cho hợp lý */}
+      {/* Top Header */}
       <header className="fixed top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-lg border-b border-emerald-100 z-40 flex items-center justify-between px-6">
         <div className="flex items-center lg:hidden">
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="text-slate-600">
@@ -58,20 +72,22 @@ export default function Layout() {
         </div>
         
         <div className="flex items-center gap-3 ml-auto">
-          {user ? (
-            <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                {user.full_name?.[0] || user.email?.[0]?.toUpperCase()}
-              </div>
-              <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.full_name || user.email}</span>
-            </div>
-          ) : (
+          {isLoading ? (
+            <div className="text-sm text-slate-500">Đang tải...</div>
+          ) : error || !user ? (
             <Button 
               onClick={handleLoginClick} 
               className="bg-linear-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700"
             >
               Đăng nhập
             </Button>
+          ) : (
+            <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors">
+              <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
+                {user.fullName?.[0]?.toUpperCase()}
+              </div>
+              <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.fullName}</span>
+            </div>
           )}
         </div>
       </header>
@@ -144,7 +160,6 @@ export default function Layout() {
         />
       )}
 
-      {/* 2. MAIN CONTENT: Thêm lg:pl-64 và pt-16 để nội dung tự lùi lại nhường chỗ cho Sidebar và Header */}
       <main className={`flex-1 min-w-0 flex flex-col w-full h-full relative pt-16 transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
         <Outlet />
       </main>

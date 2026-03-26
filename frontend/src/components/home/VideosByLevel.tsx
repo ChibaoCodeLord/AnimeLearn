@@ -4,20 +4,17 @@ import { Badge } from '@/components/ui/badge';
 import moment from 'moment';
 
 // 1. Khai báo kiểu dữ liệu cho Video
-export interface VideoItem {
-  id: string | number;
-  thumbnail_url?: string;
+export interface Video {
+  id: number;
   title: string;
-  jlpt_level?: string;
-  views_count?: number;
-  likes_count?: number;
-  created_date: string | Date;
+  level: string;
+  views?: number;
+  duration: string;
 }
 
 // 2. Khai báo kiểu dữ liệu cho Props
 interface VideosByLevelProps {
-  videos?: VideoItem[];
-  isLoading?: boolean;
+  videos: Video[];
 }
 
 // 3. Khai báo Record<string, string> cho các Object cấu hình
@@ -39,8 +36,8 @@ const levelNames: Record<string, string> = {
 };
 
 // 4. Gắn type và set giá trị mặc định cho videos là mảng rỗng
-export default function VideosByLevel({ videos = [], isLoading }: VideosByLevelProps) {
-  if (isLoading) {
+export default function VideosByLevel({ videos }: VideosByLevelProps) {
+  if (!videos || !Array.isArray(videos)) {
     return (
       <div className="py-12 px-4">
         <div className="max-w-7xl mx-auto">
@@ -68,12 +65,12 @@ export default function VideosByLevel({ videos = [], isLoading }: VideosByLevelP
   }
 
   // videos đã chắc chắn là mảng nhờ default props, nên filter không bị lỗi
-  const videosByLevel: Record<string, VideoItem[]> = {
-    N5: videos.filter(v => v.jlpt_level === 'N5'),
-    N4: videos.filter(v => v.jlpt_level === 'N4'),
-    N3: videos.filter(v => v.jlpt_level === 'N3'),
-    N2: videos.filter(v => v.jlpt_level === 'N2'),
-    N1: videos.filter(v => v.jlpt_level === 'N1'),
+  const videosByLevel: Record<string, Video[]> = {
+    N5: videos.filter(v => v.level === 'N5'),
+    N4: videos.filter(v => v.level === 'N4'),
+    N3: videos.filter(v => v.level === 'N3'),
+    N2: videos.filter(v => v.level === 'N2'),
+    N1: videos.filter(v => v.level === 'N1'),
   };
 
   return (
@@ -122,11 +119,11 @@ export default function VideosByLevel({ videos = [], isLoading }: VideosByLevelP
                         <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
                           <span className="flex items-center gap-1">
                             <Eye className="w-3 h-3" />
-                            {video.views_count || 0}
+                            {video.views || 0}
                           </span>
                           <span className="flex items-center gap-1">
                             <Heart className="w-3 h-3" />
-                            {video.likes_count || 0}
+                            {video.likes || 0}
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
