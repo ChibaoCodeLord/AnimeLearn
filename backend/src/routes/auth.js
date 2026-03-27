@@ -5,6 +5,54 @@ import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Signup route
+router.post('/signup', async (req, res) => {
+  try {
+    const { fullName, email, password } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email đã được sử dụng bởi tài khoản khác' });
+    }
+
+    // Create new user (password will be hashed by pre-save hook in User model)
+    const user = await User.create({
+      fullName,
+      email,
+      password
+    });
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    // Set cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.status(201).json({
+      success: true,
+      token: token,
+      user: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+      },
+    });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Login route
 router.post('/login', async (req, res) => {
   try {
