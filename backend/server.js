@@ -5,8 +5,8 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 
 // Import routes
-import authRoutes from './routes/auth.js';
-import homeRoutes from './routes/home.js';
+import authRoutes from './src/routers/auth.js';
+import homeRoutes from './src/routers/home.js';
 
 // Load environment variables
 dotenv.config();
