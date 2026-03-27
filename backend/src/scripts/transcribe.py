@@ -187,13 +187,14 @@ def main():
             })
             
         print_err("Đã xử lý xong!")
-        # Xuất JSON ra stdout để Nodejs đọc
+        
+        # 1. Xuất JSON ra stdout để Nodejs đọc
         print(json.dumps(results, ensure_ascii=False))
+        
+        # 2. Ép đẩy dữ liệu sang Node.js ngay lập tức (Rất quan trọng!)
+        sys.stdout.flush() 
 
-    except Exception as e:
-        print_err(f"Lỗi: {e}")
-        sys.exit(1)
-    finally:
+        # 3. Tự tay dọn dẹp file audio rác
         if tmp_audio_created:
             try:
                 if tmp_dir_to_delete:
@@ -202,6 +203,13 @@ def main():
                     os.remove(audio_path)
             except Exception:
                 pass
+
+        # 4. RÚT ĐIỆN CÁI RỤP! (Thoát ngay lập tức với mã 0, bỏ qua lỗi giải phóng GPU)
+        os._exit(0)
+
+    except Exception as e:
+        print_err(f"Lỗi: {e}")
+        os._exit(1)
 
 if __name__ == "__main__":
     main()
