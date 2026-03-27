@@ -11,7 +11,7 @@ export interface VideoItem {
 }
 
 const fetchVideos = async (): Promise<VideoItem[]> => {
-  const response = await fetch('http://localhost:5000/api/videos', {
+  const response = await fetch('http://localhost:5000/api/home/videos', {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',

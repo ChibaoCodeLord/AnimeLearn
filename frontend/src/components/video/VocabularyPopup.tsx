@@ -20,6 +20,7 @@ export interface LookupData {
 interface VocabularyPopupProps {
   word: string | null;
   position: { x: number; y: number } | null;
+  vocabData?: any;
   onClose: () => void;
   onSave?: () => void;
 }
@@ -32,57 +33,54 @@ const jlptBadgeColors: Record<string, string> = {
   N1: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
-// --- Các hàm tiện ích xử lý Cookie ---
-const getSavedVocabFromCookie = () => {
-  const match = document.cookie.match(new RegExp('(^| )my_anime_saved_vocab=([^;]+)'));
-  if (match) {
-    try {
-      return JSON.parse(decodeURIComponent(match[2]));
-    } catch (e) {
-      return [];
-    }
-  }
-  return [];
-};
 
-const saveVocabToCookie = (vocabList: any[]) => {
-  const maxAge = 30 * 24 * 60 * 60;
-  document.cookie = `my_anime_saved_vocab=${encodeURIComponent(JSON.stringify(vocabList))}; path=/; max-age=${maxAge}`;
-};
 
 // --- Component Chính ---
-export default function VocabularyPopup({ word, position, onClose, onSave }: VocabularyPopupProps) {
+export default function VocabularyPopup({ word, position, onClose, onSave, vocabData }: VocabularyPopupProps) {
   const [saving, setSaving] = useState(false);
   const [lookupData, setLookupData] = useState<LookupData | null>(null);
   const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
-    if (word) {
+    if (vocabData) {
+      setLookupData({
+        word: vocabData.word || word || '',
+        reading: vocabData.reading || '',
+        meaning_vi: vocabData.meaning || '',
+        part_of_speech: vocabData.pos || ''
+      });
+      setLoading(false);
+    } else if (word) {
       lookupWord(word);
     }
-  }, [word]);
+  }, [word, vocabData]);
 
   const lookupWord = async (w: string) => {
     setLoading(true);
     
-    // Giả lập API tra từ (Mock data) thay vì dùng base44
-    const result = await new Promise<LookupData>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          word: w,
-          reading: w === '私' ? 'わたし' : 'chưa rõ cách đọc',
-          meaning_vi: `Nghĩa tiếng Việt giả lập cho từ ${w}`,
-          meaning_en: `English meaning for ${w}`,
-          jlpt_level: ['N5', 'N4', 'N3', 'N2', 'N1'][Math.floor(Math.random() * 5)],
-          example_sentence: `これは「${w}」の例文です。`,
-          example_meaning: `Đây là câu ví dụ cho từ ${w}.`,
-          related_words: [`Từ liên quan 1`, `Từ liên quan 2`],
-          part_of_speech: 'Danh từ'
-        });
-      }, 1000); // Delay 1 giây
-    });
+    try {
+      const res = await fetch('http://localhost:5000/api/video/translate-word', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word: w })
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      
+      setLookupData({
+        word: data.word || w,
+        reading: data.reading || 'chưa rõ',
+        meaning_vi: data.meaning_vi || 'Không rõ nghĩa',
+        part_of_speech: data.part_of_speech || 'N/A'
+      });
+    } catch(e) {
+      setLookupData({
+        word: w,
+        reading: 'chưa rõ',
+        meaning_vi: `Chưa có dữ liệu từ điển offline cho từ này. Vui lòng tạo lại Script AI để bóc tách bộ từ vựng mới nhất.`,
+      });
+    }
 
-    setLookupData(result);
     setLoading(false);
   };
 
@@ -91,9 +89,6 @@ export default function VocabularyPopup({ word, position, onClose, onSave }: Voc
     setSaving(true);
     
     try {
-      // Xử lý lưu vào Cookie thay vì base44
-      const currentSavedList = getSavedVocabFromCookie();
-      
       const newSavedVocab = {
         word: lookupData.word || word,
         reading: lookupData.reading || '',
@@ -102,26 +97,36 @@ export default function VocabularyPopup({ word, position, onClose, onSave }: Voc
         jlpt_level: lookupData.jlpt_level || 'Unknown',
         example_sentence: lookupData.example_sentence || '',
         example_meaning: lookupData.example_meaning || '',
-        next_review_date: new Date().toISOString().split('T')[0],
-        review_interval: 1,
-        ease_factor: 2.5,
-        review_count: 0,
-        saved_at: new Date().toISOString()
+        part_of_speech: lookupData.part_of_speech || ''
       };
 
-      const isAlreadySaved = currentSavedList.some((item: any) => item.word === newSavedVocab.word);
+      const token = localStorage.getItem('token') || '';
 
-      if (isAlreadySaved) {
-        toast.info('Từ này đã có trong sổ tay!');
+      const res = await fetch('http://localhost:5000/api/video/save-word', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        credentials: 'omit',
+        body: JSON.stringify(newSavedVocab)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.message === 'Từ này đã có trong sổ tay') {
+          toast.info(data.message);
+        } else {
+          toast.error(data.error || 'Lỗi khi lưu từ vựng!');
+        }
       } else {
-        currentSavedList.push(newSavedVocab);
-        saveVocabToCookie(currentSavedList);
-        toast.success('Đã lưu từ vựng vào Cookie!');
+        toast.success(data.message || 'Đã lưu từ vựng vào Database!');
       }
 
       if (onSave) onSave();
     } catch (error) {
-      toast.error('Lỗi khi lưu từ vựng!');
+      toast.error('Lỗi kết nối khi lưu!');
     } finally {
       setSaving(false);
     }

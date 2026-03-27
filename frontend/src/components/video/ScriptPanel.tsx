@@ -46,19 +46,36 @@ export default function ScriptPanel({
 
   // 5. Đã xóa tham số 'lineIndex' thừa
   const renderJapaneseText = (text: string) => {
-    const segments = text.split(/(\s+)/);
-    return segments.map((segment, i) => {
-      if (segment.trim() === '') return <span key={i}>{segment}</span>;
-      return (
-        <span
-          key={i}
-          className="cursor-pointer hover:bg-[#ff6b9d]/20 hover:text-[#ff6b9d] rounded px-0.5 transition-colors"
-          onClick={(e) => handleWordClick(e, segment)}
-        >
-          {segment}
-        </span>
-      );
-    });
+    try {
+      const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+      const segments = Array.from(segmenter.segment(text));
+      return segments.map((seg, i) => {
+        if (seg.segment.trim() === '') return <span key={i}>{seg.segment}</span>;
+        return (
+          <span
+            key={i}
+            className="cursor-pointer hover:bg-[#ff6b9d]/20 hover:text-[#ff6b9d] rounded px-0.5 transition-colors"
+            onClick={(e) => handleWordClick(e, seg.segment)}
+          >
+            {seg.segment}
+          </span>
+        );
+      });
+    } catch (e) {
+      const segments = text.split(/(\s+)/);
+      return segments.map((segment, i) => {
+        if (segment.trim() === '') return <span key={i}>{segment}</span>;
+        return (
+          <span
+            key={i}
+            className="cursor-pointer hover:bg-[#ff6b9d]/20 hover:text-[#ff6b9d] rounded px-0.5 transition-colors"
+            onClick={(e) => handleWordClick(e, segment)}
+          >
+            {segment}
+          </span>
+        );
+      });
+    }
   };
 
   if (!script || script.length === 0) {
@@ -79,21 +96,20 @@ export default function ScriptPanel({
             onClick={() => onLineClick(index)}
             className={`p-3 rounded-xl cursor-pointer transition-all ${
               index === currentIndex
-                // Cập nhật bg-linear-to-r
                 ? 'bg-linear-to-r from-[#ff6b9d]/10 to-[#c084fc]/10 border border-[#ff6b9d]/30'
-                : 'hover:bg-[#1e1e3a] border border-transparent'
+                : 'hover:bg-slate-50 border border-transparent'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Clock className="w-3 h-3 text-gray-600" />
-              <span className="text-xs text-gray-600 font-mono">{line.timestamp}</span>
+              <Clock className="w-3 h-3 text-slate-400" />
+              <span className="text-xs text-slate-500 font-mono">{line.timestamp}</span>
             </div>
-            <p className="text-white text-base leading-relaxed">
+            <p className="text-slate-800 font-medium text-base leading-relaxed">
               {renderJapaneseText(line.japanese)}
             </p>
-            <p className="text-[#ff6b9d]/70 text-sm mt-1">{line.vietnamese}</p>
+            <p className="text-slate-600 font-medium text-sm mt-1">{line.vietnamese}</p>
             {line.english && (
-              <p className="text-gray-500 text-xs mt-0.5">{line.english}</p>
+              <p className="text-slate-400 text-xs mt-0.5">{line.english}</p>
             )}
             
             {/* Vocabulary Analysis */}
