@@ -32,7 +32,20 @@ export default function ScriptPanel({
 
   useEffect(() => {
     if (activeRef.current && containerRef.current) {
-      activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const container = containerRef.current;
+      const element = activeRef.current;
+
+      // Tính toán khoảng cách cuộn để đưa dòng hiện tại vào giữa bảng Script
+      const elementTop = element.offsetTop;
+      const elementHeight = element.offsetHeight;
+      const containerHeight = container.offsetHeight;
+
+      const scrollToPosition = elementTop - (containerHeight / 2) + (elementHeight / 2);
+
+      container.scrollTo({
+        top: scrollToPosition,
+        behavior: 'smooth'
+      });
     }
   }, [currentIndex]);
 
@@ -87,7 +100,7 @@ export default function ScriptPanel({
   }
 
   return (
-    <div ref={containerRef} className="h-full overflow-y-auto custom-scrollbar">
+    <div ref={containerRef} className="h-full overflow-y-auto custom-scrollbar relative">
       <div className="space-y-1 p-4">
         {script.map((line, index) => (
           <div

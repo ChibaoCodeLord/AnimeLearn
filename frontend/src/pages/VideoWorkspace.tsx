@@ -86,7 +86,7 @@ export default function VideoWorkspace() {
         try {
           // getCurrentTime() của youtube api
           const currentTime = await playerRef.current.getCurrentTime();
-          
+
           let foundIndex = -1;
           for (let i = 0; i < script.length; i++) {
             const timeSec = parseTimestampToSeconds(script[i].timestamp);
@@ -96,14 +96,14 @@ export default function VideoWorkspace() {
               break;
             }
           }
-          
+
           if (foundIndex !== -1 && foundIndex !== currentIndex) {
             setCurrentIndex(foundIndex);
           }
-        } catch (e) {}
+        } catch (e) { }
       }, 500); // Check mỗi nửa giây cho nhẹ UI
     }
-    
+
     return () => {
       if (interval) clearInterval(interval);
     };
@@ -148,7 +148,7 @@ export default function VideoWorkspace() {
       const token = localStorage.getItem('token') || '';
       const saveRes = await fetch('http://localhost:5000/api/video/save', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
@@ -162,13 +162,13 @@ export default function VideoWorkspace() {
       });
 
       const saveData = await saveRes.json();
-      
+
       if (saveRes.ok && saveData.videoId) {
-         window.history.replaceState(null, '', `?id=${saveData.videoId}`);
-         queryClient.invalidateQueries({ queryKey: ['community-videos'] });
-         toast.success('Bóc băng và lưu trữ Database thành công!');
+        window.history.replaceState(null, '', `?id=${saveData.videoId}`);
+        queryClient.invalidateQueries({ queryKey: ['community-videos'] });
+        toast.success('Bóc băng và lưu trữ Database thành công!');
       } else {
-         toast.error(saveData.error || saveData.message || 'Lỗi khi lưu Database');
+        toast.error(saveData.error || saveData.message || 'Lỗi khi lưu Database');
       }
     } catch (error: any) {
       toast.error(error.message || 'Có lỗi xảy ra khi phân tích video.');
@@ -316,7 +316,7 @@ export default function VideoWorkspace() {
           </div>
 
           {/* CỘT PHẢI: Khối Kịch Bản (Script Panel) */}
-          <div className="w-full xl:w-100 flex flex-col bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden shrink-0 h-[500px] xl:h-[750px]">
+          <div className="w-full xl:w-100 flex flex-col bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden shrink-0 h-[500px] xl:h-[850px]">
             <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
