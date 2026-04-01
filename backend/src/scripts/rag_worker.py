@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import io
 import re
 import sys
 import traceback
@@ -29,7 +30,7 @@ def sanitize_text(text: Any) -> str:
     text = text.replace('\x00', '')
     # Loại bỏ các ký tự Surrogate (U+D800 đến U+DFFF) - Thủ phạm chính gây lỗi
     text = re.sub(r'[\ud800-\udfff]', '', text)
-    return text.strip()
+    return text.encode('utf-8', 'ignore').decode('utf-8').strip()
 
 def _log(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
@@ -181,8 +182,9 @@ def _build_history_text(history: Any) -> str:
     for item in history[-4:]:
         if not isinstance(item, dict):
             continue
-        q = str(item.get("question") or "").strip()
-        a = str(item.get("answer") or "").strip()
+        # sanitize cả câu hỏi và câu trả lời cũ
+        q = sanitize_text(item.get("question") or "")
+        a = sanitize_text(item.get("answer") or "")
         if q:
             parts.append(f"User: {q}")
         if a:
@@ -206,7 +208,7 @@ def _ask_llm(context: str, question: str, history: Any) -> str:
         "Ban la tro ly hoc tieng Nhat cho nen tang AnimeLearn. "
         "Chi tra loi dua tren Context duoc cung cap va lien quan truc tiep den video hien tai. "
         "Neu context khong du thong tin thi tra loi ro rang: 'Toi khong tim thay thong tin trong video nay.' "
-        "Tra loi bang tieng Viet, ngan gon, de hieu, co the trich dan timestamp neu co."
+        "Tra loi bằng tiếng Việt, ngan gon, de hieu, co the trich dan timestamp neu co."
     )
 
     user_parts = []
@@ -227,7 +229,7 @@ def _ask_llm(context: str, question: str, history: Any) -> str:
 
 
 def ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
-    _log("Da goi ham ingest")
+    _log("Đã gọi hàm ingest")
     video_id = str(payload.get("video_id") or "").strip()
     script = payload.get("script")
 
@@ -333,7 +335,7 @@ def chat(payload: Dict[str, Any]) -> Dict[str, Any]:
     for d in docs:
         metadata = d.metadata or {}
         raw_text = d.page_content or ""
-        cleaned_text = raw_text[9:] if raw_text.startswith("passage: ") else raw_text
+        cleaned_text = sanitize_text(raw_text[9:] if raw_text.startswith("passage: ") else raw_text)
 
         timestamp = str(metadata.get("timestamp") or "").strip()
         chunk_index = metadata.get("chunk_index")
@@ -376,7 +378,8 @@ def main() -> None:
     parser.add_argument("action", choices=["ingest", "chat"])
     args = parser.parse_args()
 
-    raw_input = sys.stdin.read().strip()
+    input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    raw_input = input_stream.read().strip()
     payload = json.loads(raw_input) if raw_input else {}
 
     if args.action == "ingest":
