@@ -10,9 +10,11 @@ export const authMiddleware = (req, res, next) => {
       return res.status(401).json({ error: 'No token provided' });
     }
 
+    if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET chưa được cấu hình!');
+
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || 'your-secret-key'
+      process.env.JWT_SECRET
     );
 
     req.user = decoded;

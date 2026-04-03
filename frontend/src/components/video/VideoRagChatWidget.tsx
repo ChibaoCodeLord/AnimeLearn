@@ -138,6 +138,7 @@ export default function VideoRagChatWidget({ videoId }: VideoRagChatWidgetProps)
       setIsSending(false);
     }
   };
+  
 
   return (
     <div className="fixed right-4 bottom-4 md:right-6 md:bottom-6 z-50">

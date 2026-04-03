@@ -3,7 +3,7 @@ import Video from '../models/Video.js';
 import { askVideoQuestion, indexVideoScript } from '../services/ragChatService.js';
 
 const router = express.Router();
-
+// TODO: hiện tại rag chưa có auth tương lai có thể cần ratelimit
 router.post('/video/:videoId/index', async (req, res) => {
   try {
     const { videoId } = req.params;

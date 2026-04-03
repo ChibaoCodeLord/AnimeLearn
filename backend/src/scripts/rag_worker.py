@@ -37,8 +37,6 @@ def _log(message: str) -> None:
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-# Tải biến môi trường (Giữ nguyên cả .evn phòng trường hợp bạn gõ sai tên file thực tế)
-load_dotenv(BACKEND_DIR / ".evn")
 load_dotenv(BACKEND_DIR / ".env")
 
 EMBED_MODEL = os.getenv("RAG_EMBED_MODEL", "intfloat/multilingual-e5-base")
@@ -52,6 +50,9 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:8b-instruct-q4_K_M")
+
+GLOBAL_EMBEDDINGS = None
+GLOBAL_STORE = None
 
 
 @dataclass
@@ -78,6 +79,23 @@ def _resolve_chroma_class():
         module = importlib.import_module("langchain_community.vectorstores")
         return getattr(module, "Chroma")
 
+def init_rag_system():
+    global GLOBAL_EMBEDDINGS, GLOBAL_STORE
+    if GLOBAL_EMBEDDINGS is None:
+        print("🚀 Đang nạp Model vào RAM lần duy nhất...")
+        GLOBAL_EMBEDDINGS = HuggingFaceEmbeddings(
+            model_name=EMBED_MODEL,
+            encode_kwargs={'normalize_embeddings': True}
+        )
+        # Khởi tạo Store một lần duy nhất
+        db_path = _db_path()
+        chroma_client = chromadb.PersistentClient(path=db_path)
+        Chroma = _resolve_chroma_class()
+        GLOBAL_STORE = Chroma(
+            client=chroma_client,
+            collection_name=COLLECTION_NAME,
+            embedding_function=GLOBAL_EMBEDDINGS,
+        )
 
 def _vectorstore() -> Tuple[Any, chromadb.ClientAPI]:
     db_path = _db_path()
@@ -254,7 +272,9 @@ def ingest(payload: Dict[str, Any]) -> Dict[str, Any]:
             "message": "No valid Japanese lines to index",
         }
 
-    store, chroma_client = _vectorstore()
+    db_path = _db_path()
+    store = GLOBAL_STORE
+    chroma_client = chroma_client = chromadb.PersistentClient(path=db_path)
     collection = chroma_client.get_or_create_collection(name=COLLECTION_NAME)
 
     # Re-indexing the same video should replace old chunks.
@@ -309,7 +329,7 @@ def chat(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not video_id or not question:
         raise ValueError("Missing video_id or question")
 
-    store, _ = _vectorstore()
+    store = GLOBAL_STORE
     
     docs = store.similarity_search(
         query=f"query: {question}",
@@ -317,7 +337,6 @@ def chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         filter={"video_id": video_id},
     )
 
-    # FIX LỖI INDEX OUT OF RANGE: Kiểm tra docs rỗng trước khi truy cập docs[0]
     if not docs:
         _log(f"[RAG WARNING] Không tìm thấy dữ liệu cho video_id: {video_id} trong ChromaDB.")
         return {
@@ -372,30 +391,48 @@ def chat(payload: Dict[str, Any]) -> Dict[str, Any]:
         "sources": sources,
     }
 
+"""Đây là ham chat stream
+- là hàm chat gửi liên tục các ký tự khi vừa được sinh ra chứ ko cần phải chờ hết toàn bộ
+"""
+def chat_stream_logic(payload: Dict[str, Any], store):
+    """
+    Logic xử lý: Tìm kiếm context + Stream từ LLM
+    """
+    video_id = payload.get("video_id")
+    question = payload.get("question")
+    history = payload.get("history") or []
+    k = payload.get("k", 4)
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["ingest", "chat"])
-    args = parser.parse_args()
+    # 1. Thực hiện Similarity Search (Tìm context)
+    # Vì store đã được "kích hoạt trước" ở main.py nên ta truyền nó vào đây
+    docs = store.similarity_search(query=f"query: {question}", k=k, filter={"video_id": video_id})
+    
+    if not docs:
+        yield "Toi khong tim thay thong tin trong video nay."
+        return
 
-    input_stream = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-    raw_input = input_stream.read().strip()
-    payload = json.loads(raw_input) if raw_input else {}
+    # Xây dựng context từ các docs tìm được
+    context = "\n\n".join([d.page_content for d in docs])
 
-    if args.action == "ingest":
-        result = ingest(payload)
-    else:
-        result = chat(payload)
+    # 2. Gọi LLM ở chế độ Stream
+    client, model = _build_llm_client() # Giả sử hàm này đã có trong file này
+    
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": 
+             "Ban la tro ly hoc tieng Nhat cho nen tang AnimeLearn. "
+             "Chi tra loi dua tren Context duoc cung cap va lien quan truc tiep den video hien tai. "
+             "Neu context khong du thong tin thi tra loi ro rang: 'Toi khong tim thay thong tin trong video nay.' "
+             "Tra loi bằng tiếng Việt, ngan gon, de hieu, co the trich dan timestamp neu co."},
+            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
+        ],
+        stream=True, # Bật streaming
+        temperature=0,
+    )
 
-    # Trả về kết quả JSON chuẩn cho stdout để Node.js đọc
-    print(json.dumps(result, ensure_ascii=False))
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as err:
-        _log(f"CRITICAL ERROR: {str(err)}")
-        traceback.print_exc(file=sys.stderr)
-        print(json.dumps({"ok": False, "error": str(err)}, ensure_ascii=False))
-        sys.exit(1)
+    # 3. "Bơm" từng mảnh dữ liệu về
+    for chunk in response:
+        content = chunk.choices[0].delta.content
+        if content:
+            yield content
