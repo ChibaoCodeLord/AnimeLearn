@@ -14,7 +14,14 @@ router.use(authMiddleware, restrictTo('admin'));
 router.get('/videos', async (req, res) => {
   try {
     const { search = '', jlpt = '', status = '', page = 1, limit = 20 } = req.query;
+    if(page <= 0) {
+      throw new Error("Lỗi tham số page");
+    }
 
+    if(limit <= 0) {
+      throw new Error("Lỗi tham số limit");
+    }
+    
     const filter = {};
     if (search) {
       filter.title = { $regex: search, $options: 'i' };
@@ -59,7 +66,7 @@ router.get('/videos', async (req, res) => {
     });
   } catch (error) {
     console.error('[Admin] Error fetching videos:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Lỗi lấy dữ liệu từ cở sở dữ liệu" });
   }
 });
 
@@ -71,7 +78,7 @@ router.delete('/videos/:id', async (req, res) => {
     res.json({ message: 'Đã xóa video thành công', id: req.params.id });
   } catch (error) {
     console.error('[Admin] Error deleting video:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Lỗi xóa video' });
   }
 });
 
@@ -102,7 +109,7 @@ router.patch('/videos/:id/status', async (req, res) => {
     });
   } catch (error) {
     console.error('[Admin] Error updating video status:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Lỗi xét duyệt" });
   }
 });
 
@@ -135,7 +142,7 @@ router.get('/users', async (req, res) => {
     res.json(mappedUsers);
   } catch (error) {
     console.error('[Admin] Error fetching users:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Lỗi lấy thông tin người dùng' });
   }
 });
 
@@ -151,7 +158,7 @@ router.patch('/users/:id/role', async (req, res) => {
     res.json({ message: 'Cập nhật quyền thành công', user: { id: user._id, role: user.role } });
   } catch (error) {
     console.error('[Admin] Error updating user role:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Lỗi cập nhật quyền' });
   }
 });
 
@@ -169,7 +176,7 @@ router.get('/stats', async (req, res) => {
     res.json({ totalVideos, totalUsers, totalAdmins });
   } catch (error) {
     console.error('[Admin] Error fetching stats:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Lỗi thống kê' });
   }
 });
 

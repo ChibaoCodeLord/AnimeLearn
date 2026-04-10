@@ -93,7 +93,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Lỗi đăng nhập' });
   }
 });
 
@@ -121,7 +121,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching user:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Lỗi lấy thông tin cá nhân' });
   }
 });
 

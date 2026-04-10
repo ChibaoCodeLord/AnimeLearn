@@ -261,7 +261,7 @@ router.post('/save', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi khi lưu video:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Lỗi tạo script video' });
   }
 });
 
@@ -279,7 +279,8 @@ router.get('/detail/:id', async (req, res) => {
       jlpt_level: video.jlpt_level
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Lỗi khi lấy thông tin video:', error);
+    res.status(500).json({ error: 'Lỗi khi lấy thông tin video' });
   }
 });
 

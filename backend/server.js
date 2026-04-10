@@ -13,7 +13,7 @@ import adminRoutes from './src/routes/admin.js';
 
 
 // Load environment variables
-dotenv.config({ path: '.evn' });
+dotenv.config({ path: '.env' });
 dotenv.config();
 
 const app = express();
