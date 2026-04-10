@@ -47,8 +47,6 @@ export default function Login() {
 
       if (response.ok) {
         const data = await response.json()
-        // Save token to localStorage
-        localStorage.setItem('token', data.token)
         navigate('/home')
       } else {
         const errorData = await response.json()

@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, restrictTo } from '../middleware/auth.js'
 import Vocabulary from '../models/Vocabulary.js';
 import Video from '../models/Video.js';
 import { indexVideoScript } from '../services/ragChatService.js';
@@ -36,7 +36,9 @@ console.log(`[Video Route] Using Python interpreter: ${PYTHON_CMD}`);
 
 const router = express.Router();
 
-router.post('/analyze', (req, res) => {
+//Router dịch script
+//chỉ có user đã đăng nhập mới được tạo script
+router.post('/analyze', authMiddleware, (req, res) => {
   const { url } = req.body;
 
   if (!url) {

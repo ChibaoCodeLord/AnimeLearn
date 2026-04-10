@@ -9,6 +9,7 @@ import authRoutes from './src/routes/auth.js';
 import homeRoutes from './src/routes/home.js';
 import videoRoutes from './src/routes/video.js';
 import chatRoutes from './src/routes/chat.js';
+import adminRoutes from './src/routes/admin.js';
 
 
 // Load environment variables
@@ -45,6 +46,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/home', homeRoutes);
 app.use('/api/video', videoRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Basic test route
 app.get('/api/health', (req, res) => {

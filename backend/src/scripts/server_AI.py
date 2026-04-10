@@ -4,6 +4,9 @@ from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import os
 
 # Import các hàm từ file rag_worker.py của bạn
 from rag_worker import  _vectorstore, ingest, chat, init_rag_system
@@ -18,10 +21,26 @@ from rag_worker import  _vectorstore, ingest, chat, init_rag_system
 
 app = FastAPI(title="AnimeLearn RAG Service")
 
-# --- PHẦN KHỞI TẠO (Warming up) ---
-# Biến toàn cục để giữ Model và DB trên RAM
-# GLOBAL_STORE = None
-# GLOBAL_EMBEDDINGS = None
+@app.middleware("http")
+async def validate_api_key(request: Request, call_next):
+    # Bỏ qua kiểm tra cho health check (optional)
+    if request.url.path in ["/health"]:
+        return await call_next(request)
+    
+    # Lấy API Key từ header
+    api_key = request.headers.get("X-API-KEY")
+    expected_key = os.getenv("AI_KEY", "default-secret-key")
+    
+    # Kiểm tra API Key
+    if api_key != expected_key:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or missing API Key"}
+        )
+    
+    # Nếu OK, tiếp tục xử lý request
+    response = await call_next(request)
+    return response
 
 @app.on_event("startup")
 async def startup_event():
@@ -61,14 +80,6 @@ async def api_chat(payload: ChatPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# @app.post("/chat")
-# async def api_chat_stream(payload: ChatPayload):
-#     # Chúng ta truyền GLOBAL_STORE (Vector DB đã nạp sẵn trên RAM) vào logic
-#     # StreamingResponse sẽ tự động "hút" dữ liệu từ generator (yield)
-#     return StreamingResponse(
-#         chat_stream_logic(payload.model_dump(), GLOBAL_STORE),
-#         media_type="text/event-stream"
-#     )
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=9000)
+    uvicorn.run(app, host="172.0.0.1", port=9000)

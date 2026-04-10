@@ -70,8 +70,8 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET || 'your-secret-key',
+      { id: user._id, email: user.email, role: user.role},
+      process.env.JWT_SECRET, // bắt buộc phải có env
       { expiresIn: '7d' }
     );
 
@@ -82,9 +82,9 @@ router.post('/login', async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
+    //đã lưu vào cookie không cần gửi thêm token
     res.json({
       success: true,
-      token: token,
       user: {
         id: user._id,
         email: user.email,
