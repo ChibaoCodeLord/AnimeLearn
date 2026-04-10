@@ -3,347 +3,732 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Shield, Users, Video, Flag, Trash2, CheckCircle2, XCircle, AlertCircle, Search } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Shield, Users, Video, Trash2, Search, Eye, RefreshCw,
+  ChevronLeft, ChevronRight, Film, BookOpen,
+  ExternalLink, UserCog, Crown, AlertTriangle,
+  CheckCircle2, XCircle, Clock,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import moment from 'moment';
 
-// --- 1. Định nghĩa kiểu dữ liệu ---
-export interface UserItem {
-  id: string;
+// ─── Kiểu dữ liệu ─────────────────────────────────────────────────────────────
+
+interface CreatorInfo {
+  id: string | null;
+  fullName: string;
   email: string;
-  full_name: string;
-  role: 'admin' | 'user';
-  created_date: string;
 }
 
-export interface VideoItem {
+type VideoStatus = 'approved' | 'rejected' | 'pending';
+
+interface VideoItem {
   id: string;
   title: string;
+  youtube_url: string;
   thumbnail_url: string;
-  created_by: string;
+  jlpt_level: string;
+  status: VideoStatus;
+  views_count: number;
+  likes_count: number;
   created_date: string;
-  status: 'approved' | 'rejected' | 'pending';
+  script_length: number;
+  creator: CreatorInfo;
 }
 
-export interface ReportItem {
+interface VideosResponse {
+  videos: VideoItem[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+interface UserItem {
   id: string;
-  status: 'pending' | 'resolved' | 'dismissed';
-  created_date: string;
-  reason: string;
-  description?: string;
-  reporter_email: string;
+  fullName: string;
+  email: string;
+  role: 'admin' | 'user';
+  jlptLevel: string;
+  createdAt: string;
+  isVerified: boolean;
 }
 
-// --- 2. MOCK DATA ---
-const mockUsers: UserItem[] = [
-  { id: 'u1', email: 'admin@myanime.com', full_name: 'Thân Ngọc Hậu', role: 'admin', created_date: '2026-01-01T10:00:00Z' },
-  { id: 'u2', email: 'user1@test.com', full_name: 'Nguyễn Văn A', role: 'user', created_date: '2026-02-15T08:30:00Z' },
-  { id: 'u3', email: 'user2@test.com', full_name: 'Trần Thị B', role: 'user', created_date: '2026-03-01T14:15:00Z' },
-];
+interface StatsData {
+  totalVideos: number;
+  totalUsers: number;
+  totalAdmins: number;
+}
 
-let mockVideos: VideoItem[] = [
-  { id: 'v1', title: 'Học tiếng Nhật qua Jujutsu Kaisen - Phân tích ngữ pháp', thumbnail_url: '', created_by: 'Nguyễn Văn A', created_date: '2026-03-10T14:20:00Z', status: 'pending' },
-  { id: 'v2', title: 'Từ vựng N3 - Frieren: Beyond Journey\'s End', thumbnail_url: '', created_by: 'Thân Ngọc Hậu', created_date: '2026-03-12T09:15:00Z', status: 'approved' },
-  { id: 'v3', title: 'Test upload video rác', thumbnail_url: '', created_by: 'Trần Thị B', created_date: '2026-03-13T10:00:00Z', status: 'rejected' },
-];
-const mockReports: ReportItem[] = [
-  { id: 'r1', status: 'pending', created_date: '2026-03-13T16:45:00Z', reason: 'Nội dung không phù hợp', description: 'Video chứa hình ảnh nhạy cảm ở phút 2:15', reporter_email: 'admin@myanime.com' },
-  { id: 'r2', status: 'resolved', created_date: '2026-03-10T09:00:00Z', reason: 'Sai phụ đề', description: 'Dịch sai nghĩa hoàn toàn đoạn hội thoại đầu.', reporter_email: 'user1@test.com' },
-];
+// ─── API ───────────────────────────────────────────────────────────────────────
 
-// --- 3. MOCK API ---
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-const mockApi = {
-  authMe: async () => { await delay(300); return mockUsers[0]; },
-  getUsers: async () => { await delay(500); return [...mockUsers]; },
-  getVideos: async () => { await delay(500); return [...mockVideos]; },
-  getReports: async () => { await delay(500); return [...mockReports]; },
-  updateVideo: async (id: string, data: Partial<VideoItem>) => {
-    await delay(500);
-    const index = mockVideos.findIndex(v => v.id === id);
-    if (index !== -1) mockVideos[index] = { ...mockVideos[index], ...data };
-    return mockVideos[index];
-  },
-  deleteVideo: async (id: string) => {
-    await delay(500);
-    mockVideos = mockVideos.filter(v => v.id !== id);
-    return true;
-  },
-  updateReport: async (id: string, data: Partial<ReportItem>) => {
-    await delay(500);
-    const index = mockReports.findIndex(r => r.id === id);
-    if (index !== -1) mockReports[index] = { ...mockReports[index], ...data };
-    return mockReports[index];
+const API_BASE = 'http://localhost:5000/api';
+
+const apiFetch = async (path: string, options?: RequestInit) => {
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Lỗi không xác định' }));
+    throw new Error(err.error || 'Lỗi API');
   }
+  return res.json();
 };
 
-// --- COMPONENT CHÍNH ---
+// ─── Cấu hình trạng thái ──────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<VideoStatus, {
+  label: string;
+  icon: React.ReactNode;
+  badgeCls: string;
+  barCls: string;
+}> = {
+  approved: {
+    label: 'Đã duyệt',
+    icon: <CheckCircle2 className="w-3 h-3" />,
+    badgeCls: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    barCls: 'bg-emerald-500',
+  },
+  pending: {
+    label: 'Chờ duyệt',
+    icon: <Clock className="w-3 h-3" />,
+    badgeCls: 'bg-amber-100 text-amber-700 border-amber-200',
+    barCls: 'bg-amber-400',
+  },
+  rejected: {
+    label: 'Từ chối',
+    icon: <XCircle className="w-3 h-3" />,
+    badgeCls: 'bg-rose-100 text-rose-700 border-rose-200',
+    barCls: 'bg-rose-500',
+  },
+};
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+/** Badge inline trạng thái (dùng trong cột bảng) */
+function StatusBadge({ status }: { status: VideoStatus }) {
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${cfg.badgeCls}`}>
+      {cfg.icon}
+      {cfg.label}
+    </span>
+  );
+}
+
+/** Thumbnail video với bar trạng thái ở đáy */
+function VideoThumbnail({ url, title, status }: { url: string; title: string; status: VideoStatus }) {
+  const [err, setErr] = useState(false);
+  const cfg = STATUS_CONFIG[status];
+  return (
+    <div className="relative w-20 h-12 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200">
+      {!err && url ? (
+        <img src={url} alt={title} className="w-full h-full object-cover" onError={() => setErr(true)} />
+      ) : (
+        <Film className="w-4 h-4 text-slate-400" />
+      )}
+      {/* Bar màu trạng thái ở đáy thumbnail */}
+      <div className={`absolute bottom-0 left-0 right-0 h-1 ${cfg.barCls}`} />
+    </div>
+  );
+}
+
+/** Thẻ thống kê — đồng bộ với Dashboard */
+function StatCard({
+  icon: Icon, label, value, colorClass, bgClass, isLoading,
+}: {
+  icon: React.ElementType; label: string; value: number | string;
+  colorClass: string; bgClass: string; isLoading?: boolean;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+      <div className={`absolute top-0 left-0 right-0 h-1 ${bgClass} opacity-50 group-hover:opacity-100 transition-opacity`} />
+      <div className="flex justify-between items-start mb-4">
+        <div className={`w-12 h-12 rounded-xl ${bgClass} flex items-center justify-center`}>
+          <Icon className={`w-6 h-6 ${colorClass}`} />
+        </div>
+      </div>
+      {isLoading ? (
+        <Skeleton className="h-8 w-20 bg-slate-100 mb-1" />
+      ) : (
+        <p className="text-3xl font-bold text-slate-900">{value}</p>
+      )}
+      <p className="text-sm font-medium text-slate-500 mt-1">{label}</p>
+    </div>
+  );
+}
+
+/** Modal xác nhận xóa */
+function DeleteConfirmModal({
+  video, onConfirm, onCancel, isDeleting,
+}: {
+  video: VideoItem | null; onConfirm: () => void; onCancel: () => void; isDeleting: boolean;
+}) {
+  if (!video) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-rose-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Xác nhận xóa video</h3>
+            <p className="text-sm text-slate-500">Hành động này không thể hoàn tác</p>
+          </div>
+        </div>
+        <div className="bg-slate-50 rounded-xl p-3 mb-5 border border-slate-100">
+          <p className="text-sm text-slate-800 font-medium line-clamp-2">{video.title}</p>
+          <p className="text-xs text-slate-500 mt-1">Tạo bởi: {video.creator.fullName}</p>
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={onCancel} disabled={isDeleting} className="flex-1">
+            Hủy bỏ
+          </Button>
+          <Button onClick={onConfirm} disabled={isDeleting}
+            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white border-0">
+            {isDeleting ? 'Đang xóa...' : 'Xóa video'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── COMPONENT CHÍNH ──────────────────────────────────────────────────────────
+
 export default function AdminPanel() {
-  const [user, setUser] = useState<UserItem | null>(null);
   const queryClient = useQueryClient();
+  const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+
+  // Video filters
+  const [videoSearch, setVideoSearch] = useState('');
+  const [videoSearchDebounced, setVideoSearchDebounced] = useState('');
+  const [jlptFilter, setJlptFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<VideoItem | null>(null);
+
+  // User search
+  const [userSearch, setUserSearch] = useState('');
+  const [userSearchDebounced, setUserSearchDebounced] = useState('');
+
+  // Debounce
+  useEffect(() => {
+    const t = setTimeout(() => { setVideoSearchDebounced(videoSearch); setPage(1); }, 400);
+    return () => clearTimeout(t);
+  }, [videoSearch]);
 
   useEffect(() => {
-    mockApi.authMe().then(setUser).catch(() => {});
+    const t = setTimeout(() => setUserSearchDebounced(userSearch), 400);
+    return () => clearTimeout(t);
+  }, [userSearch]);
+
+  // Lấy user hiện tại
+  useEffect(() => {
+    apiFetch('/auth/me')
+      .then(u => setCurrentUser(u))
+      .catch(() => setCurrentUser(null))
+      .finally(() => setIsLoadingAuth(false));
   }, []);
 
-  const { data: users = [] } = useQuery<UserItem[]>({ queryKey: ['admin-users'], queryFn: mockApi.getUsers, initialData: [] });
-  const { data: videos = [] } = useQuery<VideoItem[]>({ queryKey: ['admin-videos'], queryFn: mockApi.getVideos, initialData: [] });
-  const { data: reports = [] } = useQuery<ReportItem[]>({ queryKey: ['admin-reports'], queryFn: mockApi.getReports, initialData: [] });
+  // ── Queries ───────────────────────────────────────────────────────────────
 
-  const updateVideo = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<VideoItem> }) => mockApi.updateVideo(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-videos'] }); toast.success('Đã cập nhật trạng thái video'); },
+  const statsQuery = useQuery<StatsData>({
+    queryKey: ['admin-stats'],
+    queryFn: () => apiFetch('/admin/stats'),
+    enabled: currentUser?.role === 'admin',
   });
 
-  const deleteVideo = useMutation({
-    mutationFn: (id: string) => mockApi.deleteVideo(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-videos'] }); toast.success('Đã xóa video'); },
+  const videosQuery = useQuery<VideosResponse>({
+    queryKey: ['admin-videos', videoSearchDebounced, jlptFilter, statusFilter, page],
+    queryFn: () => apiFetch(
+      `/admin/videos?search=${encodeURIComponent(videoSearchDebounced)}&jlpt=${jlptFilter}&status=${statusFilter}&page=${page}&limit=15`
+    ),
+    enabled: currentUser?.role === 'admin',
   });
 
-  const updateReport = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<ReportItem> }) => mockApi.updateReport(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-reports'] }); toast.success('Đã cập nhật báo cáo'); },
+  const usersQuery = useQuery<UserItem[]>({
+    queryKey: ['admin-users', userSearchDebounced],
+    queryFn: () => apiFetch(`/admin/users?search=${encodeURIComponent(userSearchDebounced)}`),
+    enabled: currentUser?.role === 'admin',
   });
 
-  if (user?.role !== 'admin') {
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
+  const deleteVideoMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/admin/videos/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-videos'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+      toast.success('Đã xóa video thành công');
+      setDeleteTarget(null);
+    },
+    onError: (e: Error) => toast.error(`Lỗi: ${e.message}`),
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: VideoStatus }) =>
+      apiFetch(`/admin/videos/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-videos'] });
+      toast.success(`Đã cập nhật: ${STATUS_CONFIG[variables.status].label}`);
+    },
+    onError: (e: Error) => toast.error(`Lỗi: ${e.message}`),
+  });
+
+  const changeRoleMutation = useMutation({
+    mutationFn: ({ id, role }: { id: string; role: string }) =>
+      apiFetch(`/admin/users/${id}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] });
+      toast.success('Đã cập nhật quyền người dùng');
+    },
+    onError: (e: Error) => toast.error(`Lỗi: ${e.message}`),
+  });
+
+  // ── Render: Loading / Unauthorized ────────────────────────────────────────
+
+  if (isLoadingAuth) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] bg-slate-50">
+      <div className="max-w-6xl mx-auto px-4 py-10">
+        <Skeleton className="h-10 w-60 bg-slate-100 mb-6" />
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-28 bg-slate-100 rounded-2xl" />)}
+        </div>
+        <Skeleton className="h-96 bg-slate-100 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (currentUser?.role !== 'admin') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)]">
         <div className="w-20 h-20 rounded-full bg-rose-100 flex items-center justify-center mb-6">
           <Shield className="w-10 h-10 text-rose-600" />
         </div>
         <h2 className="text-2xl font-bold text-slate-900 mb-2">Truy cập bị từ chối</h2>
         <p className="text-slate-500">Khu vực này chỉ dành riêng cho Quản trị viên hệ thống.</p>
-        <Button onClick={() => window.history.back()} className="mt-6 bg-slate-900 text-white hover:bg-slate-800">
+        <Button onClick={() => window.history.back()} className="mt-6 bg-slate-900 hover:bg-slate-800 text-white">
           Quay lại trang trước
         </Button>
       </div>
     );
   }
 
-  const pendingReports = reports.filter(r => r.status === 'pending');
-  const pendingVideos = videos.filter(v => v.status === 'pending');
+  const stats = statsQuery.data;
+  const videos = videosQuery.data?.videos ?? [];
+  const videosTotal = videosQuery.data?.total ?? 0;
+  const totalPages = videosQuery.data?.totalPages ?? 1;
+  const users = usersQuery.data ?? [];
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 md:py-10 animate-in fade-in duration-500">
-      
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-slate-200">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center shadow-md">
-            <Shield className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Admin Control Panel</h1>
-            <p className="text-slate-500 font-medium">Quản lý nội dung và người dùng My Anime</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-sm font-medium text-slate-600">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          Hệ thống hoạt động bình thường
-        </div>
-      </div>
+    <>
+      <DeleteConfirmModal
+        video={deleteTarget}
+        onConfirm={() => deleteTarget && deleteVideoMutation.mutate(deleteTarget.id)}
+        onCancel={() => setDeleteTarget(null)}
+        isDeleting={deleteVideoMutation.isPending}
+      />
 
-      {/* Quick Stats (Thẻ thống kê hiện đại) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-center justify-between relative overflow-hidden">
-          <div className="absolute right-0 top-0 bottom-0 w-2 bg-blue-500" />
-          <div>
-            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">Tổng người dùng</p>
-            <p className="text-4xl font-extrabold text-slate-900">{users.length}</p>
-          </div>
-          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
-            <Users className="w-7 h-7 text-blue-600" />
-          </div>
-        </div>
+      <div className="w-full px-4 md:px-6 py-6 animate-in fade-in duration-500">
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-center justify-between relative overflow-hidden">
-          <div className="absolute right-0 top-0 bottom-0 w-2 bg-emerald-500" />
-          <div>
-            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">Video chờ duyệt</p>
-            <div className="flex items-baseline gap-2">
-              <p className="text-4xl font-extrabold text-slate-900">{pendingVideos.length}</p>
-              <p className="text-sm font-medium text-slate-400">/ {videos.length} tổng</p>
+        {/* ── Header ── */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-slate-200">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center shadow-md">
+              <Shield className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Admin Control Panel</h1>
+              <p className="text-slate-500 font-medium">Quản lý nội dung và người dùng AnimeLearn</p>
             </div>
           </div>
-          <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
-            <Video className="w-7 h-7 text-emerald-600" />
+          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-sm font-medium text-slate-600">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Hệ thống hoạt động bình thường
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-center justify-between relative overflow-hidden">
-          <div className={`absolute right-0 top-0 bottom-0 w-2 ${pendingReports.length > 0 ? 'bg-rose-500' : 'bg-slate-300'}`} />
-          <div>
-            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">Báo cáo vi phạm</p>
-            <div className="flex items-baseline gap-2">
-              <p className={`text-4xl font-extrabold ${pendingReports.length > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-                {pendingReports.length}
-              </p>
-              <p className="text-sm font-medium text-slate-400">cần xử lý</p>
+        {/* ── Stat Cards ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+          <StatCard
+            icon={Video} label="Tổng video" value={stats?.totalVideos ?? '—'}
+            colorClass="text-blue-600" bgClass="bg-blue-100"
+            isLoading={statsQuery.isLoading}
+          />
+          <StatCard
+            icon={Users} label="Người dùng" value={stats?.totalUsers ?? '—'}
+            colorClass="text-emerald-600" bgClass="bg-emerald-100"
+            isLoading={statsQuery.isLoading}
+          />
+          <StatCard
+            icon={Crown} label="Quản trị viên" value={stats?.totalAdmins ?? '—'}
+            colorClass="text-amber-600" bgClass="bg-amber-100"
+            isLoading={statsQuery.isLoading}
+          />
+        </div>
+
+        {/* ── Main Content ── */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <Tabs defaultValue="videos" className="w-full">
+
+            {/* Tab List */}
+            <div className="border-b border-slate-200 px-6 py-3 bg-slate-50/50">
+              <TabsList className="bg-slate-200/50 p-1">
+                <TabsTrigger value="videos"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2 text-sm">
+                  <Video className="w-4 h-4" /> Quản lý Video
+                </TabsTrigger>
+                <TabsTrigger value="users"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2 text-sm">
+                  <Users className="w-4 h-4" /> Người dùng
+                </TabsTrigger>
+              </TabsList>
             </div>
-          </div>
-          <div className={`w-14 h-14 rounded-full flex items-center justify-center ${pendingReports.length > 0 ? 'bg-rose-50' : 'bg-slate-100'}`}>
-            <Flag className={`w-7 h-7 ${pendingReports.length > 0 ? 'text-rose-600' : 'text-slate-400'}`} />
-          </div>
-        </div>
-      </div>
 
-      {/* Main Content Area */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <Tabs defaultValue="videos" className="w-full">
-          {/* Menu Tab được làm giống macOS/Vercel */}
-          <div className="border-b border-slate-200 px-6 py-3 bg-slate-50/50">
-            <TabsList className="bg-slate-200/50 p-1">
-              <TabsTrigger value="videos" className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2">
-                <Video className="w-4 h-4" /> Quản lý Video
-                {pendingVideos.length > 0 && <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200 border-0 ml-1 h-5 px-1.5">{pendingVideos.length}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="reports" className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2">
-                <Flag className="w-4 h-4" /> Báo cáo
-                {pendingReports.length > 0 && <Badge className="bg-rose-500 text-white hover:bg-rose-600 border-0 ml-1 h-5 px-1.5 animate-pulse">{pendingReports.length}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="users" className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2">
-                <Users className="w-4 h-4" /> Người dùng
-              </TabsTrigger>
-            </TabsList>
-          </div>
+            {/* ═══ TAB: VIDEO ═══ */}
+            <TabsContent value="videos" className="m-0 p-0">
 
-          {/* Nội dung Tab Video (Bảng dữ liệu) */}
-          <TabsContent value="videos" className="m-0 p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold text-xs">
-                  <tr>
-                    <th className="px-6 py-4">Video</th>
-                    <th className="px-6 py-4">Người tải lên</th>
-                    <th className="px-6 py-4">Ngày tạo</th>
-                    <th className="px-6 py-4">Trạng thái</th>
-                    <th className="px-6 py-4 text-right">Hành động</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {videos.map(v => (
-                    <tr key={v.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-8 rounded bg-slate-200 flex items-center justify-center text-xs shrink-0 overflow-hidden">
-                            {v.thumbnail_url ? <img src={v.thumbnail_url} className="w-full h-full object-cover" /> : '🎬'}
-                          </div>
-                          <span className="font-semibold text-slate-800 truncate max-w-[200px] md:max-w-xs">{v.title}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-600">{v.created_by}</td>
-                      <td className="px-6 py-4 text-slate-500">{moment(v.created_date).format('DD/MM/YYYY')}</td>
-                      <td className="px-6 py-4">
-                        {v.status === 'approved' && <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-0"><CheckCircle2 className="w-3 h-3 mr-1"/> Đã duyệt</Badge>}
-                        {v.status === 'pending' && <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0"><AlertCircle className="w-3 h-3 mr-1"/> Chờ duyệt</Badge>}
-                        {v.status === 'rejected' && <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-100 border-0"><XCircle className="w-3 h-3 mr-1"/> Từ chối</Badge>}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
-                          {v.status === 'pending' && (
-                            <>
-                              <Button size="sm" variant="outline" onClick={() => updateVideo.mutate({ id: v.id, data: { status: 'approved' } })} className="h-8 border-emerald-200 text-emerald-600 hover:bg-emerald-50">
-                                Duyệt
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => updateVideo.mutate({ id: v.id, data: { status: 'rejected' } })} className="h-8 border-rose-200 text-rose-600 hover:bg-rose-50">
-                                Từ chối
-                              </Button>
-                            </>
-                          )}
-                          <Button size="icon" variant="ghost" onClick={() => deleteVideo.mutate(v.id)} className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" title="Xóa vĩnh viễn">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+              {/* Toolbar */}
+              <div className="flex flex-wrap gap-2 p-3 border-b border-slate-100">
+                <div className="relative flex-1 min-w-[160px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={videoSearch}
+                    onChange={e => setVideoSearch(e.target.value)}
+                    placeholder="Tìm theo tên video..."
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm
+                      text-slate-900 placeholder:text-slate-400
+                      focus:outline-none focus:ring-2 focus:ring-slate-300 transition-all"
+                  />
+                </div>
+
+                {/* Filter trạng thái */}
+                <select
+                  value={statusFilter}
+                  onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+                  className="px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700
+                    focus:outline-none focus:ring-2 focus:ring-slate-300"
+                >
+                  <option value="all">Tất cả trạng thái</option>
+                  <option value="pending">⏳ Chờ duyệt</option>
+                  <option value="approved">✅ Đã duyệt</option>
+                  <option value="rejected">❌ Từ chối</option>
+                </select>
+
+                {/* Filter JLPT */}
+                <select
+                  value={jlptFilter}
+                  onChange={e => { setJlptFilter(e.target.value); setPage(1); }}
+                  className="px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700
+                    focus:outline-none focus:ring-2 focus:ring-slate-300"
+                >
+                  <option value="all">Tất cả cấp độ</option>
+                  {['N1', 'N2', 'N3', 'N4', 'N5', 'Unknown'].map(l => (
+                    <option key={l} value={l}>{l}</option>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </TabsContent>
+                </select>
 
-          {/* Nội dung Tab Báo cáo (Dạng thẻ chi tiết) */}
-          <TabsContent value="reports" className="m-0 p-6 bg-slate-50/50">
-            {reports.length === 0 ? (
-              <div className="text-center py-16 text-slate-500">
-                <Flag className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                <p className="text-lg font-medium text-slate-700">Hệ thống đang sạch sẽ</p>
-                <p>Không có báo cáo vi phạm nào cần xử lý.</p>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['admin-videos'] })}
+                  className="shrink-0 px-3"
+                  title="Làm mới"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
               </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {reports.map(r => (
-                  <div key={r.id} className={`bg-white rounded-xl border p-5 shadow-sm relative ${r.status === 'pending' ? 'border-rose-200' : 'border-slate-200'}`}>
-                    <div className="flex items-start justify-between mb-4">
-                      <Badge className={`border-0 ${r.status === 'pending' ? 'bg-rose-500 text-white hover:bg-rose-600' : r.status === 'resolved' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-100 text-slate-600 hover:bg-slate-100'}`}>
-                        {r.status === 'pending' ? 'CẦN XỬ LÝ' : r.status === 'resolved' ? 'ĐÃ GIẢI QUYẾT' : 'ĐÃ BỎ QUA'}
-                      </Badge>
-                      <span className="text-xs font-medium text-slate-400">{moment(r.created_date).fromNow()}</span>
-                    </div>
-                    
-                    <div className="mb-4">
-                      <h4 className="font-bold text-slate-900 mb-1">{r.reason}</h4>
-                      {r.description && <p className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">{r.description}</p>}
-                    </div>
-                    
-                    <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-100">
-                      <div className="text-xs text-slate-500 flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5" />
-                        Người báo cáo: <span className="font-medium text-slate-700">{r.reporter_email}</span>
-                      </div>
-                      
-                      {r.status === 'pending' && (
-                        <div className="flex gap-2">
-                          <Button size="sm" onClick={() => updateReport.mutate({ id: r.id, data: { status: 'resolved' } })} className="h-8 bg-slate-900 text-white hover:bg-slate-800">
-                            Xác nhận xử lý
-                          </Button>
-                          <Button size="sm" onClick={() => updateReport.mutate({ id: r.id, data: { status: 'dismissed' } })} variant="ghost" className="h-8 text-slate-500 hover:text-slate-800 hover:bg-slate-100">
-                            Bỏ qua
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
 
-          {/* Nội dung Tab User */}
-          <TabsContent value="users" className="m-0 p-0">
-            <div className="p-4 border-b border-slate-100 flex justify-end">
-               <div className="relative w-full md:w-64">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                 <input type="text" placeholder="Tìm kiếm người dùng..." className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
-               </div>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {users.map(u => (
-                <div key={u.id} className="flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-linear-to-br from-indigo-500 to-blue-500 flex items-center justify-center text-sm font-bold text-white shadow-xs">
-                      {u.full_name?.[0] || u.email?.[0]?.toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-900">{u.full_name || 'Người dùng ẩn danh'}</p>
-                      <p className="text-sm text-slate-500">{u.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right hidden md:block">
-                      <p className="text-xs text-slate-400 font-medium uppercase">Ngày tham gia</p>
-                      <p className="text-sm font-medium text-slate-700">{moment(u.created_date).format('DD/MM/YYYY')}</p>
-                    </div>
-                    <Badge className={`border-0 w-20 justify-center ${u.role === 'admin' ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                      {u.role === 'admin' ? 'Quản trị' : 'Học viên'}
-                    </Badge>
+              {/* Tổng số */}
+              <div className="px-5 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+                {videosQuery.isLoading ? 'Đang tải...' : `${videosTotal} video`}
+              </div>
+
+              {/* Bảng video — scroll ngang nếu quá rộng */}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold text-xs">
+                    <tr>
+                      <th className="px-4 py-3">Video</th>
+                      <th className="px-4 py-3 hidden sm:table-cell">Trạng thái</th>
+                      <th className="px-4 py-3 hidden md:table-cell">Người tạo</th>
+                      <th className="px-4 py-3 hidden lg:table-cell">Cấp độ</th>
+                      <th className="px-4 py-3 hidden xl:table-cell">Lượt xem</th>
+                      <th className="px-4 py-3 hidden xl:table-cell">Script</th>
+                      <th className="px-4 py-3 hidden lg:table-cell">Ngày tạo</th>
+                      <th className="px-4 py-3 text-right">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {videosQuery.isLoading ? (
+                      Array.from({ length: 8 }).map((_, i) => (
+                        <tr key={i}>
+                          <td colSpan={8} className="px-4 py-3">
+                            <Skeleton className="h-8 w-full bg-slate-100 rounded-lg" />
+                          </td>
+                        </tr>
+                      ))
+                    ) : videos.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-16 text-center text-slate-400">
+                          <Film className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                          <p className="font-medium text-slate-500">Không tìm thấy video nào</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      videos.map(v => (
+                        <tr key={v.id} className="hover:bg-slate-50/80 transition-colors group">
+
+                          {/* Cột Video */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <VideoThumbnail url={v.thumbnail_url} title={v.title} status={v.status} />
+                              <span className="font-semibold text-slate-800 truncate max-w-[120px] lg:max-w-[200px]">
+                                {v.title}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Cột Trạng thái */}
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            <StatusBadge status={v.status} />
+                          </td>
+
+                          {/* Cột Người tạo */}
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <p className="font-medium text-slate-800 text-sm truncate max-w-[120px]">{v.creator.fullName}</p>
+                            <p className="text-xs text-slate-400 truncate max-w-[120px]">{v.creator.email}</p>
+                          </td>
+
+                          {/* Cột Cấp độ */}
+                          <td className="px-4 py-3 hidden lg:table-cell">
+                            <Badge variant="outline" className="font-semibold text-slate-600 text-xs">
+                              {v.jlpt_level || 'Unknown'}
+                            </Badge>
+                          </td>
+
+                          {/* Cột Lượt xem */}
+                          <td className="px-4 py-3 hidden xl:table-cell text-slate-600">
+                            <span className="flex items-center gap-1">
+                              <Eye className="w-3.5 h-3.5 text-slate-400" />
+                              {v.views_count.toLocaleString()}
+                            </span>
+                          </td>
+
+                          {/* Cột Script */}
+                          <td className="px-4 py-3 hidden xl:table-cell text-slate-600">
+                            <span className="flex items-center gap-1">
+                              <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                              {v.script_length} câu
+                            </span>
+                          </td>
+
+                          {/* Cột Ngày tạo */}
+                          <td className="px-4 py-3 hidden lg:table-cell text-slate-500 text-xs">
+                            {moment(v.created_date).format('DD/MM/YYYY')}
+                          </td>
+
+                          {/* Cột Hành động */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {/* Duyệt */}
+                              {v.status !== 'approved' && (
+                                <button
+                                  onClick={() => updateStatusMutation.mutate({ id: v.id, status: 'approved' })}
+                                  disabled={updateStatusMutation.isPending}
+                                  title="Duyệt video"
+                                  className="w-8 h-8 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {/* Từ chối */}
+                              {v.status !== 'rejected' && (
+                                <button
+                                  onClick={() => updateStatusMutation.mutate({ id: v.id, status: 'rejected' })}
+                                  disabled={updateStatusMutation.isPending}
+                                  title="Từ chối video"
+                                  className="w-8 h-8 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition-colors"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {/* Xem YouTube */}
+                              <a
+                                href={v.youtube_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Xem trên YouTube"
+                                className="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 flex items-center justify-center transition-colors"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                              {/* Xóa */}
+                              <button
+                                onClick={() => setDeleteTarget(v)}
+                                title="Xóa video"
+                                className="w-8 h-8 rounded-lg border border-rose-200 bg-rose-50 text-rose-500 hover:bg-rose-100 flex items-center justify-center transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Phân trang */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100">
+                  <p className="text-sm text-slate-500">
+                    Trang <span className="font-semibold text-slate-700">{page}</span> / {totalPages}
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <Button variant="outline" size="sm"
+                      onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      const p = Math.max(1, Math.min(page - 2, totalPages - 4)) + i;
+                      return (
+                        <Button key={p} size="sm" onClick={() => setPage(p)}
+                          className={`w-8 h-8 p-0 text-xs font-bold ${p === page
+                            ? 'bg-slate-900 text-white hover:bg-slate-800'
+                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                          }`}>
+                          {p}
+                        </Button>
+                      );
+                    })}
+                    <Button variant="outline" size="sm"
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
-              ))}
-            </div>
-          </TabsContent>
-        </Tabs>
+              )}
+            </TabsContent>
+
+            {/* ═══ TAB: NGƯỜI DÙNG ═══ */}
+            <TabsContent value="users" className="m-0 p-0">
+
+              {/* Toolbar */}
+              <div className="flex gap-3 p-4 border-b border-slate-100">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    placeholder="Tìm theo tên hoặc email..."
+                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm
+                      text-slate-900 placeholder:text-slate-400
+                      focus:outline-none focus:ring-2 focus:ring-slate-300 transition-all"
+                  />
+                </div>
+                <Button variant="outline" size="sm"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['admin-users'] })}
+                  title="Làm mới">
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* Tổng số */}
+              <div className="px-5 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+                {usersQuery.isLoading ? 'Đang tải...' : `${users.length} người dùng`}
+              </div>
+
+              {/* Danh sách user */}
+              <div className="divide-y divide-slate-100">
+                {usersQuery.isLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="px-5 py-4">
+                      <Skeleton className="h-12 bg-slate-100 rounded-xl" />
+                    </div>
+                  ))
+                ) : users.length === 0 ? (
+                  <div className="py-16 text-center">
+                    <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <p className="text-slate-500">Không tìm thấy người dùng</p>
+                  </div>
+                ) : (
+                  users.map(u => (
+                    <div key={u.id}
+                      className="flex items-center justify-between px-5 py-4 hover:bg-slate-50/80 transition-colors group">
+                      <div className="flex items-center gap-4">
+                        {/* Avatar */}
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0
+                          ${u.role === 'admin'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-blue-100 text-blue-700'
+                          }`}>
+                          {(u.fullName?.[0] || u.email?.[0] || '?').toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-semibold text-slate-900 text-sm">{u.fullName || 'Ẩn danh'}</p>
+                            {u.role === 'admin' && <Crown className="w-3.5 h-3.5 text-amber-500" />}
+                          </div>
+                          <p className="text-xs text-slate-500">{u.email}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        {/* Cấp JLPT */}
+                        <div className="hidden lg:block text-right">
+                          <p className="text-xs text-slate-400 font-medium uppercase">Cấp độ</p>
+                          <p className="text-sm font-medium text-slate-700">{u.jlptLevel || 'Beginner'}</p>
+                        </div>
+                        {/* Ngày tham gia */}
+                        <div className="hidden md:block text-right">
+                          <p className="text-xs text-slate-400 font-medium uppercase">Tham gia</p>
+                          <p className="text-sm font-medium text-slate-700">
+                            {moment(u.createdAt).format('DD/MM/YYYY')}
+                          </p>
+                        </div>
+                        {/* Badge role */}
+                        <Badge className={`border-0 w-22 justify-center ${u.role === 'admin'
+                          ? 'bg-slate-900 text-white hover:bg-slate-800'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}>
+                          {u.role === 'admin' ? 'Quản trị' : 'Người dùng'}
+                        </Badge>
+                        {/* Nút đổi quyền */}
+                        <button
+                          onClick={() => changeRoleMutation.mutate({
+                            id: u.id,
+                            role: u.role === 'admin' ? 'user' : 'admin',
+                          })}
+                          disabled={changeRoleMutation.isPending}
+                          title={u.role === 'admin' ? 'Hạ xuống Người dùng' : 'Nâng lên Admin'}
+                          className="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 text-slate-400
+                            hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600
+                            flex items-center justify-center transition-colors
+                            opacity-0 group-hover:opacity-100"
+                        >
+                          <UserCog className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+
+          </Tabs>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

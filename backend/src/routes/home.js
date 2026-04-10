@@ -26,7 +26,8 @@ router.get('/user-profile', async (req, res) => {
       avatar: user.avatar || null,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Get user error:', error);
+    res.status(500).json({ error: 'Lỗi lấy thông tin người dùng' });
   }
 });
 
@@ -47,7 +48,8 @@ router.get('/videos', async (req, res) => {
     }));
     res.json(mappedVideos);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Get videos error:', error);
+    res.status(500).json({ error:  'Lỗi lấy thông tin videos'});
   }
 });
 
