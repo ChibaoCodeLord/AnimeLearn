@@ -1,5 +1,5 @@
-import { useState} from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, Menu, GraduationCap, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,9 +33,9 @@ const fetchUserProfile = async (): Promise<User> => {
     credentials: 'include', // Important: send cookies
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch user: ${response.status}`);
-  }
+  // if (!response.ok) {
+  //   throw new Error("Failed to fetch user:", ${response.status}),
+  // };
 
   return response.json();
 };
@@ -50,6 +50,20 @@ export default function Layout() {
     staleTime: 10 * 60 * 1000,
     retry: 2, // Retry 2 times
   });
+
+  const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Debug log
   console.log('User data:', { user, isLoading, error });
@@ -82,11 +96,48 @@ export default function Layout() {
               Đăng nhập
             </Button>
           ) : (
-            <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                {user.fullName?.[0]?.toUpperCase()}
-              </div>
-              <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.fullName}</span>
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(open => !open)}
+                className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors"
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+              >
+                <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
+                  {user.fullName?.[0]?.toUpperCase()}
+                </div>
+                <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.fullName}</span>
+              </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-44 bg-white border border-slate-200 rounded-md shadow-lg z-50">
+                  <Link to="/profile" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Trang cá nhân</Link>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('http://localhost:5000/api/auth/logout', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                        });
+
+                        // clear local token and navigate to login regardless of response
+                        localStorage.removeItem('token');
+                        setMenuOpen(false);
+                        navigate('/login');
+                      } catch (e) {
+                        console.error('Logout failed', e);
+                        localStorage.removeItem('token');
+                        setMenuOpen(false);
+                        navigate('/login');
+                      }
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-slate-50"
+                  >
+                    Đăng xuất
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

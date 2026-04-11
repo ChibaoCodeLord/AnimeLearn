@@ -128,9 +128,13 @@ export default function VideoWorkspace() {
     toast.info('Hệ thống đang tải và phân tích audio, quá trình này có thể mất vài phút. Vui lòng không đóng trang...');
 
     try {
+      const token = localStorage.getItem('token') || '';
       const response = await fetch('http://localhost:5000/api/video/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ url: currentYoutubeUrl }),
         credentials: 'omit'
       });
@@ -145,7 +149,7 @@ export default function VideoWorkspace() {
       setVideoTitle(result.title);
 
       // Lưu lên Mongoose
-      const token = localStorage.getItem('token') || '';
+
       const saveRes = await fetch('http://localhost:5000/api/video/save', {
         method: 'POST',
         headers: {
