@@ -40,6 +40,7 @@ const router = express.Router();
 //chỉ có user đã đăng nhập mới được tạo script
 router.post('/analyze', authMiddleware, (req, res) => {
   const { url } = req.body;
+  console.log(`[analyze Log]: đã gọi analyze}`);
 
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });

@@ -26,7 +26,7 @@ router.post('/signup', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { id: user._id, email: user.email },
-      process.env.JWT_SECRET || 'your-secret-key',
+      process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -75,6 +75,8 @@ router.post('/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    console.log(token.JWT_SECRET);
+
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -85,6 +87,7 @@ router.post('/login', async (req, res) => {
     //đã lưu vào cookie không cần gửi thêm token
     res.json({
       success: true,
+      token: token,
       user: {
         id: user._id,
         email: user.email,
@@ -122,6 +125,28 @@ router.get('/me', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error fetching user:', error);
     res.status(500).json({ error: 'Lỗi lấy thông tin cá nhân' });
+  }
+});
+
+// Logout route
+router.post('/logout', authMiddleware, (req, res) => {
+  try {
+    // Clear cookie
+    // Set cookie to empty value and expire it immediately to ensure removal
+    res.cookie('token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+    });
+    // Also call clearCookie for good measure
+    res.clearCookie('token', { path: '/' });
+
+    res.json({ success: true, message: 'Đã đăng xuất thành công' });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ error: 'Lỗi đăng xuất' });
   }
 });
 
