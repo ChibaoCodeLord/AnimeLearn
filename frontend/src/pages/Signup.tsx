@@ -1,26 +1,28 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Mail, Lock, User, CheckCircle, Eye, EyeOff, Loader, ArrowLeft } from 'lucide-react'
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Mail, Lock, User, CheckCircle, Eye, EyeOff, Loader, ArrowLeft } from 'lucide-react';
 
 export default function Signup() {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
-  })
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({
     fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
-  })
+  });
 
   const passwordStrength = {
     length: formData.password.length >= 8,
@@ -28,9 +30,9 @@ export default function Signup() {
     lowercase: /[a-z]/.test(formData.password),
     number: /[0-9]/.test(formData.password),
     special: /[!@#$%^&*]/.test(formData.password),
-  }
+  };
 
-  const isPasswordStrong = Object.values(passwordStrength).filter(Boolean).length >= 4
+  const isPasswordStrong = Object.values(passwordStrength).filter(Boolean).length >= 4;
 
   const validateForm = () => {
     const newErrors = {
@@ -38,49 +40,49 @@ export default function Signup() {
       email: '',
       password: '',
       confirmPassword: '',
-    }
+    };
 
     if (!formData.fullName.trim()) {
-      newErrors.fullName = 'Full name is required'
+      newErrors.fullName = 'Full name is required';
     } else if (formData.fullName.length < 2) {
-      newErrors.fullName = 'Name must be at least 2 characters'
+      newErrors.fullName = 'Name must be at least 2 characters';
     }
 
     if (!formData.email) {
-      newErrors.email = 'Email is required'
+      newErrors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email'
+      newErrors.email = 'Please enter a valid email';
     }
 
     if (!formData.password) {
-      newErrors.password = 'Password is required'
+      newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters'
+      newErrors.password = 'Password must be at least 8 characters';
     } else if (!isPasswordStrong) {
-      newErrors.password = 'Password is too weak'
+      newErrors.password = 'Password is too weak';
     }
 
     if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password'
+      newErrors.confirmPassword = 'Please confirm your password';
     } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match'
+      newErrors.confirmPassword = 'Passwords do not match';
     }
 
-    setErrors(newErrors)
-    return Object.values(newErrors).every(e => !e)
-  }
+    setErrors(newErrors);
+    return Object.values(newErrors).every(e => !e);
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-  }
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
-    if (!validateForm()) return
+    if (!validateForm()) return;
 
-    setIsLoading(true)
+    setIsLoading(true);
     try {
       const response = await fetch('http://localhost:5000/api/auth/signup', {
         method: 'POST',
@@ -90,33 +92,33 @@ export default function Signup() {
           email: formData.email,
           password: formData.password,
         }),
-      })
+      });
 
       if (response.ok) {
-        const data = await response.json()
-        localStorage.setItem('token', data.token)
-        navigate('/home')
+        const data = await response.json();
+        localStorage.setItem('token', data.token);
+        await queryClient.invalidateQueries({ queryKey: ['current-user'] });
+        navigate('/home');
       } else {
-        const errorData = await response.json()
+        const errorData = await response.json();
         setErrors(prev => ({
           ...prev,
           email: errorData.message || 'Error registering user',
-        }))
+        }));
       }
     } catch (error) {
       setErrors(prev => ({
         ...prev,
         email: 'Connection error. Please try again.',
-      }))
-      console.error(error)
+      }));
+      console.error(error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen w-screen flex flex-col bg-white overflow-hidden overflow-x-hidden overflow-x-clip touch-none select-none relative">
-      {/* Back Button */}
         <button
         onClick={() => navigate('/')}
         className="absolute top-6 left-6 z-50 flex items-center gap-2.5 px-5 py-2.5 rounded-xl 
@@ -130,20 +132,16 @@ export default function Signup() {
       </button>
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-0">
         
-        {/* Left Side - Hero Section */}
         <div 
           className="hidden lg:flex flex-col justify-between p-12 relative overflow-hidden bg-cover bg-center"
           style={{
             backgroundImage: 'url(/src/assets/images/Shinra.png)',
           }}
         >
-          {/* Red Overlay matching the design */}
           <div className="absolute inset-0 bg-[#b90000] mix-blend-multiply opacity-90"></div>
           <div className="absolute inset-0 bg-gradient-to-t from-red-900/80 to-transparent opacity-60"></div>
 
-          {/* Content */}
           <div className="relative z-10 space-y-12 flex flex-col justify-center h-full max-w-lg mx-auto w-full">
-            {/* Top Section */}
             <div className="space-y-6">
               <h2 className="text-5xl font-black text-white leading-tight tracking-tight">
                 Master Japanese<br />through the lens of<br />
@@ -156,9 +154,7 @@ export default function Signup() {
               </p>
             </div>
 
-            {/* Features Cards */}
             <div className="space-y-4">
-              {/* Card 1 */}
               <div className="flex gap-4 items-center bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl">
                 <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,7 +167,6 @@ export default function Signup() {
                 </div>
               </div>
 
-              {/* Card 2 */}
               <div className="flex gap-4 items-center bg-white/10 backdrop-blur-md border border-white/20 p-4 rounded-2xl">
                 <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -185,7 +180,6 @@ export default function Signup() {
               </div>
             </div>
 
-            {/* Bottom Stats */}
             <div className="flex items-center gap-3 pt-4">
               <div className="flex -space-x-3">
                 <img src="https://i.pravatar.cc/100?img=11" alt="User" className="w-9 h-9 rounded-full border-2 border-red-800 object-cover" />
@@ -197,11 +191,9 @@ export default function Signup() {
           </div>
         </div>
 
-      {/* Right Side - Signup Form */}
         <div className="flex items-center justify-center p-6 lg:p-12 bg-white">
           <div className="w-full max-w-[440px] space-y-8">
             
-            {/* Form Header - Đã thêm text-left và w-full ở đây */}
             <div className="w-full text-left">
               <h2 className="text-[32px] font-bold !text-slate-900 mb-2 tracking-tight">
                 Create Account
@@ -213,10 +205,8 @@ export default function Signup() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               
-             {/* FORM FIELDS */}
 <div className="space-y-5 text-left">
 
-  {/* Full Name */}
   <div className="space-y-1.5">
     <label htmlFor="fullName" className="block text-xs font-bold text-slate-700">
       Full Name
@@ -240,7 +230,6 @@ export default function Signup() {
     {errors.fullName && <p className="text-xs text-red-600">{errors.fullName}</p>}
   </div>
 
-  {/* Email */}
   <div className="space-y-1.5">
     <label htmlFor="email" className="block text-xs font-bold text-slate-700">
       Email
@@ -264,10 +253,8 @@ export default function Signup() {
     {errors.email && <p className="text-xs text-red-600">{errors.email}</p>}
   </div>
 
-  {/* Password + Confirm */}
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-    {/* Password */}
     <div className="space-y-1.5">
       <label htmlFor="password" className="block text-xs font-bold text-slate-700">
         Password
@@ -298,7 +285,6 @@ export default function Signup() {
       {errors.password && <p className="text-xs text-red-600">{errors.password}</p>}
     </div>
 
-    {/* Confirm Password */}
     <div className="space-y-1.5">
       <label htmlFor="confirmPassword" className="block text-xs font-bold text-slate-700">
         Confirm Password
@@ -343,7 +329,6 @@ export default function Signup() {
 
   </div>
 </div>
-              {/* Terms Checkbox */}
               <div className="flex gap-2 text-xs text-slate-500 pt-1">
                 <input
                   type="checkbox"
@@ -363,7 +348,6 @@ export default function Signup() {
                 </label>
               </div>
 
-              {/* Create Account Button */}
               <Button
                 type="submit"
                 disabled={isLoading}
@@ -380,7 +364,6 @@ export default function Signup() {
               </Button>
             </form>
 
-            {/* Divider */}
             <div className="relative pt-2">
               <div className="absolute inset-0 flex items-center pt-2">
                 <div className="w-full border-t border-slate-200"></div>
@@ -390,7 +373,6 @@ export default function Signup() {
               </div>
             </div>
 
-            {/* Social Buttons */}
             <div className="grid grid-cols-2 gap-3">
               <Button
                 type="button"
@@ -418,7 +400,6 @@ export default function Signup() {
               </Button>
             </div>
 
-            {/* Sign In Link */}
             <p className="text-center text-slate-500 text-sm pt-2">
               Already have an account?{' '}
               <Link to="/login" className="text-[#cc0000] hover:underline font-bold transition-colors">
@@ -429,7 +410,6 @@ export default function Signup() {
         </div>
       </div>
 
-      {/* Footer spans the entire width at the bottom */}
       <footer className="w-full bg-[#f8fafc] border-t border-slate-200 py-6 px-8 flex flex-col md:flex-row justify-between items-center text-xs text-slate-500">
         <div className="font-bold text-slate-800 mb-4 md:mb-0">
           AnimeLearn
@@ -445,5 +425,5 @@ export default function Signup() {
         </div>
       </footer>
     </div>
-  )
+  );
 }
