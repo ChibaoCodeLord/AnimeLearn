@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, restrictTo } from '../middleware/auth.js'
 import Vocabulary from '../models/Vocabulary.js';
 import Video from '../models/Video.js';
 import { indexVideoScript } from '../services/ragChatService.js';
@@ -36,8 +36,11 @@ console.log(`[Video Route] Using Python interpreter: ${PYTHON_CMD}`);
 
 const router = express.Router();
 
-router.post('/analyze', (req, res) => {
+//Router dịch script
+//chỉ có user đã đăng nhập mới được tạo script
+router.post('/analyze', authMiddleware, (req, res) => {
   const { url } = req.body;
+  console.log(`[analyze Log]: đã gọi analyze}`);
 
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
@@ -194,7 +197,7 @@ router.post('/save-word', authMiddleware, async (req, res) => {
     const { word, reading, meaning_vi, meaning_en, part_of_speech, jlpt_level, example_sentence, example_meaning } = req.body;
 
     // Check if word already exists for this user
-    const existing = await Vocabulary.findOne({ user: req.user.userId, word });
+    const existing = await Vocabulary.findOne({ user: req.user.id || req.user.userId, word });
     if (existing) {
       return res.status(400).json({ message: 'Từ này đã có trong sổ tay' });
     }
@@ -259,7 +262,7 @@ router.post('/save', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi khi lưu video:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Lỗi tạo script video' });
   }
 });
 
@@ -277,7 +280,8 @@ router.get('/detail/:id', async (req, res) => {
       jlpt_level: video.jlpt_level
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Lỗi khi lấy thông tin video:', error);
+    res.status(500).json({ error: 'Lỗi khi lấy thông tin video' });
   }
 });
 

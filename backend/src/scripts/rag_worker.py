@@ -37,8 +37,6 @@ def _log(message: str) -> None:
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-# Tải biến môi trường (Giữ nguyên cả .evn phòng trường hợp bạn gõ sai tên file thực tế)
-load_dotenv(BACKEND_DIR / ".evn")
 load_dotenv(BACKEND_DIR / ".env")
 
 EMBED_MODEL = os.getenv("RAG_EMBED_MODEL", "intfloat/multilingual-e5-base")

@@ -6,7 +6,8 @@
   "scripts": {
     "start:frontend": "npm run dev --prefix frontend",
     "start:backend": "npm run dev --prefix backend",
-    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "start:ai": "cd backend/src/scripts && py server_AI.py",
+    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\" \"npm run start:ai\"",
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend"
   },
   "devDependencies": {

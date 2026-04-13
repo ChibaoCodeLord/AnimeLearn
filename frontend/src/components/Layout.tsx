@@ -1,6 +1,6 @@
-import { useState} from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useRef, useEffect } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, Menu, GraduationCap, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
@@ -23,36 +23,42 @@ interface User {
   role?: 'user' | 'admin';
 }
 
-// Fetch user profile from backend
 const fetchUserProfile = async (): Promise<User> => {
   const response = await fetch('http://localhost:5000/api/auth/me', {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include', // Important: send cookies
+    credentials: 'include',
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch user: ${response.status}`);
-  }
 
   return response.json();
 };
 
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
   const { data: user, isLoading, error } = useQuery<User>({
     queryKey: ['current-user'],
     queryFn: fetchUserProfile,
     staleTime: 10 * 60 * 1000,
-    retry: 2, // Retry 2 times
+    retry: 2,
   });
 
-  // Debug log
-  console.log('User data:', { user, isLoading, error });
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLoginClick = () => {
     window.location.href = '/Login';
@@ -62,8 +68,6 @@ export default function Layout() {
 
   return (
     <div className="flex flex-col min-h-screen w-full bg-linear-to-br from-emerald-50 via-teal-50 to-green-50 overflow-x-hidden">
-      
-      {/* Top Header */}
       <header className="fixed top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-lg border-b border-emerald-100 z-40 flex items-center justify-between px-6">
         <div className="flex items-center lg:hidden">
           <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="text-slate-600">
@@ -82,17 +86,50 @@ export default function Layout() {
               Đăng nhập
             </Button>
           ) : (
-            <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                {user.fullName?.[0]?.toUpperCase()}
-              </div>
-              <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.fullName}</span>
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(open => !open)}
+                className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors"
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+              >
+                <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
+                  {user.fullName?.[0]?.toUpperCase()}
+                </div>
+                <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.fullName}</span>
+              </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-44 bg-white border border-slate-200 rounded-md shadow-lg z-50">
+                  <Link to="/profile" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Trang cá nhân</Link>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await fetch('http://localhost:5000/api/auth/logout', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          credentials: 'include',
+                        });
+                      } catch (e) {
+                        console.error('Logout failed', e);
+                      } finally {
+                        localStorage.removeItem('token');
+                        setMenuOpen(false);
+                        queryClient.setQueryData(['current-user'], null);
+                        navigate('/login');
+                      }
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-slate-50"
+                  >
+                    Đăng xuất
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       </header>
 
-      {/* Left Sidebar */}
       <aside className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-emerald-100 transition-all duration-300 flex flex-col shrink-0 ${sidebarOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-full lg:translate-x-0'}`}>
         <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 shrink-0">
           <Link to="/home" className={`flex items-center gap-2 overflow-hidden transition-all ${sidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'}`}>
@@ -164,7 +201,6 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      {/* 3. FOOTER: w-full giúp nó full màn hình, thẻ div bên trong lùi lề để chữ không bị Sidebar đè */}
       <footer className="w-full bg-white border-t border-emerald-100 mt-auto shrink-0 z-10 relative">
         <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
           <div className="max-w-7xl mx-auto px-6 py-8">
@@ -208,7 +244,6 @@ export default function Layout() {
           </div>
         </div>
       </footer>
-
     </div>
   );
 }

@@ -34,6 +34,11 @@ const VideoSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  status:{
+    type: String,
+    enum: ['approved', 'rejected', 'pending'],
+    default: 'pending'
+  },
   created_date: {
     type: Date,
     default: Date.now

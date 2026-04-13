@@ -20,6 +20,7 @@ async function callRAGService(endpoint, payload) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-API-KEY': process.env.AI_KEY
       },
       body: JSON.stringify(payload),
     });

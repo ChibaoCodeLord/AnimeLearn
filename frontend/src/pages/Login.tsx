@@ -1,70 +1,73 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Mail, Lock, Eye, EyeOff, Loader, ArrowLeft } from 'lucide-react'
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Mail, Lock, Eye, EyeOff, Loader, ArrowLeft } from 'lucide-react';
 
 export default function Login() {
-  const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [errors, setErrors] = useState({ email: '', password: '' })
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({ email: '', password: '' });
 
   const validateForm = () => {
-    const newErrors = { email: '', password: '' }
+    const newErrors = { email: '', password: '' };
     
     if (!email) {
-      newErrors.email = 'Email is required'
+      newErrors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = 'Please enter a valid email'
+      newErrors.email = 'Please enter a valid email';
     }
     
     if (!password) {
-      newErrors.password = 'Password is required'
+      newErrors.password = 'Password is required';
     } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters'
+      newErrors.password = 'Password must be at least 6 characters';
     }
     
-    setErrors(newErrors)
-    return !newErrors.email && !newErrors.password
-  }
+    setErrors(newErrors);
+    return !newErrors.email && !newErrors.password;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     
-    if (!validateForm()) return
+    if (!validateForm()) return;
 
-    setIsLoading(true)
+    setIsLoading(true);
     try {
       const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
-      })
+      });
 
       if (response.ok) {
-        const data = await response.json()
-        // Save token to localStorage
-        localStorage.setItem('token', data.token)
-        navigate('/home')
+        const data = await response.json();
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+        }
+        await queryClient.invalidateQueries({ queryKey: ['current-user'] });
+        navigate('/home');
       } else {
-        const errorData = await response.json()
-        setErrors({ email: errorData.error || 'Invalid email or password', password: '' })
+        const errorData = await response.json();
+        setErrors({ email: errorData.error || 'Invalid email or password', password: '' });
       }
     } catch (error) {
-      setErrors({ email: 'Connection error. Please try again.', password: '' })
-      console.error(error)
+      setErrors({ email: 'Connection error. Please try again.', password: '' });
+      console.error(error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
   <div className="h-screen w-screen grid grid-cols-1 lg:grid-cols-2 items-center bg-white overflow-hidden relative">
-      {/* Back Button */}
       <button
         onClick={() => navigate('/')}
         className="absolute top-6 left-6 z-50 flex items-center gap-2.5 px-5 py-2.5 rounded-xl 
@@ -76,7 +79,6 @@ export default function Login() {
         <ArrowLeft className="w-4 h-4 text-white group-hover:-translate-x-1 transition-transform duration-300" />
         Back
       </button>
-      {/* Left Side - Hero Section */}
       <div 
         className="hidden lg:flex flex-col justify-between min-h-screen p-12 relative overflow-hidden bg-cover bg-center"
         style={{
@@ -85,18 +87,14 @@ export default function Login() {
           backgroundPosition: 'center'
         }}
       >
-        {/* Dark Overlay for Text Readability */}
         <div className="absolute inset-0 bg-black/40"></div>
 
-        {/* Content */}
         <div className="relative z-10 space-y-12 flex flex-col justify-between h-full">
-          {/* Logo */}
           <div>
             <h1 className="text-4xl font-black text-white tracking-tight mb-2">AnimeLearn</h1>
             <p className="text-white/80 text-lg font-light">Unlock the World of Japanese</p>
           </div>
 
-          {/* Main Heading */}
           <div className="space-y-6">
             <h2 className="text-5xl font-black text-white leading-tight">
               Unlock the World<br />of Nihongo.
@@ -106,7 +104,6 @@ export default function Login() {
             </p>
           </div>
 
-          {/* Bottom Stats */}
           <div className="flex items-center gap-4">
             <div className="flex -space-x-3">
               <div className="w-10 h-10 rounded-full bg-pink-400 border-2 border-white flex items-center justify-center text-white text-xs font-bold">👤</div>
@@ -118,24 +115,18 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Right Side - Login Form */}
       <div className="flex items-center justify-center w-full p-6 lg:p-0">
         <div className="w-full max-w-md space-y-7">
-          {/* Mobile Logo */}
           <div className="lg:hidden">
             <h1 className="text-3xl font-black text-slate-900">AnimeLearn</h1>
           </div>
 
-       {/* Form Header */}
           <div className="w-full text-left">
             <h2 className="text-3xl font-bold !text-red-600 mb-1">Welcome Back</h2>
             <p className="text-slate-600">Sign in to continue your learning journey</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5 w-full text-left">
-            {/* Các trường input của bạn ở đây */}
- 
-           {/* Email Field */}
             <div className="space-y-1.5 text-left">
               <label
                 htmlFor="email"
@@ -166,7 +157,6 @@ export default function Login() {
                 <p className="text-xs text-red-600">{errors.email}</p>
               )}
             </div>
-            {/* Password Field */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label htmlFor="password" className="text-sm font-semibold text-slate-700">Password</label>
@@ -195,7 +185,6 @@ export default function Login() {
               {errors.password && <p className="text-sm text-red-600">{errors.password}</p>}
             </div>
 
-            {/* Sign In Button */}
             <Button
               type="submit"
               disabled={isLoading}
@@ -212,7 +201,6 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Divider */}
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-200"></div>
@@ -222,7 +210,6 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Social Buttons */}
           <div className="grid grid-cols-2 gap-3">
             <Button
               type="button"
@@ -250,7 +237,6 @@ export default function Login() {
             </Button>
           </div>
 
-          {/* Sign Up Link */}
           <p className="text-center text-slate-600 text-sm">
             Don't have an account?{' '}
             <Link to="/signup" className="text-red-600 hover:text-red-700 font-bold transition-colors">
@@ -260,5 +246,5 @@ export default function Login() {
         </div>
       </div>
     </div>
-  )
+  );
 }
