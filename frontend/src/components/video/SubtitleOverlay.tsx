@@ -23,26 +23,46 @@ export default function SubtitleOverlay({ currentLine, onWordSelect }: SubtitleO
     onWordSelect(word, { x: rect.left, y: rect.bottom });
   };
 
-  const segments = (currentLine.japanese || '').split(/(\s+)/);
-
-  return (
-    <div className="text-center py-4 px-6">
-      <div className="mb-2">
-        <span className="text-xl md:text-2xl font-medium text-white leading-relaxed">
-          {/* 4. Khai báo kiểu cho seg và i trong vòng lặp map */}
-          {segments.map((seg: string, i: number) => {
-            if (seg.trim() === '') return <span key={i}>{seg}</span>;
+  const renderSegments = () => {
+    const text = currentLine.japanese || '';
+    if (!text) return null;
+    
+    try {
+      const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+      const segments = Array.from(segmenter.segment(text));
+      return (
+        <span className="text-xl md:text-2xl font-medium text-slate-800 leading-relaxed">
+          {segments.map((seg, i) => {
+            if (seg.segment.trim() === '') return <span key={i}>{seg.segment}</span>;
             return (
               <span
                 key={i}
-                className="cursor-pointer hover:text-[#ff6b9d] hover:underline decoration-[#ff6b9d] underline-offset-4 transition-colors"
-                onClick={(e) => handleWordClick(e, seg)}
+                className="cursor-pointer hover:text-[#ff6b9d] hover:underline decoration-[#ff6b9d] underline-offset-4 transition-colors px-0.5 rounded"
+                onClick={(e) => handleWordClick(e, seg.segment)}
               >
-                {seg}
+                {seg.segment}
               </span>
             );
           })}
         </span>
+      );
+    } catch (e) {
+      // Fallback
+      const segments = text.split(/(\s+)/);
+      return (
+        <span className="text-xl md:text-2xl font-medium text-slate-800 leading-relaxed">
+          {segments.map((seg, i) => (
+             <span key={i} onClick={(e) => handleWordClick(e, seg)} className="cursor-pointer hover:text-[#ff6b9d]">{seg}</span>
+          ))}
+        </span>
+      );
+    }
+  };
+
+  return (
+    <div className="text-center py-4 px-6">
+      <div className="mb-2">
+        {renderSegments()}
       </div>
       <p className="text-[#ff6b9d] text-base md:text-lg">{currentLine.vietnamese}</p>
     </div>

@@ -5,6 +5,7 @@ import { Toaster } from 'sonner';
 
 // Page imports
 import Home from './pages/Home';
+import Home_guest from './pages/Home_guest';
 import VideoWorkspace from './pages/VideoWorkspace';
 import Vocabulary from './pages/Vocabulary';
 import VocabularyNotebook from './pages/VocabularyNotebook';
@@ -16,39 +17,48 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Layout from './components/Layout';
 
+// Authentication check function
+const isAuthenticated = (): boolean => {
+  return !!localStorage.getItem('token');
+};
+
 // Mock Component cho trường hợp 404
 const PageNotFound = () => (
   <div className="h-screen flex flex-col items-center justify-center bg-[#0a0a1a] text-white">
     <h1 className="text-6xl font-bold mb-4">404</h1>
     <p className="text-gray-400">Trang bạn tìm kiếm không tồn tại.</p>
-    <a href="/Home" className="mt-6 text-[#ff6b9d] hover:underline">Quay lại Trang chủ</a>
+    <a href="/" className="mt-6 text-[#ff6b9d] hover:underline">Quay lại Trang chủ</a>
   </div>
 );
 
+// Protected Route Component
+const ProtectedRoute = ({ element }: { element: React.ReactNode }) => {
+  return isAuthenticated() ? element : <Navigate to="/login" replace />;
+};
+
 const AuthenticatedApp = () => {
-  // Vì chúng ta đang dùng Mock Data, mình sẽ bỏ qua bước check authError
-  // và hiển thị thẳng giao diện chính.
-  
   return (
     <Routes>
-      {/* Routes cho Login & Signup (không bọc trong Layout) */}
+      {/* Landing Page - Public */}
+      <Route path="/" element={<Home_guest />} />
+
+      {/* Login & Signup - Public Routes (không bọc trong Layout) */}
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
 
-      {/* Route chính bọc trong Layout (Sidebar + Header) */}
+      {/* Authenticated Routes bọc trong Layout (Sidebar + Header) */}
       <Route element={<Layout />}>
-        {/* Điều hướng mặc định */}
-        <Route path="/" element={<Navigate to="/Home" replace />} />
+        {/* Dashboard */}
+        <Route path="/home" element={<ProtectedRoute element={<Home />} />} />
         
         {/* Các trang chức năng */}
-        <Route path="/Home" element={<Home />} />
-        <Route path="/VideoWorkspace" element={<VideoWorkspace />} />
-        <Route path="/Vocabulary" element={<Vocabulary />} />
-        <Route path="/VocabularyNotebook" element={<VocabularyNotebook />} />
-        <Route path="/QuizPage" element={<QuizPage />} />
-        <Route path="/Dashboard" element={<Dashboard />} />
-        <Route path="/AIChatTutor" element={<AIChatTutor />} />
-        <Route path="/AdminPanel" element={<AdminPanel />} />
+        <Route path="/VideoWorkspace" element={<ProtectedRoute element={<VideoWorkspace />} />} />
+        <Route path="/Vocabulary" element={<ProtectedRoute element={<Vocabulary />} />} />
+        <Route path="/VocabularyNotebook" element={<ProtectedRoute element={<VocabularyNotebook />} />} />
+        <Route path="/QuizPage" element={<ProtectedRoute element={<QuizPage />} />} />
+        <Route path="/Dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
+        <Route path="/AIChatTutor" element={<ProtectedRoute element={<AIChatTutor />} />} />
+        <Route path="/AdminPanel" element={<ProtectedRoute element={<AdminPanel />} />} />
       </Route>
 
       {/* Trang lỗi 404 */}

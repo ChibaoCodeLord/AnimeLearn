@@ -12,6 +12,7 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 backend/.env
+frontend/.env
 
 # Build / output
 dist/
@@ -41,9 +42,21 @@ desktop.ini
 # Logs / runtime
 logs/
 *.log
+err*.txt
+error.txt
+backend/err*.txt
+backend/error.txt
 pids/
 *.pid
 *.seed
+
+# Python
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
 
 # Caches / misc
 .cache/

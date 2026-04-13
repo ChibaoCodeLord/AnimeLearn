@@ -17,7 +17,7 @@ export default function JlptLevelCards() {
         <p className="text-slate-600 mb-8">Chọn trình độ phù hợp với bạn</p>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {levels.map(l => (
-            <Link key={l.level} to={`/Home?jlpt=${l.level}`}>
+            <Link key={l.level} to={`/home?jlpt=${l.level}`}>
               <div className="group relative overflow-hidden rounded-2xl bg-white border border-slate-200 p-6 hover:border-blue-300 hover:shadow-lg transition-all cursor-pointer">
                 <div className={`absolute top-0 right-0 w-20 h-20 bg-gradient-to-br ${l.color} opacity-10 rounded-bl-full group-hover:opacity-20 transition-opacity`} />
                 <div className={`text-3xl font-black bg-gradient-to-r ${l.color} bg-clip-text text-transparent mb-2`}>
