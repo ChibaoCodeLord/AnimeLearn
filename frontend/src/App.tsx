@@ -13,6 +13,7 @@ import QuizPage from './pages/QuizPage';
 import Dashboard from './pages/Dashboard';
 import AIChatTutor from './pages/AIChatTutor';
 import AdminPanel from './pages/AdminPanel';
+import Profile from './pages/Profile';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Layout from './components/Layout';
@@ -58,6 +59,7 @@ const AuthenticatedApp = () => {
         <Route path="/QuizPage" element={<ProtectedRoute element={<QuizPage />} />} />
         <Route path="/Dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
         <Route path="/AIChatTutor" element={<ProtectedRoute element={<AIChatTutor />} />} />
+        <Route path="/Profile" element={<ProtectedRoute element={<Profile />} />} />
         <Route path="/AdminPanel" element={<ProtectedRoute element={<AdminPanel />} />} />
       </Route>
 

@@ -120,11 +120,70 @@ router.get('/me', authMiddleware, async (req, res) => {
       jlptLevel: user.jlptLevel,
       profilePicture: user.profilePicture,
       bio: user.bio,
+      phone: user.phone,
+      location: user.location,
       role: user.role || 'user',
     });
   } catch (error) {
     console.error('Error fetching user:', error);
     res.status(500).json({ error: 'Lỗi lấy thông tin cá nhân' });
+  }
+});
+
+// Update user profile
+router.put('/update-profile', authMiddleware, async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { fullName, jlptLevel, bio, profilePicture, phone, location } = req.body;
+
+    // Validate input
+    if (fullName && fullName.trim().length < 2) {
+      return res.status(400).json({ error: 'Tên phải có ít nhất 2 ký tự' });
+    }
+
+    // Validate phone format (optional)
+    if (phone && phone.trim().length > 0) {
+      const phoneRegex = /^[0-9+\-\s()]{10,}$/;
+      if (!phoneRegex.test(phone.trim())) {
+        return res.status(400).json({ error: 'Số điện thoại không hợp lệ' });
+      }
+    }
+
+    // Update user
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        fullName: fullName || undefined,
+        jlptLevel: jlptLevel || undefined,
+        bio: bio !== undefined ? bio : undefined,
+        profilePicture: profilePicture || undefined,
+        phone: phone || undefined,
+        location: location || undefined,
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      id: user._id,
+      email: user.email,
+      fullName: user.fullName,
+      jlptLevel: user.jlptLevel,
+      profilePicture: user.profilePicture,
+      bio: user.bio,
+      phone: user.phone,
+      location: user.location,
+      role: user.role || 'user',
+    });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Lỗi cập nhật profile' });
   }
 });
 
