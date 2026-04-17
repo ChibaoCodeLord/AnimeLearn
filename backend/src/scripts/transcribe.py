@@ -189,6 +189,20 @@ def download_youtube_audio(url: str) -> str:
     return os.path.join(tmp_dir, files[0])
 
 
+def get_youtube_title(url: str) -> str:
+    """Lấy tiêu đề thật của video YouTube"""
+    ydl_opts = {
+        "quiet": True,
+        "noplaylist": True,
+        "extract_flat": True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        title = info.get("title") if isinstance(info, dict) else None
+        return title or "Youtube Video (Auto-Transcription)"
+
+
 # ============================================================================
 # FUGASHI & TRANSLATION
 # ============================================================================
@@ -359,6 +373,7 @@ def transcribe_media(media_path: str, use_gpu: bool = True) -> List[Dict[str, An
                 pass
 
 
+
 # ============================================================================
 # CLI ENTRY POINT
 # ============================================================================
@@ -375,13 +390,20 @@ def main():
         # Khởi tạo models lần đầu (để lần sau nhanh hơn)
         log_err("🔧 Khởi tạo hệ thống (lần đầu sẽ lâu)...")
         init_transcribe_system(use_gpu=True)
+
+        video_title = "Youtube Video (Auto-Transcription)"
+        if media_path.startswith(("http://", "https://")) and ("youtube.com" in media_path or "youtu.be" in media_path):
+            try:
+                video_title = get_youtube_title(media_path)
+            except Exception as title_error:
+                log_err(f"⚠️  Không lấy được tiêu đề YouTube: {title_error}")
         
         # Transcribe
         log_err(f"📥 Bắt đầu transcribe: {media_path}")
         results = transcribe_media(media_path, use_gpu=True)
         
         # Xuất JSON ra stdout để Node.js đọc
-        print(json.dumps(results, ensure_ascii=False))
+        print(json.dumps({"title": video_title, "script": results}, ensure_ascii=False))
         
         # Ép đẩy dữ liệu ngay lập tức
         sys.stdout.flush()
