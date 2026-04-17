@@ -7,9 +7,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Shield, Users, Video, Trash2, Search, Eye, RefreshCw,
   ChevronLeft, ChevronRight, Film, BookOpen,
-  ExternalLink, UserCog, Crown, AlertTriangle,
+  UserCog, Crown, AlertTriangle,
   CheckCircle2, XCircle, Clock,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import moment from 'moment';
 
@@ -201,8 +202,6 @@ function DeleteConfirmModal({
 
 export default function AdminPanel() {
   const queryClient = useQueryClient();
-  const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   // Video filters
   const [videoSearch, setVideoSearch] = useState('');
@@ -228,12 +227,11 @@ export default function AdminPanel() {
   }, [userSearch]);
 
   // Lấy user hiện tại
-  useEffect(() => {
-    apiFetch('/auth/me')
-      .then(u => setCurrentUser(u))
-      .catch(() => setCurrentUser(null))
-      .finally(() => setIsLoadingAuth(false));
-  }, []);
+  const { data: currentUser, isLoading: isLoadingAuth } = useQuery<{ role: string } | null>({
+    queryKey: ['current-user'],
+    queryFn: () => apiFetch('/auth/me').catch(() => null),
+    retry: false
+  });
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -349,10 +347,6 @@ export default function AdminPanel() {
               <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Admin Control Panel</h1>
               <p className="text-slate-500 font-medium">Quản lý nội dung và người dùng AnimeLearn</p>
             </div>
-          </div>
-          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-slate-200 shadow-sm text-sm font-medium text-slate-600">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Hệ thống hoạt động bình thường
           </div>
         </div>
 
@@ -561,16 +555,14 @@ export default function AdminPanel() {
                                   <XCircle className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              {/* Xem YouTube */}
-                              <a
-                                href={v.youtube_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="Xem trên YouTube"
+                              {/* Xem video */}
+                              <Link
+                                to={`/VideoWorkspace?id=${v.id}`}
+                                title="Mở trang xem video"
                                 className="w-8 h-8 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 flex items-center justify-center transition-colors"
                               >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
+                                <Eye className="w-3.5 h-3.5" />
+                              </Link>
                               {/* Xóa */}
                               <button
                                 onClick={() => setDeleteTarget(v)}

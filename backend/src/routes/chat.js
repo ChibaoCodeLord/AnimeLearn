@@ -1,10 +1,11 @@
 import express from 'express';
 import Video from '../models/Video.js';
+import { authMiddleware, restrictTo } from '../middleware/auth.js'
 import { askVideoQuestion, indexVideoScript } from '../services/ragChatService.js';
 
 const router = express.Router();
 // TODO: hiện tại rag chưa có auth tương lai có thể cần ratelimit
-router.post('/video/:videoId/index', async (req, res) => {
+router.post('/video/:videoId/index',authMiddleware , async (req, res) => {
   try {
     const { videoId } = req.params;
     const video = await Video.findById(videoId);
@@ -26,7 +27,7 @@ router.post('/video/:videoId/index', async (req, res) => {
   }
 });
 
-router.post('/video/:videoId/ask', async (req, res) => {
+router.post('/video/:videoId/ask',authMiddleware , async (req, res) => {
   try {
     const { videoId } = req.params;
     const { question, history } = req.body;

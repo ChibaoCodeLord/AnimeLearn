@@ -75,7 +75,6 @@ router.post('/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    console.log(token.JWT_SECRET);
 
     res.cookie('token', token, {
       httpOnly: true,

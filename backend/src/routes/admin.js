@@ -13,14 +13,9 @@ router.use(authMiddleware, restrictTo('admin'));
 // GET /api/admin/videos - Lấy toàn bộ videos + populate thông tin người tạo
 router.get('/videos', async (req, res) => {
   try {
-    const { search = '', jlpt = '', status = '', page = 1, limit = 20 } = req.query;
-    if(page <= 0) {
-      throw new Error("Lỗi tham số page");
-    }
-
-    if(limit <= 0) {
-      throw new Error("Lỗi tham số limit");
-    }
+    const { search = '', jlpt = '', status = '' } = req.query;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     
     const filter = {};
     if (search) {
@@ -33,13 +28,13 @@ router.get('/videos', async (req, res) => {
       filter.status = status;
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (page - 1) * limit;
     const total = await Video.countDocuments(filter);
 
     const videos = await Video.find(filter)
       .sort({ created_date: -1 })
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(limit)
       .populate('creator', 'fullName email');
 
     const mappedVideos = videos.map(v => ({
@@ -61,8 +56,8 @@ router.get('/videos', async (req, res) => {
     res.json({
       videos: mappedVideos,
       total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / parseInt(limit))
+      page,
+      totalPages: Math.ceil(total / limit)
     });
   } catch (error) {
     console.error('[Admin] Error fetching videos:', error);
