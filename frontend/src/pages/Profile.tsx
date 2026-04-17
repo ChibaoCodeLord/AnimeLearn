@@ -51,17 +51,71 @@ const updateUserProfile = async (data: Partial<UserProfile>): Promise<UserProfil
   return response.json();
 };
 
-// Mock data for demonstration
-const mockWeeklyData = [
-  { day: 'MON', hours: 2 },
-  { day: 'TUE', hours: 3 },
-  { day: 'WED', hours: 1 },
-  { day: 'THU', hours: 4 },
-  { day: 'FRI', hours: 2 },
-  { day: 'SAT', hours: 0 },
-  { day: 'SUN', hours: 1 },
-];
+const fetchLearningProgress = async () => {
+  const response = await fetch('http://localhost:5000/api/auth/learning-progress', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
 
+  if (!response.ok) {
+    throw new Error('Failed to fetch learning progress');
+  }
+
+  return response.json();
+};
+
+const fetchUserCourses = async () => {
+  const response = await fetch('http://localhost:5000/api/auth/courses', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch courses');
+  }
+
+  return response.json();
+};
+
+const fetchAchievements = async () => {
+  const response = await fetch('http://localhost:5000/api/auth/achievements', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch achievements');
+  }
+
+  return response.json();
+};
+
+const fetchProfileStats = async () => {
+  const response = await fetch('http://localhost:5000/api/auth/profile-stats', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch profile stats');
+  }
+
+  return response.json();
+};
+
+// Mock data fallback for achievements display
 const mockCourses = [
   {
     id: 1,
@@ -79,27 +133,24 @@ const mockCourses = [
   },
 ];
 
-const mockAchievements = [
-  { id: 1, name: 'Early Bird Learner', icon: 'award' },
-  { id: 2, name: 'Vocab Virtuoso', icon: 'book' },
-  { id: 3, name: 'Weekly Champion', icon: 'star' },
-  { id: 4, name: 'JLPT N2 Finisher', icon: 'lock', locked: true },
-];
-
 const renderAchievementIcon = (iconType: string, locked: boolean) => {
   const iconProps = {
     className: `w-8 h-8 ${locked ? 'text-gray-400' : 'text-yellow-500'}`,
   };
 
   switch (iconType) {
+    case 'sun':
+      return <Award {...iconProps} />;
+    case 'bookOpen':
+      return <BookOpen {...iconProps} />;
+    case 'trophy':
+      return <Star {...iconProps} />;
     case 'award':
       return <Award {...iconProps} />;
-    case 'book':
-      return <BookOpen {...iconProps} />;
-    case 'star':
+    case 'zap':
       return <Star {...iconProps} />;
-    case 'lock':
-      return <Lock {...iconProps} />;
+    case 'flame':
+      return <Flame {...iconProps} />;
     default:
       return <Award {...iconProps} />;
   }
@@ -115,6 +166,30 @@ export default function Profile() {
   const { data: user, isLoading, error } = useQuery<UserProfile>({
     queryKey: ['profile'],
     queryFn: fetchUserProfile,
+  });
+
+  const { data: learningProgress } = useQuery({
+    queryKey: ['learningProgress'],
+    queryFn: fetchLearningProgress,
+    enabled: !!user,
+  });
+
+  const { data: coursesData } = useQuery({
+    queryKey: ['courses'],
+    queryFn: fetchUserCourses,
+    enabled: !!user,
+  });
+
+  const { data: achievementsData } = useQuery({
+    queryKey: ['achievements'],
+    queryFn: fetchAchievements,
+    enabled: !!user,
+  });
+
+  const { data: profileStats } = useQuery({
+    queryKey: ['profileStats'],
+    queryFn: fetchProfileStats,
+    enabled: !!user,
   });
 
   const updateMutation = useMutation({
@@ -173,7 +248,9 @@ export default function Profile() {
   };
 
   const maxBarHeight = 100;
-  const maxHours = Math.max(...mockWeeklyData.map(d => d.hours));
+  const maxHours = Math.max(
+    ...(learningProgress?.weeklyData?.map((d: any) => d.hours) || [1])
+  );
 
   if (isLoading) {
     return (
@@ -443,7 +520,7 @@ export default function Profile() {
 
           <div className="mb-6">
             <div className="flex items-end justify-around gap-3 h-40 px-4">
-              {mockWeeklyData.map((data, idx) => (
+              {(learningProgress?.weeklyData || []).map((data: any, idx: number) => (
                 <div key={idx} className="flex flex-col items-center flex-1">
                   <div className="w-full bg-gray-200 rounded-lg relative" style={{
                     height: `${Math.max((data.hours / maxHours) * maxBarHeight, 10)}px`,
@@ -469,9 +546,9 @@ export default function Profile() {
                   <Flame className="w-8 h-8" style={{ color: '#005537' }} />
                 </div>
                 <div>
-                  <div className="text-3xl font-bold text-gray-900">24</div>
+                  <div className="text-3xl font-bold text-gray-900">{profileStats?.dayStreak || 0}</div>
                   <div className="text-sm text-gray-600 font-semibold">DAY STREAK</div>
-                  <div className="text-xs text-gray-500 mt-1">Keep it up! 5 days to go for a badge</div>
+                  <div className="text-xs text-gray-500 mt-1">Keep learning every day!</div>
                 </div>
               </div>
             </Card>
@@ -482,8 +559,8 @@ export default function Profile() {
                   <Star className="w-8 h-8" style={{ color: '#005537' }} />
                 </div>
                 <div>
-                  <div className="text-3xl font-bold text-gray-900">12,450</div>
-                  <div className="text-sm text-gray-600 font-semibold">TOP 5% IN YOUR REGION</div>
+                  <div className="text-3xl font-bold text-gray-900">{profileStats?.xpPoints || 0}</div>
+                  <div className="text-sm text-gray-600 font-semibold">{profileStats?.ranking || 'TOP 5%'}</div>
                 </div>
               </div>
             </Card>
@@ -502,8 +579,8 @@ export default function Profile() {
             </div>
 
             <div className="space-y-4">
-              {mockCourses.map((course) => (
-                <div key={course.id} className="flex items-center gap-4 pb-4 border-b border-gray-200 last:border-0">
+              {(coursesData && coursesData.length > 0 ? coursesData : mockCourses).map((course: any) => (
+                <div key={course.id || course._id} className="flex items-center gap-4 pb-4 border-b border-gray-200 last:border-0">
                   <div 
                     className="w-16 h-16 rounded flex items-center justify-center text-2xl flex-shrink-0"
                     style={{ backgroundColor: course.color, opacity: 0.8 }}
@@ -542,17 +619,17 @@ export default function Profile() {
             <h2 className="text-xl font-bold text-gray-900 mb-4">Achievements</h2>
 
             <div className="space-y-3">
-              {mockAchievements.map((achievement) => (
+              {(achievementsData || []).map((achievement: any) => (
                 <div
                   key={achievement.id}
                   className={`p-4 rounded-lg text-center transition-all ${
-                    achievement.locked
+                    !achievement.unlocked
                       ? 'bg-gray-100 opacity-60'
                       : 'bg-yellow-50 border border-yellow-200'
                   }`}
                 >
                   <div className="flex justify-center mb-2">
-                    {renderAchievementIcon(achievement.icon, achievement.locked || false)}
+                    {renderAchievementIcon(achievement.icon, !achievement.unlocked)}
                   </div>
                   <p className="text-xs font-semibold text-gray-700">{achievement.name}</p>
                 </div>
@@ -574,11 +651,10 @@ export default function Profile() {
                 </div>
                 <span className="text-xs font-semibold uppercase" style={{ color: '#A5F3C7' }}>Learning Hours</span>
               </div>
-              <div className="text-5xl font-bold mb-2">128</div>
+              <div className="text-5xl font-bold mb-2">{profileStats?.totalLearningHours || 0}</div>
               <p className="text-sm font-medium opacity-90">total hours</p>
               <p className="text-xs opacity-80 mt-4">
-                You're in the top 2% of learners this month. Your <br />
-                most productive time is 8:00 AM
+                You're in the {profileStats?.ranking || 'top 5%'} of learners. Keep up the great work!
               </p>
             </div>
             <Trophy className="w-24 h-24 opacity-30" />

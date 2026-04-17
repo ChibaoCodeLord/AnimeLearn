@@ -52,6 +52,23 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin'],
       default: 'user'
     },
+    totalLearningHours: {
+      type: Number,
+      default: 0
+    },
+    dayStreak: {
+      type: Number,
+      default: 0
+    },
+    xpPoints: {
+      type: Number,
+      default: 0
+    },
+    lastActiveDate: {
+      type: Date,
+      default: null
+      
+    },
     createdAt: {
       type: Date,
       default: Date.now
