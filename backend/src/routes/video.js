@@ -56,21 +56,6 @@ router.post('/analyze', authMiddleware, (req, res) => {
   let errorString = '';
   let isHandled = false;
 
-  const tryParseScriptJson = (rawOutput) => {
-    const text = (rawOutput || '').trim();
-    const startIndex = text.indexOf('[{');
-    const endIndex = text.lastIndexOf('}]');
-    const emptyStartIndex = text.indexOf('[]');
-
-    if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
-      return JSON.parse(text.substring(startIndex, endIndex + 2));
-    }
-    if (emptyStartIndex !== -1) {
-      return [];
-    }
-
-    throw new Error('Không tìm thấy dữ liệu mảng JSON trong chuỗi trả về.');
-  };
 
   pythonProcess.stdout.on('data', (data) => {
     stdoutChunks.push(data);
@@ -96,16 +81,17 @@ router.post('/analyze', authMiddleware, (req, res) => {
     // Some Windows setups may still produce a non-zero exit code although valid JSON was emitted.
     // If stdout contains parseable script JSON, return success and keep stderr only for logging.
     try {
-      const result = tryParseScriptJson(dataString);
+      const parsed = JSON.parse(dataString);
+      const result = Array.isArray(parsed) ? { title: 'Youtube Video (Auto-Transcription)', script: parsed } : parsed;
 
       if (code !== 0 || signal) {
         console.warn(`[analyze] Python exited with code=${code}, signal=${signal ?? 'none'} but returned valid JSON output.`);
       }
 
       return res.json({
-        title: "Youtube Video (Auto-Transcription)",
+        title: result.title || 'Youtube Video (Auto-Transcription)',
         jlpt_level: "Unknown",
-        script: result
+        script: result.script || result
       });
     } catch (parseError) {
       console.error(`Process exited with code=${code}, signal=${signal ?? 'none'}. stderr: ${errorString}`);
@@ -266,10 +252,21 @@ router.post('/save', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('/detail/:id', async (req, res) => {
+router.get('/detail/:id', authMiddleware, async (req, res) => {
   try {
     const video = await Video.findById(req.params.id);
     if (!video) return res.status(404).json({ error: 'Video không tồn tại' });
+
+    const currentUserId = req.user?.id || req.user?.userId;
+    const isAdmin = req.user?.role === 'admin';
+    const isCreator = currentUserId && String(video.creator) === String(currentUserId);
+
+    if (video.status !== 'approved' && !isAdmin && !isCreator) {
+      return res.status(403).json({ error: 'Video chưa được duyệt nên bạn không có quyền xem' });
+    }
+
+
+    
 
     // Tạo data tương thích với frontend load từ local storage
     res.json({
@@ -277,7 +274,8 @@ router.get('/detail/:id', async (req, res) => {
       title: video.title,
       youtube_url: video.youtube_url,
       script: video.script,
-      jlpt_level: video.jlpt_level
+      jlpt_level: video.jlpt_level,
+      status: video.status
     });
   } catch (error) {
     console.error('Lỗi khi lấy thông tin video:', error);

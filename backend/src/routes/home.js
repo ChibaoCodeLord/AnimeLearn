@@ -34,7 +34,7 @@ router.get('/user-profile', async (req, res) => {
 // Get community videos
 router.get('/videos', async (req, res) => {
   try {
-    const videos = await Video.find().sort({ created_date: -1 }).limit(20);
+    const videos = await Video.find({status: "approved"}).sort({ created_date: -1 }).limit(20);
     // Lược bỏ thuộc tính script (data rất nặng) khi trả về List màn hình chính
     const mappedVideos = videos.map(v => ({
       id: v._id,
@@ -44,7 +44,7 @@ router.get('/videos', async (req, res) => {
       jlpt_level: v.jlpt_level,
       views_count: v.views_count,
       likes_count: v.likes_count,
-      created_date: v.created_date
+      created_date: v.created_date 
     }));
     res.json(mappedVideos);
   } catch (error) {

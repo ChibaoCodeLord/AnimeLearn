@@ -1,3 +1,8 @@
+"""
+Transcribe - Logic xử lý transcription + CLI Entry Point
+Tách audio từ video/YouTube, transcribe với Whisper, dịch và phân tích từ vựng
+"""
+
 import sys
 import json
 import os
@@ -6,6 +11,7 @@ import tempfile
 import shutil
 import yt_dlp
 import time
+from typing import List, Dict, Any, Optional, Tuple
 from faster_whisper import WhisperModel
 
 try:
@@ -18,67 +24,110 @@ except ImportError:
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
-def print_err(msg):
+# ============================================================================
+# GLOBAL SINGLETON INSTANCES (Lưu RAM, chỉ tải 1 lần)
+# ============================================================================
+
+GLOBAL_WHISPER_MODEL = None
+GLOBAL_TAGGER = None
+GLOBAL_TRANSLATOR = None
+
+def get_whisper_model(use_gpu: bool = True) -> WhisperModel:
+    """
+    Lấy Whisper model instance (singleton)
+    Chỉ tải model lần đầu, những lần sau dùng bản cache
+    """
+    global GLOBAL_WHISPER_MODEL
+    
+    if GLOBAL_WHISPER_MODEL is not None:
+        return GLOBAL_WHISPER_MODEL
+    
+    model_id = "small"
+    log_err(f"🤖 Load Whisper model lần đầu: {model_id} (lâu ~30-60s)...")
+
+    try:
+        if use_gpu:
+            GLOBAL_WHISPER_MODEL = WhisperModel(model_id, device="cuda", compute_type="int8_float16")
+            log_err("✅ Đang chạy GPU (CUDA)")
+        else:
+            GLOBAL_WHISPER_MODEL = WhisperModel(model_id, device="cpu", compute_type="int8")
+            log_err("✅ Đang chạy CPU")
+    except Exception as e:
+        log_err(f"⚠️  GPU lỗi -> dùng CPU | {e}")
+        GLOBAL_WHISPER_MODEL = WhisperModel(model_id, device="cpu", compute_type="int8")
+    
+    log_err("✨ Whisper model đã sẵn sàng (lần sau sẽ nhanh hơn!)")
+    return GLOBAL_WHISPER_MODEL
+
+
+def get_tagger() -> Optional[fugashi.Tagger]:
+    """
+    Lấy Fugashi tagger instance (singleton)
+    Chỉ tạo lần đầu, những lần sau dùng bản cache
+    """
+    global GLOBAL_TAGGER
+    
+    if GLOBAL_TAGGER is not None:
+        return GLOBAL_TAGGER
+    
+    log_err("📝 Khởi tạo Fugashi tagger lần đầu...")
+    GLOBAL_TAGGER = build_tagger()
+    
+    if GLOBAL_TAGGER:
+        log_err("✨ Fugashi tagger đã sẵn sàng")
+    
+    return GLOBAL_TAGGER
+
+
+def get_translator() -> GoogleTranslator:
+    """
+    Lấy Google Translator instance (singleton)
+    """
+    global GLOBAL_TRANSLATOR
+    
+    if GLOBAL_TRANSLATOR is not None:
+        return GLOBAL_TRANSLATOR
+    
+    log_err("🌍 Khởi tạo Google Translator...")
+    GLOBAL_TRANSLATOR = GoogleTranslator(source='ja', target='vi')
+    log_err("✨ Google Translator đã sẵn sàng")
+    
+    return GLOBAL_TRANSLATOR
+
+
+def init_transcribe_system(use_gpu: bool = True) -> None:
+    """
+    Khởi tạo toàn bộ Transcribe system một lần (nên gọi khi server startup)
+    Điều này làm cho lần đầu chậm, nhưng những lần sau rất nhanh
+    """
+    log_err("🚀 Khởi tạo Transcribe System...")
+    try:
+        get_whisper_model(use_gpu=use_gpu)
+        get_tagger()
+        get_translator()
+        log_err("✅ Transcribe System đã sẵn sàng!")
+    except Exception as e:
+        log_err(f"❌ Khởi tạo thất bại: {e}")
+        raise
+
+# ============================================================================
+# LOGGING & UTILITIES
+# ============================================================================
+
+def log_err(msg: str) -> None:
+    """Log ra stderr"""
     print(msg, file=sys.stderr, flush=True)
 
-def build_tagger():
-    # Prefer bundled UniDic-Lite to avoid relying on a system-wide MeCab config on Windows.
-    try:
-        import importlib
-        unidic_lite = importlib.import_module("unidic_lite")
-        dicdir = unidic_lite.DICDIR
-        mecabrc = os.path.join(dicdir, "mecabrc")
-        opts = f'-d "{dicdir}" -r "{mecabrc}"'
-        return fugashi.Tagger(opts)
-    except Exception as e:
-        print_err(f"Cảnh báo: Không dùng được unidic-lite cho Fugashi: {e}")
 
-    try:
-        return fugashi.Tagger()
-    except Exception as e:
-        print_err(f"Cảnh báo: Không khởi tạo được Fugashi: {e}")
-        return None
+def format_time_mm_ss(seconds: float) -> str:
+    """Chuyển giây thành MM:SS"""
+    m = int(seconds // 60)
+    s = int(seconds % 60)
+    return f"{m:02d}:{s:02d}"
 
-def safe_feature_attr(feature, attr_name, default=""):
-    try:
-        value = getattr(feature, attr_name, default)
-        return value if value else default
-    except Exception:
-        return default
 
-def extract_audio_from_video(video_path: str) -> str:
-    if shutil.which("ffmpeg") is None:
-        raise RuntimeError("Không tìm thấy ffmpeg trong PATH")
-    tmpf = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    audio_path = tmpf.name
-    tmpf.close()
-    cmd = ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "libmp3lame", "-q:a", "2", audio_path]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return audio_path
-
-def download_youtube_audio(url: str) -> str:
-    tmp_dir = tempfile.mkdtemp()
-    outtmpl = os.path.join(tmp_dir, "audio.%(ext)s")
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": outtmpl,
-        "noplaylist": True,
-        "quiet": True,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android", "web"]
-            }
-        }
-    }
-    print_err(f"Đang tải audio từ YouTube...")
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-    files = os.listdir(tmp_dir)
-    if not files:
-        raise RuntimeError("Không tìm thấy file audio")
-    return os.path.join(tmp_dir, files[0])
-
-def add_nvidia_paths():
+def add_nvidia_paths() -> None:
+    """Thêm NVIDIA paths cho GPU"""
     def find_bin(pkg_name):
         try:
             import importlib.util
@@ -99,23 +148,122 @@ def add_nvidia_paths():
             if hasattr(os, "add_dll_directory"):
                 os.add_dll_directory(path)
 
-def format_time_mm_ss(seconds: float):
-    m = int(seconds // 60)
-    s = int(seconds % 60)
-    return f"{m:02d}:{s:02d}"
 
-def main():
-    if len(sys.argv) < 2:
-        print_err("Cần cung cấp URL video")
-        sys.exit(1)
-        
+# ============================================================================
+# AUDIO HANDLERS
+# ============================================================================
+
+def extract_audio_from_video(video_path: str) -> str:
+    """Tách audio từ video file"""
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("Không tìm thấy ffmpeg trong PATH")
+    tmpf = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    audio_path = tmpf.name
+    tmpf.close()
+    cmd = ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "libmp3lame", "-q:a", "2", audio_path]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return audio_path
+
+
+def download_youtube_audio(url: str) -> str:
+    """Tải audio từ YouTube"""
+    tmp_dir = tempfile.mkdtemp()
+    outtmpl = os.path.join(tmp_dir, "audio.%(ext)s")
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": outtmpl,
+        "noplaylist": True,
+        "quiet": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"]
+            }
+        }
+    }
+    log_err("Đang tải audio từ YouTube...")
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+    files = os.listdir(tmp_dir)
+    if not files:
+        raise RuntimeError("Không tìm thấy file audio")
+    return os.path.join(tmp_dir, files[0])
+
+
+def get_youtube_title(url: str) -> str:
+    """Lấy tiêu đề thật của video YouTube"""
+    ydl_opts = {
+        "quiet": True,
+        "noplaylist": True,
+        "extract_flat": True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        title = info.get("title") if isinstance(info, dict) else None
+        return title or "Youtube Video (Auto-Transcription)"
+
+
+# ============================================================================
+# FUGASHI & TRANSLATION
+# ============================================================================
+
+def build_tagger() -> Optional[fugashi.Tagger]:
+    """Xây dựng Fugashi tagger"""
+    try:
+        import importlib
+        unidic_lite = importlib.import_module("unidic_lite")
+        dicdir = unidic_lite.DICDIR
+        mecabrc = os.path.join(dicdir, "mecabrc")
+        opts = f'-d "{dicdir}" -r "{mecabrc}"'
+        return fugashi.Tagger(opts)
+    except Exception as e:
+        log_err(f"Cảnh báo: Không dùng được unidic-lite cho Fugashi: {e}")
+
+    try:
+        return fugashi.Tagger()
+    except Exception as e:
+        log_err(f"Cảnh báo: Không khởi tạo được Fugashi: {e}")
+        return None
+
+
+def safe_feature_attr(feature, attr_name: str, default: str = "") -> str:
+    """Lấy attribute từ Fugashi feature an toàn"""
+    try:
+        value = getattr(feature, attr_name, default)
+        return value if value else default
+    except Exception:
+        return default
+
+
+# ============================================================================
+# CORE TRANSCRIPTION (PUBLIC API)
+# ============================================================================
+
+def transcribe_media(media_path: str, use_gpu: bool = True) -> List[Dict[str, Any]]:
+    """
+    Xử lý media file hoặc YouTube URL
+    - Lấy audio từ YouTube hoặc tách từ video
+    - Transcribe với Whisper
+    - Dịch sang Việt
+    - Phân tích từ vựng
+    
+    ⚡ TỐI ƯU: Model được cache lần đầu, lần sau dùng RAM không tải lại
+    
+    Args:
+        media_path: URL YouTube hoặc đường dẫn file video
+        use_gpu: Sử dụng GPU (CUDA) nếu có
+    
+    Returns:
+        Danh sách results với timestamp, japanese, vietnamese, vocabulary
+    """
     add_nvidia_paths()
-    media_path = sys.argv[1]
+    
     audio_path = media_path
     tmp_dir_to_delete = None
     tmp_audio_created = False
 
     try:
+        # === BƯỚC 1: Lấy audio ===
         if media_path.startswith(("http://", "https://")):
             if "youtube.com" in media_path or "youtu.be" in media_path:
                 audio_path = download_youtube_audio(media_path)
@@ -128,30 +276,24 @@ def main():
                 raise FileNotFoundError(f"Không tìm thấy file: {media_path}")
             ext = os.path.splitext(media_path)[1].lower()
             if ext in (".mp4", ".mkv", ".mov", ".avi", ".webm"):
-                print_err("Đang tách audio từ video...")
+                log_err("🎬 Đang tách audio từ video...")
                 audio_path = extract_audio_from_video(media_path)
                 tmp_audio_created = True
 
-        model_id = "small"
-        # model_id = "kotoba-tech/kotoba-whisper-v2.0"
-        print_err(f"Load model: {model_id}")
+        # === BƯỚC 2: Load Whisper Model (CACHED - chỉ lấy từ RAM lần sau) ===
+        log_err("⏳ Lấy Whisper model...")
+        model = get_whisper_model(use_gpu=use_gpu)
 
-        try:
-            model = WhisperModel(model_id, device="cuda", compute_type="int8_float16")
-            print_err("Đang chạy GPU (CUDA)")
-        except Exception as e:
-            print_err(f"GPU lỗi -> dùng CPU | {e}")
-            model = WhisperModel(model_id, device="cpu", compute_type="int8")
-
-        print_err("Đang khởi tạo bộ phân tích (Fugashi) và Trình dịch (Google Translator)...")
-        tagger = build_tagger()
-        translator = GoogleTranslator(source='ja', target='vi')
+        # === BƯỚC 3: Lấy Fugashi & Translator (CACHED) ===
+        log_err("⏳ Lấy Fugashi tagger và Google Translator...")
+        tagger = get_tagger()
+        translator = get_translator()
 
         if tagger is None:
-            print_err("Tiếp tục không tách từ vựng chi tiết vì Fugashi chưa sẵn sàng.")
-            print_err(f"Python đang dùng: {sys.executable}")
+            log_err("⚠️  Tiếp tục không tách từ vựng chi tiết vì Fugashi chưa sẵn sàng.")
 
-        print_err("Transcribing & Dịch thuật...")
+        # === BƯỚC 4: Transcribe ===
+        log_err("🎙️  Đang transcribe audio...")
         segments, info = model.transcribe(
             audio_path,
             language="ja",
@@ -163,27 +305,25 @@ def main():
         for seg in segments:
             ja_text = seg.text.strip()
             
-            # --- 1. Dịch thuật nguyên câu ---
+            # Dịch toàn câu
             vi_text = ""
             if ja_text:
                 try:
                     vi_text = translator.translate(ja_text)
                 except Exception as e:
-                    print_err(f"Lỗi dịch câu: {e}")
+                    log_err(f"Lỗi dịch câu: {e}")
             
-            # --- 2. Phân tách và dịch từ vựng (Vocabulary) ---
+            # Phân tách và dịch từ vựng
             vocab_list = []
             seen_words = set()
             
             if ja_text and tagger is not None:
                 for word in tagger(ja_text):
-                    # Chỉ quét các loại từ chính
                     pos = safe_feature_attr(word.feature, 'pos1')
                     
-                    if pos in ("名詞", "動詞", "形容詞", "副詞"): # Danh từ, động từ, tính từ, trạng từ
+                    if pos in ("名詞", "動詞", "形容詞", "副詞"):
                         lemma = word.feature.lemma if hasattr(word.feature, 'lemma') and word.feature.lemma else word.surface
                         
-                        # Loại bỏ lặp từ
                         if lemma in seen_words:
                             continue
                         seen_words.add(lemma)
@@ -193,7 +333,7 @@ def main():
                         meaning = ""
                         try:
                             meaning = translator.translate(lemma)
-                            time.sleep(0.05) # Giảm tải chút xíu cho API
+                            time.sleep(0.05)
                         except Exception:
                             pass
                             
@@ -217,15 +357,12 @@ def main():
                 "vocabulary": vocab_list
             })
             
-        print_err("Đã xử lý xong!")
+        log_err("✅ Đã xử lý xong!")
         
-        # 1. Xuất JSON ra stdout để Nodejs đọc
-        print(json.dumps(results, ensure_ascii=False))
-        
-        # 2. Ép đẩy dữ liệu sang Node.js ngay lập tức (Rất quan trọng!)
-        sys.stdout.flush() 
+        return results
 
-        # 3. Tự tay dọn dẹp file audio rác
+    finally:
+        # Dọn dẹp file tạm
         if tmp_audio_created:
             try:
                 if tmp_dir_to_delete:
@@ -235,12 +372,50 @@ def main():
             except Exception:
                 pass
 
-        # 4. RÚT ĐIỆN CÁI RỤP! (Thoát ngay lập tức với mã 0, bỏ qua lỗi giải phóng GPU)
+
+
+# ============================================================================
+# CLI ENTRY POINT
+# ============================================================================
+
+def main():
+    """CLI entry point - xử lý transcription từ command line"""
+    if len(sys.argv) < 2:
+        log_err("Cần cung cấp URL video hoặc đường dẫn file")
+        sys.exit(1)
+
+    media_path = sys.argv[1]
+
+    try:
+        # Khởi tạo models lần đầu (để lần sau nhanh hơn)
+        log_err("🔧 Khởi tạo hệ thống (lần đầu sẽ lâu)...")
+        init_transcribe_system(use_gpu=True)
+
+        video_title = "Youtube Video (Auto-Transcription)"
+        if media_path.startswith(("http://", "https://")) and ("youtube.com" in media_path or "youtu.be" in media_path):
+            try:
+                video_title = get_youtube_title(media_path)
+            except Exception as title_error:
+                log_err(f"⚠️  Không lấy được tiêu đề YouTube: {title_error}")
+        
+        # Transcribe
+        log_err(f"📥 Bắt đầu transcribe: {media_path}")
+        results = transcribe_media(media_path, use_gpu=True)
+        
+        # Xuất JSON ra stdout để Node.js đọc
+        print(json.dumps({"title": video_title, "script": results}, ensure_ascii=False))
+        
+        # Ép đẩy dữ liệu ngay lập tức
+        sys.stdout.flush()
+        
+        # Thoát ngay (bỏ qua lỗi giải phóng GPU)
         os._exit(0)
 
     except Exception as e:
-        print_err(f"Lỗi: {e}")
+        log_err(f"❌ Lỗi: {e}")
         os._exit(1)
+
 
 if __name__ == "__main__":
     main()
+
