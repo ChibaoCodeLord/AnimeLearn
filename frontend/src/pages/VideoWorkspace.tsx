@@ -5,18 +5,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 const YouTube = (YouTubeOrigin as any).default || YouTubeOrigin;
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'; // <-- Thêm import Tabs
-import { Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain } from 'lucide-react'; // <-- Thêm icon Mic, Brain
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import ScriptPanel, { type ScriptLine } from '../components/video/ScriptPanel';
 import SubtitleOverlay from '../components/video/SubtitleOverlay';
 import PlayerControls from '../components/video/PlayerControls';
 import VocabularyPopup from '../components/video/VocabularyPopup';
 import VideoRagChatWidget from '../components/video/VideoRagChatWidget';
-import QuizPage from './QuizPage'; // <-- Import trang QuizPage
+import QuizPage from './QuizPage';
 
 // 1. Định nghĩa Interfaces
-
 type VideoStatus = 'approved' | 'rejected' | 'pending';
 
 interface CurrentUser {
@@ -42,7 +41,6 @@ const STATUS_OPTIONS: Record<VideoStatus, { label: string; className: string }> 
     className: 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
   },
 };
-
 
 function extractYouTubeId(url: string | null) {
   if (!url) return null;
@@ -80,15 +78,23 @@ export default function VideoWorkspace() {
   const videoId = params.get('id');
   const youtubeUrl = params.get('url');
 
+  // ==========================================
+  // KHAI BÁO TẤT CẢ HOOKS Ở TRÊN CÙNG
+  // ==========================================
   const [script, setScript] = useState<ScriptLine[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [loopCount] = useState(3);
   const [generating, setGenerating] = useState(false);
+  
+  // STATE MỚI: Quản lý ẩn/hiện danh sách từ vựng
+  const [showVocabList, setShowVocabList] = useState(true);
+  
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [selectedVocabData, setSelectedVocabData] = useState<any | null>(null);
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
+  
   const [videoTitle, setVideoTitle] = useState('');
   const [currentYoutubeUrl, setCurrentYoutubeUrl] = useState(youtubeUrl || '');
   const [videoStatus, setVideoStatus] = useState<VideoStatus>('pending');
@@ -110,10 +116,7 @@ export default function VideoWorkspace() {
 
   const updateStatusMutation = useMutation({
     mutationFn: (status: VideoStatus) => {
-      if (!videoId) {
-        throw new Error('Thiếu mã video');
-      }
-
+      if (!videoId) throw new Error('Thiếu mã video');
       return fetch(`${API_BASE}/admin/videos/${videoId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -121,9 +124,7 @@ export default function VideoWorkspace() {
         body: JSON.stringify({ status }),
       }).then(async response => {
         const data = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(data?.error || 'Không thể cập nhật trạng thái');
-        }
+        if (!response.ok) throw new Error(data?.error || 'Không thể cập nhật trạng thái');
         return data;
       });
     },
@@ -138,7 +139,6 @@ export default function VideoWorkspace() {
     },
   });
 
-  // 2. Tải video từ Database
   useEffect(() => {
     if (videoId) {
       setIsCheckingAccess(true);
@@ -147,18 +147,13 @@ export default function VideoWorkspace() {
       })
         .then(async res => {
           const video = await res.json().catch(() => null);
-
           if (!res.ok) {
             const statusMessage =
-              res.status === 401
-                ? 'Bạn cần đăng nhập để xem video này'
-                : res.status === 403
-                  ? 'Video chưa được duyệt nên chỉ admin hoặc người tạo mới được xem'
-                  : video?.error || 'Không thể tải video này';
-
+              res.status === 401 ? 'Bạn cần đăng nhập để xem video này'
+              : res.status === 403 ? 'Video chưa được duyệt nên chỉ admin hoặc người tạo mới được xem'
+              : video?.error || 'Không thể tải video này';
             throw new Error(statusMessage);
           }
-
           if (video && !video.error) {
             setScript(video.script || []);
             setVideoTitle(video.title || '');
@@ -176,6 +171,42 @@ export default function VideoWorkspace() {
         });
     }
   }, [videoId]);
+
+  const ytId = extractYouTubeId(currentYoutubeUrl);
+
+  useEffect(() => {
+    let interval: number;
+    if (isPlaying && playerRef.current && script.length > 0) {
+      interval = window.setInterval(async () => {
+        try {
+          const currentTime = await playerRef.current.getCurrentTime();
+          let foundIndex = -1;
+          
+          for (let i = 0; i < script.length; i++) {
+            // Lấy 'start' siêu chuẩn (nếu có), nếu video cũ chưa có thì dùng 'timestamp' cắt số
+            const timeSec = (script[i] as any).start !== undefined 
+              ? (script[i] as any).start 
+              : parseTimestampToSeconds(script[i].timestamp);
+              
+            // ĐÃ BỎ CÁI -0.5 ĐI (Chỉ trừ nhẹ 0.1s để trượt mượt mà)
+            if (currentTime >= timeSec - 0.1) {
+              foundIndex = i;
+            } else {
+              break;
+            }
+          }
+          
+          if (foundIndex !== -1 && foundIndex !== currentIndex) {
+            setCurrentIndex(foundIndex);
+          }
+        } catch (e) { }
+      }, 300); // Lưu ý: Nếu muốn UI nhạy hơn nữa, có thể giảm 500 xuống 250
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPlaying, script, currentIndex]);
+
 
   if (videoId && isCheckingAccess) {
     return (
@@ -202,39 +233,6 @@ export default function VideoWorkspace() {
     );
   }
 
-  const ytId = extractYouTubeId(currentYoutubeUrl);
-
-  // --- Real-time Sync Logic ---
-  useEffect(() => {
-    let interval: number;
-    if (isPlaying && playerRef.current && script.length > 0) {
-      interval = window.setInterval(async () => {
-        try {
-          // getCurrentTime() của youtube api
-          const currentTime = await playerRef.current.getCurrentTime();
-
-          let foundIndex = -1;
-          for (let i = 0; i < script.length; i++) {
-            const timeSec = parseTimestampToSeconds(script[i].timestamp);
-            if (currentTime >= timeSec - 0.5) { // bù xê dịch nhẹ
-              foundIndex = i;
-            } else {
-              break;
-            }
-          }
-
-          if (foundIndex !== -1 && foundIndex !== currentIndex) {
-            setCurrentIndex(foundIndex);
-          }
-        } catch (e) { }
-      }, 500); // Check mỗi nửa giây cho nhẹ UI
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isPlaying, script, currentIndex]);
-
   const jumpToLine = (index: number) => {
     setCurrentIndex(index);
     if (playerRef.current && script[index]) {
@@ -244,14 +242,13 @@ export default function VideoWorkspace() {
     }
   };
 
-  // 3. Gọi Node API tích hợp Python chạy Model
   const generateScript = async () => {
     if (!currentYoutubeUrl) {
       toast.error('Vui lòng nhập link YouTube hợp lệ');
       return;
     }
     setGenerating(true);
-    toast.info('Hệ thống đang tải và phân tích audio, quá trình này có thể mất vài phút. Vui lòng không đóng trang...');
+    toast.info('Hệ thống đang tải và phân tích audio, quá trình này có thể mất vài phút...');
 
     try {
       const token = localStorage.getItem('token') || '';
@@ -265,16 +262,11 @@ export default function VideoWorkspace() {
         credentials: 'omit'
       });
 
-      if (!response.ok) {
-        throw new Error('Đã có lỗi xảy ra từ máy chủ khi phân tích video.');
-      }
+      if (!response.ok) throw new Error('Lỗi máy chủ khi phân tích video.');
 
       const result = await response.json();
-
       setScript(result.script);
       setVideoTitle(result.title);
-
-      // Lưu lên Mongoose
 
       const saveRes = await fetch('http://localhost:5000/api/video/save', {
         method: 'POST',
@@ -310,50 +302,49 @@ export default function VideoWorkspace() {
 
   const currentLine = script[currentIndex] || null;
 
-  const handleWordSelect = (word: string, pos: { x: number; y: number }) => {
-    // Dò xem từ người dùng bấm trùng với từ vựng đã lấy ra từ cơ sở dữ liệu (MeCab) hay không
-    const vocabMatch = currentLine?.vocabulary?.find((v: any) => v.word === word || word.includes(v.word) || v.word.includes(word));
+  const handleWordSelect = (word: string, pos: { x: number; y: number }, specificVocabData?: any) => {
+    if (specificVocabData) {
+      setSelectedVocabData(specificVocabData);
+    } else {
+      let vocabMatch = currentLine?.vocabulary?.find((v: any) => 
+        v.word === word || word.includes(v.word) || v.word.includes(word)
+      );
 
+      if (!vocabMatch && script.length > 0) {
+        for (const line of script) {
+          const matchInLine = line.vocabulary?.find((v: any) => 
+            v.word === word || word.includes(v.word) || v.word.includes(word)
+          );
+          if (matchInLine) {
+            vocabMatch = matchInLine;
+            break;
+          }
+        }
+      }
+      setSelectedVocabData(vocabMatch || null);
+    }
+    
     setSelectedWord(word);
-    setSelectedVocabData(vocabMatch || null);
     setPopupPos(pos);
   };
-
 
   return (
     <div className={`min-h-[calc(100vh-4rem)] bg-slate-50 flex flex-col p-4 md:p-6 lg:p-8 w-full mx-auto animate-in fade-in duration-500 ${showReviewBar ? 'pb-28' : ''}`}>
 
       <Tabs defaultValue="shadowing" className="w-full flex flex-col flex-1">
-
-        {/* 🌟 THANH ĐIỀU HƯỚNG TABS (Nằm giữa, trên cùng) */}
         <div className="flex justify-center mb-6 lg:mb-8 shrink-0">
           <TabsList className="bg-white border border-slate-200 shadow-sm p-1.5 rounded-2xl h-auto">
-            <TabsTrigger
-              value="shadowing"
-              className="rounded-xl px-6 py-2.5 font-semibold text-slate-600 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700 data-[state=active]:shadow-sm transition-all flex items-center gap-2"
-            >
-              <Mic className="w-4 h-4" />
-              Luyện Shadowing
+            <TabsTrigger value="shadowing" className="rounded-xl px-6 py-2.5 font-semibold text-slate-600 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700 data-[state=active]:shadow-sm transition-all flex items-center gap-2">
+              <Mic className="w-4 h-4" /> Luyện Shadowing
             </TabsTrigger>
-            <TabsTrigger
-              value="quiz"
-              className="rounded-xl px-6 py-2.5 font-semibold text-slate-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-700 data-[state=active]:shadow-sm transition-all flex items-center gap-2"
-            >
-              <Brain className="w-4 h-4" />
-              Làm Quiz
+            <TabsTrigger value="quiz" className="rounded-xl px-6 py-2.5 font-semibold text-slate-600 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-700 data-[state=active]:shadow-sm transition-all flex items-center gap-2">
+              <Brain className="w-4 h-4" /> Làm Quiz
             </TabsTrigger>
           </TabsList>
         </div>
 
-        {/* ========================================================== */}
-        {/* TAB 1: KHU VỰC VIDEO WORKSPACE (SHADOWING)                   */}
-        {/* ========================================================== */}
         <TabsContent value="shadowing" className="flex-1 flex flex-col xl:flex-row gap-6 lg:gap-8 m-0 p-0 outline-hidden">
-
-          {/* CỘT TRÁI: Khu vực Video & Điều khiển */}
           <div className="flex-1 flex flex-col gap-6 min-w-0">
-
-            {/* Khung chứa Video */}
             <div className="bg-white p-3 md:p-4 rounded-[2rem] border border-slate-200 shadow-sm shrink-0">
               <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-inner relative group aspect-video">
                 {ytId ? (
@@ -361,18 +352,8 @@ export default function VideoWorkspace() {
                     videoId={ytId}
                     className="w-full h-full border-0 absolute inset-0"
                     iframeClassName="w-full h-full"
-                    opts={{
-                      playerVars: {
-                        autoplay: 0,
-                        controls: 1,
-                        playsinline: 1,
-                        enablejsapi: 1,
-                        rel: 0
-                      },
-                    }}
-                    onReady={(event: any) => {
-                      playerRef.current = event.target;
-                    }}
+                    opts={{ playerVars: { autoplay: 0, controls: 1, playsinline: 1, enablejsapi: 1, rel: 0 } }}
+                    onReady={(event: any) => { playerRef.current = event.target; }}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
                     onEnd={() => setIsPlaying(false)}
@@ -386,29 +367,16 @@ export default function VideoWorkspace() {
               </div>
             </div>
 
-            {/* Thanh Công cụ (Action Bar) */}
             <div className="bg-white rounded-[1.5rem] border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  onClick={generateScript}
-                  disabled={generating || !ytId}
-                  className="bg-linear-to-r from-emerald-500 to-teal-600 text-white hover:opacity-90 shadow-sm rounded-xl px-5"
-                >
+                <Button onClick={generateScript} disabled={generating || !ytId} className="bg-linear-to-r from-emerald-500 to-teal-600 text-white hover:opacity-90 shadow-sm rounded-xl px-5">
                   {generating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
                   {generating ? 'Đang phân tích AI...' : 'Tạo Script AI'}
                 </Button>
-                <Button
-                  variant="outline"
-                  className="text-slate-600 border-slate-200 hover:bg-slate-50 rounded-xl px-5"
-                  onClick={() => {
-                    navigator.clipboard.writeText(window.location.href);
-                    toast.success('Đã copy link bài học!');
-                  }}
-                >
+                <Button variant="outline" className="text-slate-600 border-slate-200 hover:bg-slate-50 rounded-xl px-5" onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Đã copy link bài học!'); }}>
                   <Share2 className="w-4 h-4 mr-2" /> Chia sẻ
                 </Button>
               </div>
-
               <div className="flex-1 min-w-50 text-left sm:text-right w-full sm:w-auto">
                 {videoTitle ? (
                   <div className="flex flex-col items-start sm:items-end gap-2">
@@ -425,24 +393,16 @@ export default function VideoWorkspace() {
               </div>
             </div>
 
-            {/* Khối Phụ đề & Trình điều khiển */}
             <div className="bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-40 relative">
               <div className="flex-1 p-0 relative z-10">
                 <SubtitleOverlay currentLine={currentLine} onWordSelect={handleWordSelect} />
               </div>
-
               <div className="bg-slate-50/80 border-t border-slate-100 p-2 relative z-20 backdrop-blur-sm">
                 <PlayerControls
-                  isPlaying={isPlaying}
-                  isLooping={isLooping}
-                  loopCount={loopCount}
+                  isPlaying={isPlaying} isLooping={isLooping} loopCount={loopCount}
                   onTogglePlay={() => {
-                    if (playerRef.current) {
-                      if (isPlaying) playerRef.current.pauseVideo();
-                      else playerRef.current.playVideo();
-                    } else {
-                      setIsPlaying(!isPlaying);
-                    }
+                    if (playerRef.current) { isPlaying ? playerRef.current.pauseVideo() : playerRef.current.playVideo(); } 
+                    else { setIsPlaying(!isPlaying); }
                   }}
                   onToggleLoop={() => setIsLooping(!isLooping)}
                   onPrevLine={() => jumpToLine(Math.max(0, currentIndex - 1))}
@@ -452,29 +412,42 @@ export default function VideoWorkspace() {
             </div>
           </div>
 
-          {/* CỘT PHẢI: Khối Kịch Bản (Script Panel) */}
           <div className="w-full xl:w-100 flex flex-col bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden shrink-0 h-[500px] xl:h-[850px]">
-            <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
                   <FileText className="w-4 h-4 text-emerald-600" />
                 </div>
                 <h3 className="font-bold text-slate-800 text-lg tracking-tight">Kịch bản học tập</h3>
               </div>
-              {script.length > 0 && (
-                <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 shadow-xs font-semibold">
-                  {script.length} câu
-                </Badge>
-              )}
+              
+              <div className="flex items-center gap-3">
+                {script.length > 0 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 rounded-full border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                    onClick={() => setShowVocabList(!showVocabList)}
+                  >
+                    {showVocabList ? (
+                      <><EyeOff className="w-3.5 h-3.5 mr-1.5" /> Ẩn từ vựng</>
+                    ) : (
+                      <><Eye className="w-3.5 h-3.5 mr-1.5" /> Hiện từ vựng</>
+                    )}
+                  </Button>
+                )}
+                {script.length > 0 && <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 shadow-xs font-semibold">{script.length} câu</Badge>}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white">
               {script.length > 0 ? (
-                <ScriptPanel
-                  script={script}
-                  currentIndex={currentIndex}
-                  onLineClick={(index) => jumpToLine(index)}
-                  onWordSelect={handleWordSelect}
+                <ScriptPanel 
+                  script={script} 
+                  currentIndex={currentIndex} 
+                  onLineClick={(index) => jumpToLine(index)} 
+                  onWordSelect={handleWordSelect} 
+                  showVocabList={showVocabList} // TRUYỀN PROP VÀO ĐÂY
                 />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400">
@@ -488,26 +461,25 @@ export default function VideoWorkspace() {
           </div>
         </TabsContent>
 
-        {/* ========================================================== */}
-        {/* TAB 2: TRANG QUIZPAGE                                      */}
-        {/* ========================================================== */}
         <TabsContent value="quiz" className="flex-1 m-0 p-0 outline-hidden">
-          {/* Nhúng component QuizPage vào đây */}
           <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden h-full">
             <QuizPage />
           </div>
         </TabsContent>
-
       </Tabs>
 
-      {/* 🌟 Popup Từ vựng (Nổi lên khi click vào chữ) */}
-      {selectedWord && (
+      {/* POPUP TỪ VỰNG */}
+      {selectedWord && popupPos && (
         <VocabularyPopup
           word={selectedWord}
           position={popupPos}
           vocabData={selectedVocabData}
           onClose={() => { setSelectedWord(null); setSelectedVocabData(null); }}
-          onSave={() => { setSelectedWord(null); setSelectedVocabData(null); }}
+          onSave={() => { 
+            toast.success(`Đã lưu "${selectedWord}" vào sổ tay!`);
+            setSelectedWord(null); 
+            setSelectedVocabData(null); 
+          }}
         />
       )}
 
