@@ -6,17 +6,16 @@ const YouTube = (YouTubeOrigin as any).default || YouTubeOrigin;
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain } from 'lucide-react';
+import { Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import ScriptPanel, { type ScriptLine } from '../components/video/ScriptPanel';
 import SubtitleOverlay from '../components/video/SubtitleOverlay';
 import PlayerControls from '../components/video/PlayerControls';
 import VocabularyPopup from '../components/video/VocabularyPopup';
 import VideoRagChatWidget from '../components/video/VideoRagChatWidget';
-import QuizPage from './QuizPage'; // <-- Import trang QuizPage
+import QuizPage from './QuizPage';
 
 // 1. Định nghĩa Interfaces
-
 type VideoStatus = 'approved' | 'rejected' | 'pending';
 
 interface CurrentUser {
@@ -42,7 +41,6 @@ const STATUS_OPTIONS: Record<VideoStatus, { label: string; className: string }> 
     className: 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
   },
 };
-
 
 function extractYouTubeId(url: string | null) {
   if (!url) return null;
@@ -80,6 +78,9 @@ export default function VideoWorkspace() {
   const videoId = params.get('id');
   const youtubeUrl = params.get('url');
 
+  // ==========================================
+  // KHAI BÁO TẤT CẢ HOOKS Ở TRÊN CÙNG
+  // ==========================================
   const [script, setScript] = useState<ScriptLine[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -87,7 +88,9 @@ export default function VideoWorkspace() {
   const [loopCount] = useState(3);
   const [generating, setGenerating] = useState(false);
   
-  // State quản lý Popup
+  // STATE MỚI: Quản lý ẩn/hiện danh sách từ vựng
+  const [showVocabList, setShowVocabList] = useState(true);
+  
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [selectedVocabData, setSelectedVocabData] = useState<any | null>(null);
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
@@ -113,10 +116,7 @@ export default function VideoWorkspace() {
 
   const updateStatusMutation = useMutation({
     mutationFn: (status: VideoStatus) => {
-      if (!videoId) {
-        throw new Error('Thiếu mã video');
-      }
-
+      if (!videoId) throw new Error('Thiếu mã video');
       return fetch(`${API_BASE}/admin/videos/${videoId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -124,9 +124,7 @@ export default function VideoWorkspace() {
         body: JSON.stringify({ status }),
       }).then(async response => {
         const data = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(data?.error || 'Không thể cập nhật trạng thái');
-        }
+        if (!response.ok) throw new Error(data?.error || 'Không thể cập nhật trạng thái');
         return data;
       });
     },
@@ -141,7 +139,6 @@ export default function VideoWorkspace() {
     },
   });
 
-  // 2. Tải video từ Database
   useEffect(() => {
     if (videoId) {
       setIsCheckingAccess(true);
@@ -150,18 +147,13 @@ export default function VideoWorkspace() {
       })
         .then(async res => {
           const video = await res.json().catch(() => null);
-
           if (!res.ok) {
             const statusMessage =
-              res.status === 401
-                ? 'Bạn cần đăng nhập để xem video này'
-                : res.status === 403
-                  ? 'Video chưa được duyệt nên chỉ admin hoặc người tạo mới được xem'
-                  : video?.error || 'Không thể tải video này';
-
+              res.status === 401 ? 'Bạn cần đăng nhập để xem video này'
+              : res.status === 403 ? 'Video chưa được duyệt nên chỉ admin hoặc người tạo mới được xem'
+              : video?.error || 'Không thể tải video này';
             throw new Error(statusMessage);
           }
-
           if (video && !video.error) {
             setScript(video.script || []);
             setVideoTitle(video.title || '');
@@ -179,6 +171,42 @@ export default function VideoWorkspace() {
         });
     }
   }, [videoId]);
+
+  const ytId = extractYouTubeId(currentYoutubeUrl);
+
+  useEffect(() => {
+    let interval: number;
+    if (isPlaying && playerRef.current && script.length > 0) {
+      interval = window.setInterval(async () => {
+        try {
+          const currentTime = await playerRef.current.getCurrentTime();
+          let foundIndex = -1;
+          
+          for (let i = 0; i < script.length; i++) {
+            // Lấy 'start' siêu chuẩn (nếu có), nếu video cũ chưa có thì dùng 'timestamp' cắt số
+            const timeSec = (script[i] as any).start !== undefined 
+              ? (script[i] as any).start 
+              : parseTimestampToSeconds(script[i].timestamp);
+              
+            // ĐÃ BỎ CÁI -0.5 ĐI (Chỉ trừ nhẹ 0.1s để trượt mượt mà)
+            if (currentTime >= timeSec - 0.1) {
+              foundIndex = i;
+            } else {
+              break;
+            }
+          }
+          
+          if (foundIndex !== -1 && foundIndex !== currentIndex) {
+            setCurrentIndex(foundIndex);
+          }
+        } catch (e) { }
+      }, 300); // Lưu ý: Nếu muốn UI nhạy hơn nữa, có thể giảm 500 xuống 250
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPlaying, script, currentIndex]);
+
 
   if (videoId && isCheckingAccess) {
     return (
@@ -204,34 +232,6 @@ export default function VideoWorkspace() {
       </div>
     );
   }
-
-  const ytId = extractYouTubeId(currentYoutubeUrl);
-
-  useEffect(() => {
-    let interval: number;
-    if (isPlaying && playerRef.current && script.length > 0) {
-      interval = window.setInterval(async () => {
-        try {
-          const currentTime = await playerRef.current.getCurrentTime();
-          let foundIndex = -1;
-          for (let i = 0; i < script.length; i++) {
-            const timeSec = parseTimestampToSeconds(script[i].timestamp);
-            if (currentTime >= timeSec - 0.5) {
-              foundIndex = i;
-            } else {
-              break;
-            }
-          }
-          if (foundIndex !== -1 && foundIndex !== currentIndex) {
-            setCurrentIndex(foundIndex);
-          }
-        } catch (e) { }
-      }, 500);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isPlaying, script, currentIndex]);
 
   const jumpToLine = (index: number) => {
     setCurrentIndex(index);
@@ -302,17 +302,14 @@ export default function VideoWorkspace() {
 
   const currentLine = script[currentIndex] || null;
 
-  // HÀM XỬ LÝ CLICK TỪ VỰNG - ĐÃ VÁ LỖI TÌM KIẾM
   const handleWordSelect = (word: string, pos: { x: number; y: number }, specificVocabData?: any) => {
     if (specificVocabData) {
       setSelectedVocabData(specificVocabData);
     } else {
-      // BƯỚC 1: Thử tìm trong dòng hiện tại trước cho nhanh
       let vocabMatch = currentLine?.vocabulary?.find((v: any) => 
         v.word === word || word.includes(v.word) || v.word.includes(word)
       );
 
-      // BƯỚC 2: Nếu không thấy (do click ở dòng khác), VÉT CẠN TOÀN BỘ KỊCH BẢN
       if (!vocabMatch && script.length > 0) {
         for (const line of script) {
           const matchInLine = line.vocabulary?.find((v: any) => 
@@ -320,11 +317,10 @@ export default function VideoWorkspace() {
           );
           if (matchInLine) {
             vocabMatch = matchInLine;
-            break; // Thấy rồi thì dừng vòng lặp ngay
+            break;
           }
         }
       }
-
       setSelectedVocabData(vocabMatch || null);
     }
     
@@ -417,19 +413,42 @@ export default function VideoWorkspace() {
           </div>
 
           <div className="w-full xl:w-100 flex flex-col bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden shrink-0 h-[500px] xl:h-[850px]">
-            <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
                   <FileText className="w-4 h-4 text-emerald-600" />
                 </div>
                 <h3 className="font-bold text-slate-800 text-lg tracking-tight">Kịch bản học tập</h3>
               </div>
-              {script.length > 0 && <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 shadow-xs font-semibold">{script.length} câu</Badge>}
+              
+              <div className="flex items-center gap-3">
+                {script.length > 0 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 rounded-full border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors"
+                    onClick={() => setShowVocabList(!showVocabList)}
+                  >
+                    {showVocabList ? (
+                      <><EyeOff className="w-3.5 h-3.5 mr-1.5" /> Ẩn từ vựng</>
+                    ) : (
+                      <><Eye className="w-3.5 h-3.5 mr-1.5" /> Hiện từ vựng</>
+                    )}
+                  </Button>
+                )}
+                {script.length > 0 && <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 shadow-xs font-semibold">{script.length} câu</Badge>}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white">
               {script.length > 0 ? (
-                <ScriptPanel script={script} currentIndex={currentIndex} onLineClick={(index) => jumpToLine(index)} onWordSelect={handleWordSelect} />
+                <ScriptPanel 
+                  script={script} 
+                  currentIndex={currentIndex} 
+                  onLineClick={(index) => jumpToLine(index)} 
+                  onWordSelect={handleWordSelect} 
+                  showVocabList={showVocabList} // TRUYỀN PROP VÀO ĐÂY
+                />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400">
                   <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-4">
