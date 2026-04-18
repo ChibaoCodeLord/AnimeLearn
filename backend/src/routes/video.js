@@ -36,6 +36,37 @@ console.log(`[Video Route] Using Python interpreter: ${PYTHON_CMD}`);
 
 const router = express.Router();
 
+function parsePythonJsonOutput(rawOutput) {
+  const text = (rawOutput || '').trim();
+
+  if (!text) {
+    throw new Error('Python không xuất ra dữ liệu JSON');
+  }
+
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    try {
+      return JSON.parse(line);
+    } catch (e) {
+      // tiếp tục thử các dòng trước đó
+    }
+  }
+
+  const objectMatch = text.match(/\{[\s\S]*\}\s*$/);
+  if (objectMatch) {
+    return JSON.parse(objectMatch[0]);
+  }
+
+  const arrayMatch = text.match(/\[[\s\S]*\]\s*$/);
+  if (arrayMatch) {
+    return JSON.parse(arrayMatch[0]);
+  }
+
+  throw new Error('Không tìm thấy JSON hợp lệ trong output của Python');
+}
+
 //Router dịch script
 //chỉ có user đã đăng nhập mới được tạo script
 router.post('/analyze', authMiddleware, (req, res) => {
@@ -78,10 +109,8 @@ router.post('/analyze', authMiddleware, (req, res) => {
     isHandled = true;
     const dataString = Buffer.concat(stdoutChunks).toString('utf8');
 
-    // Some Windows setups may still produce a non-zero exit code although valid JSON was emitted.
-    // If stdout contains parseable script JSON, return success and keep stderr only for logging.
     try {
-      const parsed = JSON.parse(dataString);
+      const parsed = parsePythonJsonOutput(dataString);
       const result = Array.isArray(parsed) ? { title: 'Youtube Video (Auto-Transcription)', script: parsed } : parsed;
 
       if (code !== 0 || signal) {

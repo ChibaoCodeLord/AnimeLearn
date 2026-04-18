@@ -177,31 +177,6 @@ export default function VideoWorkspace() {
     }
   }, [videoId]);
 
-  if (videoId && isCheckingAccess) {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 px-4">
-        <div className="text-center text-slate-600">
-          <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-500" />
-          <p className="text-sm font-medium">Đang kiểm tra quyền truy cập...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (videoId && loadError) {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 px-4">
-        <div className="max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-sm text-center">
-          <h2 className="text-xl font-bold text-slate-900">Không thể mở video</h2>
-          <p className="mt-2 text-sm text-slate-600">{loadError}</p>
-          <p className="mt-3 text-xs text-slate-500">
-            Nếu đây là video chưa duyệt, chỉ admin mới được xem.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const ytId = extractYouTubeId(currentYoutubeUrl);
 
   // --- Real-time Sync Logic ---
@@ -266,7 +241,8 @@ export default function VideoWorkspace() {
       });
 
       if (!response.ok) {
-        throw new Error('Đã có lỗi xảy ra từ máy chủ khi phân tích video.');
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.details || errorData?.error || 'Đã có lỗi xảy ra từ máy chủ khi phân tích video.');
       }
 
       const result = await response.json();
@@ -318,6 +294,31 @@ export default function VideoWorkspace() {
     setSelectedVocabData(vocabMatch || null);
     setPopupPos(pos);
   };
+
+  if (videoId && isCheckingAccess) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 px-4">
+        <div className="text-center text-slate-600">
+          <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-500" />
+          <p className="text-sm font-medium">Đang kiểm tra quyền truy cập...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (videoId && loadError) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 px-4">
+        <div className="max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-sm text-center">
+          <h2 className="text-xl font-bold text-slate-900">Không thể mở video</h2>
+          <p className="mt-2 text-sm text-slate-600">{loadError}</p>
+          <p className="mt-3 text-xs text-slate-500">
+            Nếu đây là video chưa duyệt, chỉ admin và creator mới được xem.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
 
   return (
