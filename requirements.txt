@@ -1,0 +1,10 @@
+python-dotenv
+langchain-huggingface
+openai
+fastapi
+pydantic
+uvicorn
+yt-dlp
+faster-whisper
+fugashi
+deep-translator

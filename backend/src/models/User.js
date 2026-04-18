@@ -35,6 +35,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
+    phone: {
+      type: String,
+      default: ''
+    },
+    location: {
+      type: String,
+      default: 'Tokyo, JP'
+    },
     isVerified: {
       type: Boolean,
       default: false
@@ -44,12 +52,28 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin'],
       default: 'user'
     },
+    totalLearningHours: {
+      type: Number,
+      default: 0
+    },
+    dayStreak: {
+      type: Number,
+      default: 0
+    },
+    xpPoints: {
+      type: Number,
+      default: 0
+    },
+    lastActiveDate: {
+      type: Date,
+      default: null
+      
+    },
     createdAt: {
       type: Date,
       default: Date.now
     }
   },
-  { timestamps: true }
 );
 
 // Hash password before saving

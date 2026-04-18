@@ -72,10 +72,15 @@ export default function Navbar() {
           ) : (
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <span className="bg-teal-500 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold">
-                  {user?.name?.charAt(0).toUpperCase()}
-                </span>
-                <span className="text-sm font-medium">{user?.name}</span>
+                <Link 
+                  to="/Profile"
+                  className="flex items-center gap-2 hover:opacity-80 transition"
+                >
+                  <span className="bg-teal-500 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold">
+                    {user?.name?.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="text-sm font-medium">{user?.name}</span>
+                </Link>
               </div>
               <Button
                 onClick={handleLogout}

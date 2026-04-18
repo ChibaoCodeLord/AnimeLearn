@@ -17,6 +17,7 @@ interface ChatMessage {
 
 interface VideoRagChatWidgetProps {
   videoId: string | null;
+  bottomOffsetClassName?: string;
 }
 
 const API_BASE_URL = 'http://localhost:5000';
@@ -39,7 +40,7 @@ function toHistory(messages: ChatMessage[]) {
   return history.slice(-4);
 }
 
-export default function VideoRagChatWidget({ videoId }: VideoRagChatWidgetProps) {
+export default function VideoRagChatWidget({ videoId, bottomOffsetClassName = 'bottom-4 md:bottom-6' }: VideoRagChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -141,7 +142,7 @@ export default function VideoRagChatWidget({ videoId }: VideoRagChatWidgetProps)
   
 
   return (
-    <div className="fixed right-4 bottom-4 md:right-6 md:bottom-6 z-50">
+    <div className={`fixed right-4 ${bottomOffsetClassName} md:right-6 z-50`}>
       {!isOpen ? (
         <button
           type="button"
