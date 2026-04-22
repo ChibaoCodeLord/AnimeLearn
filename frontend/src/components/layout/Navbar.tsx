@@ -72,7 +72,7 @@ export default function Navbar() {
           ) : (
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <Link 
+                  <Link 
                   to="/Profile"
                   className="flex items-center gap-2 hover:opacity-80 transition"
                 >
