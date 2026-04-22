@@ -283,4 +283,104 @@ router.get('/detail/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// Fetch user's created videos with pagination
+router.get('/user/my-videos', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 5;
+    const skip = (page - 1) * limit;
+    
+    const total = await Video.countDocuments({ creator: currentUserId });
+    
+    const videos = await Video.find({ creator: currentUserId })
+      .select('_id title thumbnail_url jlpt_level views_count status visibility created_date')
+      .sort({ created_date: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      videos,
+      pagination: {
+        currentPage: page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPrevPage: page > 1
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi khi lấy danh sách video của user:', error);
+    res.status(500).json({ error: 'Lỗi khi lấy danh sách video' });
+  }
+});
+
+// Update video
+router.put('/update/:id', authMiddleware, async (req, res) => {
+  try {
+    const { title, visibility } = req.body;
+    const currentUserId = req.user?.id || req.user?.userId;
+
+    const video = await Video.findById(req.params.id);
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    // Check if user is the creator
+    if (String(video.creator) !== String(currentUserId)) {
+      return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa video này' });
+    }
+
+    if (title) {
+      video.title = title;
+    }
+
+    if (visibility && ['public', 'private'].includes(visibility)) {
+      video.visibility = visibility;
+    }
+
+    await video.save();
+
+    res.json({
+      message: 'Video đã được cập nhật',
+      video: {
+        _id: video._id,
+        title: video.title,
+        youtube_url: video.youtube_url,
+        jlpt_level: video.jlpt_level,
+        status: video.status,
+        visibility: video.visibility
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi khi cập nhật video:', error);
+    res.status(500).json({ error: 'Lỗi khi cập nhật video' });
+  }
+});
+
+// Delete video
+router.delete('/delete/:id', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+
+    const video = await Video.findById(req.params.id);
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    // Check if user is the creator
+    if (String(video.creator) !== String(currentUserId)) {
+      return res.status(403).json({ error: 'Bạn không có quyền xóa video này' });
+    }
+
+    await Video.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'Video đã được xóa' });
+  } catch (error) {
+    console.error('Lỗi khi xóa video:', error);
+    res.status(500).json({ error: 'Lỗi khi xóa video' });
+  }
+});
+
 export default router;

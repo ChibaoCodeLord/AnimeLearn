@@ -39,6 +39,11 @@ const VideoSchema = new mongoose.Schema({
     enum: ['approved', 'rejected', 'pending'],
     default: 'pending'
   },
+  visibility: {
+    type: String,
+    enum: ['public', 'private'],
+    default: 'public'
+  },
   created_date: {
     type: Date,
     default: Date.now
