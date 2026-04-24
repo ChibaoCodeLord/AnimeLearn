@@ -53,21 +53,27 @@ export const updateUserActivity = async (
     const user = await User.findById(userId);
     if (!user) throw new Error('User not found');
 
-    // Check day streak
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
+    // Check day streak logic (Duolingo style)
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
 
-    const yesterdayActivity = await LearningActivity.findOne({
-      userId,
-      date: { $gte: yesterday, $lt: today }
-    });
+    if (user.lastActiveDate) {
+      const lastActive = new Date(user.lastActiveDate);
+      lastActive.setHours(0, 0, 0, 0);
 
-    if (yesterdayActivity) {
-      // Continue streak
-      user.dayStreak = (user.dayStreak || 0) + 1;
+      const timeDiff = todayDate.getTime() - lastActive.getTime();
+      const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+
+      if (daysDiff === 1) {
+        // Active yesterday, increment streak
+        user.dayStreak = (user.dayStreak || 0) + 1;
+      } else if (daysDiff > 1) {
+        // Missed yesterday or more, reset streak
+        user.dayStreak = 1;
+      }
+      // If daysDiff === 0, they were already active today, do not change streak.
     } else {
-      // Reset or start streak
+      // First time active
       user.dayStreak = 1;
     }
 
