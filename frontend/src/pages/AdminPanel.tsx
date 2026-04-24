@@ -198,6 +198,76 @@ function DeleteConfirmModal({
   );
 }
 
+function RejectReasonModal({
+  video,
+  reason,
+  onReasonChange,
+  onConfirm,
+  onCancel,
+  isSubmitting,
+}: {
+  video: VideoItem | null;
+  reason: string;
+  onReasonChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isSubmitting: boolean;
+}) {
+  if (!video) return null;
+
+  const trimmedReason = reason.trim();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-rose-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Nhập lý do từ chối</h3>
+            <p className="text-sm text-slate-500">Lý do này sẽ được gửi về email của người tạo video.</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 rounded-xl p-3 mb-4 border border-slate-100">
+          <p className="text-sm text-slate-800 font-medium line-clamp-2">{video.title}</p>
+          <p className="text-xs text-slate-500 mt-1">Tạo bởi: {video.creator.fullName}</p>
+        </div>
+
+        <label className="block text-sm font-semibold text-slate-700 mb-2" htmlFor="reject-reason">
+          Lý do từ chối
+        </label>
+        <textarea
+          id="reject-reason"
+          value={reason}
+          onChange={(e) => onReasonChange(e.target.value)}
+          rows={5}
+          placeholder="Ví dụ: Âm thanh chưa rõ, nội dung chưa đúng chủ đề..."
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 resize-none"
+        />
+
+        <p className="mt-2 text-xs text-slate-500">
+          Tối thiểu nhập một lý do ngắn để người dùng biết cần sửa phần nào.
+        </p>
+
+        <div className="mt-5 flex gap-3">
+          <Button variant="outline" onClick={onCancel} disabled={isSubmitting} className="flex-1">
+            Hủy bỏ
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={isSubmitting || !trimmedReason}
+            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white border-0"
+          >
+            {isSubmitting ? 'Đang gửi...' : 'Từ chối & gửi email'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── COMPONENT CHÍNH ──────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
@@ -210,6 +280,8 @@ export default function AdminPanel() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<VideoItem | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<VideoItem | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   // User search
   const [userSearch, setUserSearch] = useState('');
@@ -269,11 +341,15 @@ export default function AdminPanel() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: VideoStatus }) =>
-      apiFetch(`/admin/videos/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    mutationFn: ({ id, status, reason }: { id: string; status: VideoStatus; reason?: string }) =>
+      apiFetch(`/admin/videos/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, reason }) }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin-videos'] });
       toast.success(`Đã cập nhật: ${STATUS_CONFIG[variables.status].label}`);
+      if (variables.status === 'rejected') {
+        setRejectTarget(null);
+        setRejectReason('');
+      }
     },
     onError: (e: Error) => toast.error(`Lỗi: ${e.message}`),
   });
@@ -333,6 +409,25 @@ export default function AdminPanel() {
         onConfirm={() => deleteTarget && deleteVideoMutation.mutate(deleteTarget.id)}
         onCancel={() => setDeleteTarget(null)}
         isDeleting={deleteVideoMutation.isPending}
+      />
+      <RejectReasonModal
+        video={rejectTarget}
+        reason={rejectReason}
+        onReasonChange={setRejectReason}
+        onCancel={() => {
+          setRejectTarget(null);
+          setRejectReason('');
+        }}
+        onConfirm={() => {
+          if (!rejectTarget) return;
+          const trimmedReason = rejectReason.trim();
+          if (!trimmedReason) {
+            toast.error('Vui lòng nhập lý do từ chối');
+            return;
+          }
+          updateStatusMutation.mutate({ id: rejectTarget.id, status: 'rejected', reason: trimmedReason });
+        }}
+        isSubmitting={updateStatusMutation.isPending}
       />
 
       <div className="w-full px-4 md:px-6 py-6 animate-in fade-in duration-500">
@@ -547,7 +642,10 @@ export default function AdminPanel() {
                               {/* Từ chối */}
                               {v.status !== 'rejected' && (
                                 <button
-                                  onClick={() => updateStatusMutation.mutate({ id: v.id, status: 'rejected' })}
+                                  onClick={() => {
+                                    setRejectTarget(v);
+                                    setRejectReason('');
+                                  }}
                                   disabled={updateStatusMutation.isPending}
                                   title="Từ chối video"
                                   className="w-8 h-8 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center justify-center transition-colors"

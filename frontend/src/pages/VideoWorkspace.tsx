@@ -6,7 +6,7 @@ const YouTube = (YouTubeOrigin as any).default || YouTubeOrigin;
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain, Eye, EyeOff, Heart, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import ScriptPanel, { type ScriptLine } from '../components/video/ScriptPanel';
 import SubtitleOverlay from '../components/video/SubtitleOverlay';
@@ -26,6 +26,7 @@ interface CurrentUser {
 }
 
 const API_BASE = 'http://localhost:5000/api';
+const VIDEO_VIEW_THRESHOLD = 0.7;
 
 const STATUS_OPTIONS: Record<VideoStatus, { label: string; className: string }> = {
   approved: {
@@ -41,6 +42,69 @@ const STATUS_OPTIONS: Record<VideoStatus, { label: string; className: string }> 
     className: 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
   },
 };
+
+function RejectReasonModal({
+  title,
+  reason,
+  onReasonChange,
+  onConfirm,
+  onCancel,
+  isSubmitting,
+}: {
+  title: string;
+  reason: string;
+  onReasonChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isSubmitting: boolean;
+}) {
+  const trimmedReason = reason.trim();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-rose-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Nhập lý do từ chối</h3>
+            <p className="text-sm text-slate-500">Lý do sẽ được gửi về email của người tạo video.</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 rounded-xl p-3 mb-4 border border-slate-100">
+          <p className="text-sm text-slate-800 font-medium line-clamp-2">{title}</p>
+        </div>
+
+        <label className="block text-sm font-semibold text-slate-700 mb-2" htmlFor="video-workspace-reject-reason">
+          Lý do từ chối
+        </label>
+        <textarea
+          id="video-workspace-reject-reason"
+          value={reason}
+          onChange={(e) => onReasonChange(e.target.value)}
+          rows={5}
+          placeholder="Ví dụ: Nội dung chưa đúng chủ đề, âm thanh còn nhỏ..."
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 resize-none"
+        />
+
+        <div className="mt-5 flex gap-3">
+          <Button variant="outline" onClick={onCancel} disabled={isSubmitting} className="flex-1">
+            Hủy bỏ
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={isSubmitting || !trimmedReason}
+            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white border-0"
+          >
+            {isSubmitting ? 'Đang gửi...' : 'Từ chối & gửi email'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function extractYouTubeId(url: string | null) {
   if (!url) return null;
@@ -98,10 +162,16 @@ export default function VideoWorkspace() {
   const [videoTitle, setVideoTitle] = useState('');
   const [currentYoutubeUrl, setCurrentYoutubeUrl] = useState(youtubeUrl || '');
   const [videoStatus, setVideoStatus] = useState<VideoStatus>('pending');
+  const [viewsCount, setViewsCount] = useState(0);
+  const [likesCount, setLikesCount] = useState(0);
+  const [likedByMe, setLikedByMe] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
 
   const playerRef = useRef<any>(null);
+  const hasCountedViewRef = useRef(false);
   const queryClient = useQueryClient();
 
   const { data: currentUser } = useQuery<CurrentUser>({
@@ -115,21 +185,26 @@ export default function VideoWorkspace() {
   const showReviewBar = Boolean(videoId) && isAdmin;
 
   const updateStatusMutation = useMutation({
-    mutationFn: (status: VideoStatus) => {
+    mutationFn: ({ status, reason }: { status: VideoStatus; reason?: string }) => {
       if (!videoId) throw new Error('Thiếu mã video');
       return fetch(`${API_BASE}/admin/videos/${videoId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, reason }),
       }).then(async response => {
         const data = await response.json().catch(() => null);
         if (!response.ok) throw new Error(data?.error || 'Không thể cập nhật trạng thái');
         return data;
       });
     },
-    onSuccess: (_data, status) => {
+    onSuccess: (_data, variables) => {
+      const { status } = variables;
       setVideoStatus(status);
+      if (status === 'rejected') {
+        setRejectDialogOpen(false);
+        setRejectReason('');
+      }
       toast.success(`Đã cập nhật trạng thái: ${STATUS_OPTIONS[status].label}`);
       queryClient.invalidateQueries({ queryKey: ['community-videos'] });
       queryClient.invalidateQueries({ queryKey: ['admin-videos'] });
@@ -139,9 +214,108 @@ export default function VideoWorkspace() {
     },
   });
 
+  const likeMutation = useMutation({
+    mutationFn: async () => {
+      if (!videoId) {
+        throw new Error('Thiếu mã video');
+      }
+
+      const response = await fetch(`${API_BASE}/video/like/${videoId}`, {
+        method: 'POST',
+        headers: {
+          ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}),
+        },
+        credentials: 'include',
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.error || data?.message || 'Không thể thích video');
+      }
+
+      return data as { likes_count?: number; alreadyLiked?: boolean };
+    },
+    onMutate: async () => {
+      const previousLikes = likesCount;
+      const previousLikedByMe = likedByMe;
+      setLikesCount((prev) => prev + 1);
+      setLikedByMe(true);
+      return { previousLikes, previousLikedByMe };
+    },
+    onSuccess: (data) => {
+      if (typeof data.likes_count === 'number') {
+        setLikesCount(data.likes_count);
+      }
+      if (data.alreadyLiked) {
+        setLikedByMe(true);
+      }
+      toast.success(data.alreadyLiked ? 'Video đã được like rồi' : 'Đã like video');
+    },
+    onError: (error: Error, _variables, context) => {
+      if (typeof context?.previousLikes === 'number') {
+        setLikesCount(context.previousLikes);
+      }
+      if (typeof context?.previousLikedByMe === 'boolean') {
+        setLikedByMe(context.previousLikedByMe);
+      }
+      toast.error(error.message || 'Không thể thích video');
+    },
+  });
+
+  const unlikeMutation = useMutation({
+    mutationFn: async () => {
+      if (!videoId) {
+        throw new Error('Thiếu mã video');
+      }
+
+      const response = await fetch(`${API_BASE}/video/unlike/${videoId}`, {
+        method: 'POST',
+        headers: {
+          ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}),
+        },
+        credentials: 'include',
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.error || data?.message || 'Không thể bỏ thích video');
+      }
+
+      return data as { likes_count?: number; alreadyUnliked?: boolean };
+    },
+    onMutate: async () => {
+      const previousLikes = likesCount;
+      const previousLikedByMe = likedByMe;
+      setLikesCount((prev) => Math.max(0, prev - 1));
+      setLikedByMe(false);
+      return { previousLikes, previousLikedByMe };
+    },
+    onSuccess: (data) => {
+      if (typeof data.likes_count === 'number') {
+        setLikesCount(data.likes_count);
+      }
+      if (data.alreadyUnliked) {
+        setLikedByMe(false);
+      }
+      toast.success(data.alreadyUnliked ? 'Video chưa được thích trước đó' : 'Đã bỏ thích video');
+    },
+    onError: (error: Error, _variables, context) => {
+      if (typeof context?.previousLikes === 'number') {
+        setLikesCount(context.previousLikes);
+      }
+      if (typeof context?.previousLikedByMe === 'boolean') {
+        setLikedByMe(context.previousLikedByMe);
+      }
+      toast.error(error.message || 'Không thể bỏ thích video');
+    },
+  });
+
   useEffect(() => {
     if (videoId) {
       setIsCheckingAccess(true);
+      hasCountedViewRef.current = sessionStorage.getItem(`video-view-counted:${videoId}`) === '1';
       fetch(`http://localhost:5000/api/video/detail/${videoId}`, {
         credentials: 'include',
       })
@@ -159,6 +333,9 @@ export default function VideoWorkspace() {
             setVideoTitle(video.title || '');
             setCurrentYoutubeUrl(video.youtube_url || '');
             setVideoStatus(video.status || 'pending');
+            setViewsCount(video.views_count || 0);
+            setLikesCount(video.likes_count || 0);
+            setLikedByMe(Boolean(video.likedByMe));
             setLoadError(null);
           }
         })
@@ -198,6 +375,32 @@ export default function VideoWorkspace() {
           
           if (foundIndex !== -1 && foundIndex !== currentIndex) {
             setCurrentIndex(foundIndex);
+          }
+
+          if (!hasCountedViewRef.current && videoId) {
+            const duration = await playerRef.current.getDuration();
+
+            if (duration > 0 && currentTime / duration >= VIDEO_VIEW_THRESHOLD) {
+              hasCountedViewRef.current = true;
+              sessionStorage.setItem(`video-view-counted:${videoId}`, '1');
+
+              fetch(`http://localhost:5000/api/video/view/${videoId}`, {
+                method: 'POST',
+              }).catch(() => {
+                hasCountedViewRef.current = false;
+                sessionStorage.removeItem(`video-view-counted:${videoId}`);
+              }).then((response) => {
+                if (!response) {
+                  return;
+                }
+
+                return response.json().then((data) => {
+                  if (typeof data?.views_count === 'number') {
+                    setViewsCount(data.views_count);
+                  }
+                }).catch(() => undefined);
+              });
+            }
           }
         } catch (e) { }
       }, 300); // Lưu ý: Nếu muốn UI nhạy hơn nữa, có thể giảm 500 xuống 250
@@ -262,7 +465,10 @@ export default function VideoWorkspace() {
         credentials: 'omit'
       });
 
-      if (!response.ok) throw new Error('Lỗi máy chủ khi phân tích video.');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.details || errorData?.error || 'Đã có lỗi xảy ra từ máy chủ khi phân tích video.');
+      }
 
       const result = await response.json();
       setScript(result.script);
@@ -328,8 +534,54 @@ export default function VideoWorkspace() {
     setPopupPos(pos);
   };
 
+  if (videoId && isCheckingAccess) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 px-4">
+        <div className="text-center text-slate-600">
+          <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-500" />
+          <p className="text-sm font-medium">Đang kiểm tra quyền truy cập...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (videoId && loadError) {
+    return (
+      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 px-4">
+        <div className="max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-sm text-center">
+          <h2 className="text-xl font-bold text-slate-900">Không thể mở video</h2>
+          <p className="mt-2 text-sm text-slate-600">{loadError}</p>
+          <p className="mt-3 text-xs text-slate-500">
+            Nếu đây là video chưa duyệt, chỉ admin và creator mới được xem.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+
   return (
     <div className={`min-h-[calc(100vh-4rem)] bg-slate-50 flex flex-col p-4 md:p-6 lg:p-8 w-full mx-auto animate-in fade-in duration-500 ${showReviewBar ? 'pb-28' : ''}`}>
+      {rejectDialogOpen && (
+        <RejectReasonModal
+          title={videoTitle || 'Video chưa đặt tên'}
+          reason={rejectReason}
+          onReasonChange={setRejectReason}
+          onCancel={() => {
+            setRejectDialogOpen(false);
+            setRejectReason('');
+          }}
+          onConfirm={() => {
+            const trimmedReason = rejectReason.trim();
+            if (!trimmedReason) {
+              toast.error('Vui lòng nhập lý do từ chối');
+              return;
+            }
+            updateStatusMutation.mutate({ status: 'rejected', reason: trimmedReason });
+          }}
+          isSubmitting={updateStatusMutation.isPending}
+        />
+      )}
 
       <Tabs defaultValue="shadowing" className="w-full flex flex-col flex-1">
         <div className="flex justify-center mb-6 lg:mb-8 shrink-0">
@@ -381,11 +633,32 @@ export default function VideoWorkspace() {
                 {videoTitle ? (
                   <div className="flex flex-col items-start sm:items-end gap-2">
                     <h2 className="text-slate-800 font-bold truncate text-lg" title={videoTitle}>{videoTitle}</h2>
-                    {videoId && (
-                      <Badge variant="outline" className={`font-semibold ${STATUS_OPTIONS[videoStatus].className}`}>
-                        {STATUS_OPTIONS[videoStatus].label}
-                      </Badge>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <div className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-600">
+                        <Eye className="w-4 h-4 text-slate-500" />
+                        <span>{viewsCount.toLocaleString()} lượt xem</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!videoId || likeMutation.isPending || unlikeMutation.isPending}
+                        onClick={() => (likedByMe ? unlikeMutation.mutate() : likeMutation.mutate())}
+                        className={`h-9 rounded-full border-rose-200 bg-white text-rose-600 hover:bg-rose-50 hover:text-rose-700 ${likedByMe ? 'opacity-90' : ''}`}
+                      >
+                        {likeMutation.isPending || unlikeMutation.isPending ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Heart className={`mr-1.5 h-4 w-4 ${likedByMe ? 'fill-rose-600 text-rose-600' : ''}`} />
+                        )}
+                        {likedByMe ? `Bỏ thích (${likesCount.toLocaleString()})` : likesCount.toLocaleString()}
+                      </Button>
+                      {videoId && (
+                        <Badge variant="outline" className={`font-semibold ${STATUS_OPTIONS[videoStatus].className}`}>
+                          {STATUS_OPTIONS[videoStatus].label}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <span className="text-slate-400 text-sm italic">Video Workspace</span>
@@ -501,6 +774,15 @@ export default function VideoWorkspace() {
                 {(Object.keys(STATUS_OPTIONS) as VideoStatus[]).map(status => {
                   const option = STATUS_OPTIONS[status];
                   const isActive = videoStatus === status;
+                  const handleStatusClick = () => {
+                    if (status === 'rejected') {
+                      setRejectReason('');
+                      setRejectDialogOpen(true);
+                      return;
+                    }
+
+                    updateStatusMutation.mutate({ status });
+                  };
 
                   return (
                     <Button
@@ -508,7 +790,7 @@ export default function VideoWorkspace() {
                       type="button"
                       variant="outline"
                       disabled={updateStatusMutation.isPending}
-                      onClick={() => updateStatusMutation.mutate(status)}
+                      onClick={handleStatusClick}
                       className={`rounded-full px-4 ${option.className} ${isActive ? 'ring-2 ring-offset-2 ring-slate-300' : ''}`}
                     >
                       {option.label}
