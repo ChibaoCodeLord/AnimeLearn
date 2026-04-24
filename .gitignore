@@ -68,3 +68,6 @@ __pycache__/
 .npm/
 
 # Optional: keep lockfiles in repo (do NOT ignore package-lock.json, yarn.lock, pnpm-lock.yaml)
+
+# Databases / RAG data
+backend/rag/

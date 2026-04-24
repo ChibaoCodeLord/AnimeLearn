@@ -4,7 +4,6 @@ import User from '../models/User.js';
 import { authMiddleware } from '../middleware/auth.js';
 import UserAchievement from '../models/UserAchievement.js';
 import Achievement from '../models/Achievement.js';
-import UserCourse from '../models/UserCourse.js';
 import LearningActivity from '../models/LearningActivity.js';
 import { updateUserActivity } from '../services/learningActivityService.js';
 
@@ -220,36 +219,75 @@ router.get('/learning-progress', authMiddleware, async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    // Get last 7 days of learning activity
+    const period = req.query.period || 'week'; // week, month
     const today = new Date();
-    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    today.setHours(0, 0, 0, 0);
+
+    let startDate, dataPoints, daysOfWeek = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
+    if (period === 'week') {
+      startDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      dataPoints = 7;
+    } else if (period === 'month') {
+      // Last 12 months
+      startDate = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
+      dataPoints = 12;
+    }
 
     const activities = await LearningActivity.find({
       userId: req.user.id,
-      date: { $gte: sevenDaysAgo, $lte: today }
+      date: { $gte: startDate, $lte: today }
     }).sort({ date: 1 });
 
-    // Map to days of week
-    const daysOfWeek = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-    const weeklyData = [];
+    if (period === 'week') {
+      const weeklyData = [];
 
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - (6 - i));
-      date.setHours(0, 0, 0, 0);
+      for (let i = 0; i < dataPoints; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - (dataPoints - 1 - i));
+        date.setHours(0, 0, 0, 0);
 
-      const activity = activities.find(
-        a => new Date(a.date).toDateString() === date.toDateString()
-      );
+        const activity = activities.find(
+          a => new Date(a.date).toDateString() === date.toDateString()
+        );
 
-      weeklyData.push({
-        day: daysOfWeek[(date.getDay() + 6) % 7],
-        hours: activity?.hoursSpent || 0,
-        date: date.toISOString().split('T')[0]
-      });
+        const dayLabel = daysOfWeek[(date.getDay() + 6) % 7];
+
+        weeklyData.push({
+          day: dayLabel.toString(),
+          hours: activity?.hoursSpent || 0,
+          date: date.toISOString().split('T')[0]
+        });
+      }
+
+      res.json({ weeklyData });
+    } else if (period === 'month') {
+      // Build monthly data for last 12 months
+      const monthlyData = [];
+      const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+      for (let i = 11; i >= 0; i--) {
+        const monthDate = new Date(today);
+        monthDate.setMonth(monthDate.getMonth() - i);
+        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+        const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+        monthEnd.setHours(23, 59, 59, 999);
+
+        const monthActivities = activities.filter(a => {
+          const activityDate = new Date(a.date);
+          return activityDate >= monthStart && activityDate <= monthEnd;
+        });
+
+        const totalHours = monthActivities.reduce((sum, a) => sum + (a.hoursSpent || 0), 0);
+
+        monthlyData.push({
+          month: monthNames[monthDate.getMonth()],
+          hours: Math.round(totalHours * 10) / 10
+        });
+      }
+
+      res.json({ monthlyData });
     }
-
-    res.json({ weeklyData });
   } catch (error) {
     console.error('Error fetching learning progress:', error);
     res.status(500).json({ error: 'Lỗi lấy tiến độ học tập' });
@@ -257,21 +295,6 @@ router.get('/learning-progress', authMiddleware, async (req, res) => {
 });
 
 // Get user's courses with progress
-router.get('/courses', authMiddleware, async (req, res) => {
-  try {
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const courses = await UserCourse.find({ userId: req.user.id }).sort({ startedAt: -1 });
-
-    res.json(courses);
-  } catch (error) {
-    console.error('Error fetching courses:', error);
-    res.status(500).json({ error: 'Lỗi lấy danh sách khoá học' });
-  }
-});
-
 // Get user's achievements
 router.get('/achievements', authMiddleware, async (req, res) => {
   try {
@@ -322,10 +345,31 @@ router.get('/profile-stats', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Get user's rank based on XP points (top 5%)
+    // Check if streak is lost
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    
+    let currentStreak = user.dayStreak || 0;
+    
+    if (user.lastActiveDate) {
+      const lastActive = new Date(user.lastActiveDate);
+      lastActive.setHours(0, 0, 0, 0);
+      
+      const timeDiff = todayDate.getTime() - lastActive.getTime();
+      const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+      
+      // If more than 1 day has passed, streak is broken
+      if (daysDiff > 1 && currentStreak > 0) {
+        currentStreak = 0;
+        await User.findByIdAndUpdate(req.user.id, { dayStreak: 0 });
+      }
+    }
+
+    // Get user's rank based on XP points
     const totalUsers = await User.countDocuments();
-    const userRank = await User.countDocuments({ xpPoints: { $gt: user.xpPoints } });
-    const percentile = Math.round(((totalUsers - userRank) / totalUsers) * 100);
+    const usersAhead = await User.countDocuments({ xpPoints: { $gt: user.xpPoints } });
+    const userRank = usersAhead + 1; // 1-based ranking
+    const percentile = Math.round(((totalUsers - usersAhead) / totalUsers) * 100);
 
     // Get today's learning activity
     const today = new Date();
@@ -335,12 +379,22 @@ router.get('/profile-stats', authMiddleware, async (req, res) => {
       date: { $gte: today, $lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) }
     });
 
+    // Calculate total learning hours this week
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekActivities = await LearningActivity.find({
+      userId: req.user.id,
+      date: { $gte: sevenDaysAgo, $lte: today }
+    });
+    const weekHours = weekActivities.reduce((sum, a) => sum + (a.hoursSpent || 0), 0);
+
     res.json({
       totalLearningHours: user.totalLearningHours || 0,
-      dayStreak: user.dayStreak || 0,
+      dayStreak: currentStreak,
       xpPoints: user.xpPoints || 0,
+      userRank: userRank,
       ranking: `Top ${percentile}%`,
-      todayHours: todayActivity?.hoursSpent || 0
+      todayHours: todayActivity?.hoursSpent || 0,
+      weekHours: Math.round(weekHours * 10) / 10
     });
   } catch (error) {
     console.error('Error fetching profile stats:', error);
@@ -360,74 +414,6 @@ router.post('/update-learning-activity', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error updating learning activity:', error);
     res.status(500).json({ error: 'Lỗi cập nhật hoạt động học tập' });
-  }
-});
-
-// Add course for user
-router.post('/add-course', authMiddleware, async (req, res) => {
-  try {
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { courseId, title, unit, color = '#A5F3C7' } = req.body;
-
-    if (!courseId || !title || !unit) {
-      return res.status(400).json({ error: 'Thiếu thông tin khoá học' });
-    }
-
-    const userCourse = new UserCourse({
-      userId: req.user.id,
-      courseId,
-      title,
-      unit,
-      color,
-      progress: 0
-    });
-
-    await userCourse.save();
-
-    res.json({ success: true, userCourse });
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({ error: 'Khoá học đã tồn tại cho người dùng này' });
-    }
-    console.error('Error adding course:', error);
-    res.status(500).json({ error: 'Lỗi thêm khoá học' });
-  }
-});
-
-// Update course progress
-router.put('/update-course/:courseId', authMiddleware, async (req, res) => {
-  try {
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { progress } = req.body;
-    const { courseId } = req.params;
-
-    if (progress < 0 || progress > 100) {
-      return res.status(400).json({ error: 'Tiến độ phải từ 0 đến 100' });
-    }
-
-    const userCourse = await UserCourse.findOneAndUpdate(
-      { userId: req.user.id, courseId },
-      {
-        progress,
-        completedAt: progress === 100 ? new Date() : null
-      },
-      { new: true }
-    );
-
-    if (!userCourse) {
-      return res.status(404).json({ error: 'Không tìm thấy khoá học' });
-    }
-
-    res.json({ success: true, userCourse });
-  } catch (error) {
-    console.error('Error updating course:', error);
-    res.status(500).json({ error: 'Lỗi cập nhật khoá học' });
   }
 });
 
@@ -513,6 +499,107 @@ router.post('/test-complete-quiz', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Error in test endpoint:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Track user session time (called via sendBeacon)
+router.post('/track-session', authMiddleware, async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { durationSeconds, page } = req.body;
+
+    if (!durationSeconds || durationSeconds < 0) {
+      return res.status(400).json({ error: 'Invalid duration' });
+    }
+
+    // Convert seconds to hours
+    const durationHours = durationSeconds / 3600;
+
+    // Get today's date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Find or create today's activity
+    let activity = await LearningActivity.findOne({
+      userId: req.user.id,
+      date: {
+        $gte: today,
+        $lt: tomorrow
+      }
+    });
+
+    if (activity) {
+      // Update existing activity
+      activity.hoursSpent += durationHours;
+    } else {
+      // Create new activity
+      activity = await LearningActivity.create({
+        userId: req.user.id,
+        date: today,
+        hoursSpent: durationHours,
+        videosWatched: 0,
+        quizzesTaken: 0,
+        vocabularyLearned: 0,
+        xpEarned: 0
+      });
+    }
+
+    await activity.save();
+
+    // Get the user to check if they need a streak update
+    const currentUser = await User.findById(req.user.id);
+    // Normalize to calendar days
+    const todayDate = new Date(now);
+    todayDate.setHours(0, 0, 0, 0);
+
+    let streakUpdate = {};
+
+    if (currentUser.lastActiveDate) {
+      const lastActive = new Date(currentUser.lastActiveDate);
+      lastActive.setHours(0, 0, 0, 0);
+
+      const timeDiff = todayDate.getTime() - lastActive.getTime();
+      const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+
+      if (daysDiff === 1) {
+        // Active yesterday, not today yet -> increment streak
+        streakUpdate = { $inc: { dayStreak: 1 } };
+      } else if (daysDiff > 1) {
+        // Missed yesterday -> reset streak to 1
+        streakUpdate = { dayStreak: 1 };
+      }
+      // If daysDiff === 0 (Active today already) -> no change to streak
+    } else {
+      // First time, start streak at 1
+      streakUpdate = { dayStreak: 1 };
+    }
+
+    // Update user's totalLearningHours, lastActiveDate, and streak
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        $inc: { totalLearningHours: durationHours },
+        lastActiveDate: now,
+        ...streakUpdate
+      },
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      message: 'Session tracked successfully',
+      durationHours,
+      totalLearningHours: user.totalLearningHours,
+      page
+    });
+  } catch (error) {
+    console.error('Error tracking session:', error);
+    res.status(500).json({ error: 'Failed to track session' });
   }
 });
 
