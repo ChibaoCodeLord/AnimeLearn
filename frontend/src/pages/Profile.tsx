@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { MapPin, Flame, Star, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, MoreVertical, Globe } from 'lucide-react';
+import { MapPin, Flame, Star, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, Save, MoreVertical, Globe } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 
@@ -50,7 +51,7 @@ const updateUserProfile = async (data: Partial<UserProfile> | FormData): Promise
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || error.message || 'Failed to update profile');
+    throw new Error(error.message || 'Failed to update profile');
   }
 
   return response.json();
@@ -334,6 +335,11 @@ export default function Profile() {
       setIsEditing(true);
     }
   };
+
+  const maxBarHeight = 100;
+  const maxHours = Math.max(
+    ...(learningProgress?.weeklyData?.map((d: any) => d.hours) || [1])
+  );
 
   if (isLoading) {
     return (
@@ -852,27 +858,101 @@ export default function Profile() {
             )}
           </div>
 
-          {/* Achievements */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Achievements</h2>
+          {/* Achievements - Streak Trophies */}
+          {(() => {
+            const currentStreak = profileStats?.dayStreak || 0;
+            const streakMilestones = [
+              { days: 5, label: '5 Day Streak' },
+              { days: 10, label: '10 Day Streak' },
+              { days: 15, label: '15 Day Streak' },
+              { days: 30, label: '30 Day Streak' },
+            ];
+            const unlockedCount = streakMilestones.filter(m => currentStreak >= m.days).length;
+            const nextMilestone = streakMilestones.find(m => currentStreak < m.days);
+            const progress = nextMilestone ? Math.min(currentStreak / nextMilestone.days, 1) : 1;
 
-            <div className="space-y-3">
-              {(achievementsData || []).map((achievement: any) => (
-                <div
-                  key={achievement.id}
-                  className={`p-4 rounded-lg text-center transition-all ${!achievement.unlocked
-                    ? 'bg-gray-100 opacity-60'
-                    : 'bg-yellow-50 border border-yellow-200'
-                    }`}
-                >
-                  <div className="flex justify-center mb-2">
-                    {renderAchievementIcon(achievement.icon, !achievement.unlocked)}
+            return (
+              <div className="rounded-xl shadow-sm overflow-hidden" style={{ background: 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 40%)' }}>
+                <div className="p-6">
+                  {/* Header */}
+                  <h2 className="text-xl font-bold text-gray-900">Achievements</h2>
+                  <p className="text-sm text-gray-500 mb-5">{unlockedCount} of {streakMilestones.length} Streaks Unlocked</p>
+
+                  <div className="border-t border-gray-100 pt-5">
+                    <h3 className="text-base font-semibold text-gray-800 mb-4">Streak Trophies</h3>
+
+                    {/* 2x2 Grid */}
+                    <div className="grid grid-cols-2 gap-3 mb-5">
+                      {streakMilestones.map((milestone) => {
+                        const unlocked = currentStreak >= milestone.days;
+                        return (
+                          <div
+                            key={milestone.days}
+                            className={`rounded-xl p-4 flex flex-col items-center justify-center transition-all ${unlocked
+                                ? 'bg-white border-2 border-green-200 shadow-sm'
+                                : 'bg-gray-50 border border-gray-200'
+                              }`}
+                          >
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 ${unlocked
+                                ? 'bg-gradient-to-br from-orange-100 to-green-100'
+                                : 'bg-gray-100'
+                              }`}>
+                              <Flame className={`w-6 h-6 ${unlocked ? 'text-orange-500' : 'text-gray-300'
+                                }`} />
+                            </div>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${unlocked ? 'text-green-700' : 'text-gray-400'
+                              }`}>
+                              {unlocked ? 'Unlocked' : 'Locked'}
+                            </span>
+                            <span className={`text-xs font-semibold ${unlocked ? 'text-gray-800' : 'text-gray-400'
+                              }`}>
+                              {milestone.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Next Achievement Progress */}
+                    {nextMilestone ? (
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 mb-4">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-8 h-8 rounded-lg bg-green-700 flex items-center justify-center flex-shrink-0">
+                            <Trophy className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-gray-800">Next Achievement</p>
+                            <p className="text-xs text-gray-500">Reach {nextMilestone.days} day streak</p>
+                          </div>
+                        </div>
+                        <p className="text-xs font-semibold text-green-700 mb-1.5">{currentStreak} / {nextMilestone.days} days</p>
+                        <div className="w-full bg-green-100 rounded-full h-2">
+                          <div
+                            className="h-2 rounded-full transition-all duration-500"
+                            style={{
+                              width: `${progress * 100}%`,
+                              backgroundColor: '#005537'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl p-4 mb-4 text-center">
+                        <Trophy className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+                        <p className="text-sm font-bold text-gray-800">All Streaks Unlocked! 🎉</p>
+                        <p className="text-xs text-gray-500">You've achieved all streak milestones!</p>
+                      </div>
+                    )}
+
+                    {/* View History Button */}
+                    <button className="w-full py-3 text-sm font-semibold text-green-700 border-2 border-green-200 rounded-xl hover:bg-green-50 transition">
+                      View Achievement History
+                    </button>
                   </div>
-                  <p className="text-xs font-semibold text-gray-700">{achievement.name}</p>
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Learning Hours Card */}
