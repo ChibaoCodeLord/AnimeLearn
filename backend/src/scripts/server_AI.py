@@ -134,4 +134,4 @@ async def api_transcribe(payload: TranscribePayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=9000)
+    uvicorn.run(app, host="127.0.0.3", port=9000)

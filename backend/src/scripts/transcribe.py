@@ -153,7 +153,7 @@ def init_transcribe_system(use_gpu: bool = True):
     if use_gpu:
         add_nvidia_paths()
         
-    model_id = "large-v3-turbo"
+    model_id = "small"
     try:
         device = "cuda" if use_gpu else "cpu"
         compute_type = "int8_float16" if use_gpu else "int8"

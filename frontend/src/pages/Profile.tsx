@@ -33,14 +33,19 @@ const fetchUserProfile = async (): Promise<UserProfile> => {
   return response.json();
 };
 
-const updateUserProfile = async (data: Partial<UserProfile>): Promise<UserProfile> => {
+const updateUserProfile = async (data: Partial<UserProfile> | FormData): Promise<UserProfile> => {
+  const isFormData = data instanceof FormData;
+  const headers: Record<string, string> = {};
+
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   const response = await fetch('http://localhost:5000/api/auth/update-profile', {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     credentials: 'include',
-    body: JSON.stringify(data),
+    body: isFormData ? (data as FormData) : JSON.stringify(data),
   });
 
   if (!response.ok) {
@@ -197,6 +202,7 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<UserProfile>>({});
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingVideo, setEditingVideo] = useState<any | null>(null);
@@ -240,6 +246,7 @@ export default function Profile() {
       queryClient.setQueryData(['profile'], data);
       setIsEditing(false);
       setAvatarPreview(null);
+      setAvatarFile(null);
       toast.success('Cập nhật profile thành công');
     },
     onError: (error: Error) => {
@@ -288,17 +295,28 @@ export default function Profile() {
       const reader = new FileReader();
       reader.onloadend = () => {
         setAvatarPreview(reader.result as string);
-        setFormData((prev) => ({
-          ...prev,
-          profilePicture: reader.result as string,
-        }));
+        setAvatarFile(file); // Store the actual file to upload
       };
       reader.readAsDataURL(file);
     }
   };
 
   const handleSave = () => {
-    updateMutation.mutate(formData);
+    if (avatarFile) {
+      const uploadData = new FormData();
+      uploadData.append('avatar', avatarFile);
+
+      // Append other form data fields
+      if (formData.fullName) uploadData.append('fullName', formData.fullName);
+      if (formData.phone) uploadData.append('phone', formData.phone);
+      if (formData.location) uploadData.append('location', formData.location);
+      if (formData.jlptLevel) uploadData.append('jlptLevel', formData.jlptLevel);
+      if (formData.bio) uploadData.append('bio', formData.bio);
+
+      updateMutation.mutate(uploadData as any);
+    } else {
+      updateMutation.mutate(formData);
+    }
   };
 
   const handleCancel = () => {
@@ -307,6 +325,7 @@ export default function Profile() {
     }
     setIsEditing(false);
     setAvatarPreview(null);
+    setAvatarFile(null);
   };
 
   const handleEditClick = () => {
@@ -341,11 +360,15 @@ export default function Profile() {
             {/* Left Side - Avatar & Info */}
             <div className="flex gap-6 items-center flex-1">
               <div className="relative flex-shrink-0">
-                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-orange-400 to-blue-500 flex items-center justify-center text-white text-5xl font-bold shadow-lg">
-                  {user?.fullName?.charAt(0).toUpperCase()}
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-orange-400 to-blue-500 flex items-center justify-center text-white text-5xl font-bold shadow-lg overflow-hidden">
+                  {user?.profilePicture ? (
+                    <img src={user.profilePicture} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    user?.fullName?.charAt(0).toUpperCase()
+                  )}
                 </div>
                 <div className="absolute bottom-0 right-0 bg-green-500 rounded-full p-2 border-4 border-white">
-                  <div 
+                  <div
                     className="w-4 h-4 rounded-full"
                     style={{ backgroundColor: '#A5F3C7' }}
                   ></div>
@@ -357,7 +380,7 @@ export default function Profile() {
                   {user?.fullName}
                 </h1>
                 <div className="flex gap-3 flex-wrap items-center">
-                  <span 
+                  <span
                     className="px-3 py-1.5 text-white rounded-full text-sm font-bold"
                     style={{ backgroundColor: '#005537' }}
                   >
@@ -384,7 +407,7 @@ export default function Profile() {
                 <Edit2 className="w-4 h-4" />
                 Chỉnh sửa
               </button>
-              
+
               <div className="text-right">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   Mastery Goal
@@ -392,7 +415,7 @@ export default function Profile() {
                 <div className="text-2xl font-bold text-gray-900 leading-tight">
                   JLPT {user?.jlptLevel || 'Beginner'} <br /> Certification
                 </div>
-                <div 
+                <div
                   className="h-1 w-16 mt-3 ml-auto"
                   style={{ backgroundColor: '#005537' }}
                 ></div>
@@ -405,14 +428,14 @@ export default function Profile() {
         {isEditing && (
           <>
             {/* Backdrop Overlay - Transparent */}
-            <div 
+            <div
               className="fixed inset-0 bg-transparent z-40"
               onClick={handleCancel}
             ></div>
 
             {/* Modal Dialog */}
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div 
+              <div
                 className="bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-y-auto"
                 style={{ maxWidth: "500px" }}
               >
@@ -447,11 +470,13 @@ export default function Profile() {
                   {/* Avatar Section - Centered */}
                   <div className="flex flex-col items-center mb-8">
                     <div className="relative group cursor-pointer mb-3">
-                      <div 
-                        className="w-28 h-28 rounded-full bg-gradient-to-br from-orange-400 to-blue-500 flex items-center justify-center text-white text-3xl font-bold shadow-lg"
+                      <div
+                        className="w-28 h-28 rounded-full bg-gradient-to-br from-orange-400 to-blue-500 flex items-center justify-center text-white text-3xl font-bold shadow-lg overflow-hidden"
                       >
                         {avatarPreview ? (
-                          <img src={avatarPreview} alt="Avatar preview" className="w-28 h-28 rounded-full object-cover" />
+                          <img src={avatarPreview} alt="Avatar preview" className="w-full h-full object-cover" />
+                        ) : formData.profilePicture ? (
+                          <img src={formData.profilePicture} alt="Avatar" className="w-full h-full object-cover" />
                         ) : (
                           formData.fullName?.charAt(0).toUpperCase()
                         )}
@@ -471,8 +496,8 @@ export default function Profile() {
                       onChange={handleAvatarChange}
                       className="hidden"
                     />
-                    <p 
-                      className="text-sm font-semibold cursor-pointer hover:opacity-80" 
+                    <p
+                      className="text-sm font-semibold cursor-pointer hover:opacity-80"
                       style={{ color: '#005537' }}
                       onClick={() => fileInputRef.current?.click()}
                     >
@@ -588,22 +613,20 @@ export default function Profile() {
             <div className="flex gap-6">
               <button
                 onClick={() => setProgressTab('week')}
-                className={`px-0 py-2 font-medium transition border-b-2 ${
-                  progressTab === 'week'
-                    ? 'text-gray-900'
-                    : 'text-gray-500 border-transparent hover:text-gray-700'
-                }`}
+                className={`px-0 py-2 font-medium transition border-b-2 ${progressTab === 'week'
+                  ? 'text-gray-900'
+                  : 'text-gray-500 border-transparent hover:text-gray-700'
+                  }`}
                 style={progressTab === 'week' ? { borderBottomColor: '#005537' } : {}}
               >
                 Tuần này
               </button>
               <button
                 onClick={() => setProgressTab('month')}
-                className={`px-0 py-2 font-medium transition border-b-2 ${
-                  progressTab === 'month'
-                    ? 'text-gray-900'
-                    : 'text-gray-500 border-transparent hover:text-gray-700'
-                }`}
+                className={`px-0 py-2 font-medium transition border-b-2 ${progressTab === 'month'
+                  ? 'text-gray-900'
+                  : 'text-gray-500 border-transparent hover:text-gray-700'
+                  }`}
                 style={progressTab === 'month' ? { borderBottomColor: '#005537' } : {}}
               >
                 Tháng này
@@ -622,9 +645,9 @@ export default function Profile() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis dataKey="day" stroke="#9ca3af" />
                       <YAxis stroke="#9ca3af" domain={[0, 'dataMax + 0.5']} ticks={[0, 0.5, 1, 1.5, 2, 2.5, 3]} />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-                        formatter={(value) => [`${Number(value).toFixed(3)}h`, 'Hours']}
+                        formatter={(value: any) => [`${Number(value).toFixed(3)}h`, 'Hours']}
                       />
                       <Bar dataKey="hours" fill="#216E39" radius={[8, 8, 0, 0]} />
                     </BarChart>
@@ -638,14 +661,14 @@ export default function Profile() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis dataKey="month" stroke="#9ca3af" />
                       <YAxis stroke="#9ca3af" />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-                        formatter={(value) => [`${Number(value).toFixed(3)}h`, 'Hours']}
+                        formatter={(value: any) => [`${Number(value).toFixed(3)}h`, 'Hours']}
                       />
-                      <Line 
-                        type="monotone" 
-                        dataKey="hours" 
-                        stroke="#216E39" 
+                      <Line
+                        type="monotone"
+                        dataKey="hours"
+                        stroke="#216E39"
                         strokeWidth={3}
                         dot={{ fill: '#216E39', r: 5 }}
                         activeDot={{ r: 7 }}
@@ -700,9 +723,9 @@ export default function Profile() {
             <div className="space-y-4">
               {(videosResponse?.videos && videosResponse.videos.length > 0 ? videosResponse.videos : mockVideos).map((video: any) => (
                 <div key={video._id || video.id} className="flex items-center gap-4 pb-4 border-b border-gray-200 last:border-0">
-                  <div 
+                  <div
                     className="w-16 h-16 rounded flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden"
-                    style={{ 
+                    style={{
                       backgroundImage: video.thumbnail_url ? `url(${video.thumbnail_url})` : 'none',
                       backgroundColor: video.color || '#6B5B4D',
                       backgroundSize: 'cover',
@@ -717,20 +740,18 @@ export default function Profile() {
                       JLPT: {video.jlpt_level || 'Unknown'} • Views: {video.views_count || 0}
                     </p>
                     <div className="mt-2 flex items-center gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-full font-semibold flex items-center gap-1 ${
-                        video.status === 'approved' ? 'bg-green-100 text-green-700' :
+                      <span className={`text-xs px-2 py-1 rounded-full font-semibold flex items-center gap-1 ${video.status === 'approved' ? 'bg-green-100 text-green-700' :
                         video.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {video.status === 'approved' ? '✓ Approved' : 
-                         video.status === 'rejected' ? '✗ Rejected' : 
-                         '⏳ Pending'}
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                        {video.status === 'approved' ? '✓ Approved' :
+                          video.status === 'rejected' ? '✗ Rejected' :
+                            '⏳ Pending'}
                       </span>
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1 ${
-                        (video.visibility || 'public') === 'public'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-gray-200 text-gray-700'
-                      }`}>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1 ${(video.visibility || 'public') === 'public'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-gray-200 text-gray-700'
+                        }`}>
                         {(video.visibility || 'public') === 'public' ? (
                           <>
                             <Globe className="w-3.5 h-3.5" />
@@ -746,7 +767,7 @@ export default function Profile() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 relative">
-                    <button 
+                    <button
                       onClick={() => window.location.href = `/VideoWorkspace?id=${video._id}`}
                       className="w-12 h-12 rounded-full flex items-center justify-center text-white hover:opacity-90 transition"
                       style={{ backgroundColor: '#005537' }}
@@ -804,17 +825,16 @@ export default function Profile() {
                 >
                   ←<span>Trước</span>
                 </button>
-                
+
                 <div className="flex gap-2 mx-2">
                   {Array.from({ length: videosResponse.pagination.totalPages }, (_, i) => i + 1).map((page) => (
                     <button
                       key={page}
                       onClick={() => setCurrentPage(page)}
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition ${
-                        currentPage === page
-                          ? 'bg-green-700 text-white shadow-md'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition ${currentPage === page
+                        ? 'bg-green-700 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
                     >
                       {page}
                     </button>
@@ -840,11 +860,10 @@ export default function Profile() {
               {(achievementsData || []).map((achievement: any) => (
                 <div
                   key={achievement.id}
-                  className={`p-4 rounded-lg text-center transition-all ${
-                    !achievement.unlocked
-                      ? 'bg-gray-100 opacity-60'
-                      : 'bg-yellow-50 border border-yellow-200'
-                  }`}
+                  className={`p-4 rounded-lg text-center transition-all ${!achievement.unlocked
+                    ? 'bg-gray-100 opacity-60'
+                    : 'bg-yellow-50 border border-yellow-200'
+                    }`}
                 >
                   <div className="flex justify-center mb-2">
                     {renderAchievementIcon(achievement.icon, !achievement.unlocked)}
@@ -857,7 +876,7 @@ export default function Profile() {
         </div>
 
         {/* Learning Hours Card */}
-        <div 
+        <div
           className="rounded-xl shadow-sm p-6 text-white"
           style={{ backgroundColor: '#005537' }}
         >
@@ -869,7 +888,7 @@ export default function Profile() {
                 </div>
                 <span className="text-xs font-semibold uppercase" style={{ color: '#A5F3C7' }}>Learning Hours</span>
               </div>
-              <div className="text-5xl font-bold mb-2">{profileStats?.totalLearningHours || 0}</div>
+              <div className="text-5xl font-bold mb-2">{Number(profileStats?.totalLearningHours || 0).toFixed(2)}</div>
               <p className="text-sm font-medium opacity-90">total hours</p>
               <p className="text-xs opacity-80 mt-4">
                 You're in the {profileStats?.ranking || 'top 5%'} of learners. Keep up the great work!
@@ -955,22 +974,20 @@ export default function Profile() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setEditVisibility('public')}
-                  className={`flex-1 py-3 px-4 rounded-full flex items-center justify-center gap-2 font-semibold transition ${
-                    editVisibility === 'public'
-                      ? 'bg-green-100 border-2 border-green-700 text-green-700'
-                      : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`flex-1 py-3 px-4 rounded-full flex items-center justify-center gap-2 font-semibold transition ${editVisibility === 'public'
+                    ? 'bg-green-100 border-2 border-green-700 text-green-700'
+                    : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   <Globe className="w-5 h-5" />
                   Public
                 </button>
                 <button
                   onClick={() => setEditVisibility('private')}
-                  className={`flex-1 py-3 px-4 rounded-full flex items-center justify-center gap-2 font-semibold transition ${
-                    editVisibility === 'private'
-                      ? 'bg-green-100 border-2 border-green-700 text-green-700'
-                      : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className={`flex-1 py-3 px-4 rounded-full flex items-center justify-center gap-2 font-semibold transition ${editVisibility === 'private'
+                    ? 'bg-green-100 border-2 border-green-700 text-green-700'
+                    : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'
+                    }`}
                 >
                   <Lock className="w-5 h-5" />
                   Private

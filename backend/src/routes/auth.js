@@ -6,6 +6,7 @@ import UserAchievement from '../models/UserAchievement.js';
 import Achievement from '../models/Achievement.js';
 import LearningActivity from '../models/LearningActivity.js';
 import { updateUserActivity } from '../services/learningActivityService.js';
+import { uploadAvatar } from '../config/cloudinary.js';
 
 const router = express.Router();
 
@@ -133,14 +134,31 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// Wrapper to handle Multer errors gracefully
+const handleAvatarUpload = (req, res, next) => {
+  const upload = uploadAvatar.single('avatar');
+  upload(req, res, function (err) {
+    if (err) {
+      console.error('Multer upload error:', err);
+      return res.status(400).json({ error: 'Lỗi tải ảnh lên: ' + err.message });
+    }
+    next();
+  });
+};
+
 // Update user profile
-router.put('/update-profile', authMiddleware, async (req, res) => {
+router.put('/update-profile', authMiddleware, handleAvatarUpload, async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { fullName, jlptLevel, bio, profilePicture, phone, location } = req.body;
+    const { fullName, jlptLevel, bio, phone, location } = req.body;
+    let profilePicture = req.body.profilePicture; // Fallback in case of string
+
+    if (req.file) {
+      profilePicture = req.file.path; // Cloudinary URL
+    }
 
     // Validate input
     if (fullName && fullName.trim().length < 2) {
@@ -345,8 +363,25 @@ router.get('/profile-stats', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Update last active date to now
-    await User.findByIdAndUpdate(req.user.id, { lastActiveDate: new Date() });
+    // Check if streak is lost
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    
+    let currentStreak = user.dayStreak || 0;
+    
+    if (user.lastActiveDate) {
+      const lastActive = new Date(user.lastActiveDate);
+      lastActive.setHours(0, 0, 0, 0);
+      
+      const timeDiff = todayDate.getTime() - lastActive.getTime();
+      const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+      
+      // If more than 1 day has passed, streak is broken
+      if (daysDiff > 1 && currentStreak > 0) {
+        currentStreak = 0;
+        await User.findByIdAndUpdate(req.user.id, { dayStreak: 0 });
+      }
+    }
 
     // Get user's rank based on XP points
     const totalUsers = await User.countDocuments();
@@ -370,9 +405,19 @@ router.get('/profile-stats', authMiddleware, async (req, res) => {
     });
     const weekHours = weekActivities.reduce((sum, a) => sum + (a.hoursSpent || 0), 0);
 
+    // Calculate ACTUAL total learning hours from all activities to fix any sync issues
+    const allActivities = await LearningActivity.find({ userId: req.user.id });
+    const actualTotalHours = allActivities.reduce((sum, a) => sum + (a.hoursSpent || 0), 0);
+
+    // Auto-fix if out of sync
+    if (Math.abs((user.totalLearningHours || 0) - actualTotalHours) > 0.001) {
+      user.totalLearningHours = actualTotalHours;
+      await User.findByIdAndUpdate(req.user.id, { totalLearningHours: actualTotalHours });
+    }
+
     res.json({
-      totalLearningHours: user.totalLearningHours || 0,
-      dayStreak: user.dayStreak || 0,
+      totalLearningHours: Number((actualTotalHours || 0).toFixed(2)),
+      dayStreak: currentStreak,
       xpPoints: user.xpPoints || 0,
       userRank: userRank,
       ranking: `Top ${percentile}%`,
@@ -536,21 +581,27 @@ router.post('/track-session', authMiddleware, async (req, res) => {
 
     // Get the user to check if they need a streak update
     const currentUser = await User.findById(req.user.id);
-    const now = new Date();
+    // Normalize to calendar days
+    const todayDate = new Date(now);
+    todayDate.setHours(0, 0, 0, 0);
+
     let streakUpdate = {};
 
     if (currentUser.lastActiveDate) {
       const lastActive = new Date(currentUser.lastActiveDate);
-      const timeDiff = now.getTime() - lastActive.getTime();
-      const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
+      lastActive.setHours(0, 0, 0, 0);
 
-      // If more than 24 hours have passed since last activity, reset streak
-      if (daysDiff > 1) {
-        streakUpdate = { dayStreak: 1 };
-      } else {
-        // Same day or within 24 hours, increment streak
+      const timeDiff = todayDate.getTime() - lastActive.getTime();
+      const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+
+      if (daysDiff === 1) {
+        // Active yesterday, not today yet -> increment streak
         streakUpdate = { $inc: { dayStreak: 1 } };
+      } else if (daysDiff > 1) {
+        // Missed yesterday -> reset streak to 1
+        streakUpdate = { dayStreak: 1 };
       }
+      // If daysDiff === 0 (Active today already) -> no change to streak
     } else {
       // First time, start streak at 1
       streakUpdate = { dayStreak: 1 };
