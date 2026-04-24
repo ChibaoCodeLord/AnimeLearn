@@ -1,0 +1,20 @@
+# --- Nhận diện giọng nói & Xử lý Video ---
+faster-whisper
+yt-dlp
+
+# --- Hỗ trợ GPU NVIDIA (CUDA 12) ---
+# Cần thiết để sửa lỗi thiếu file cublas64_12.dll
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+
+# --- Xử lý ngôn ngữ tiếng Nhật (SudachiPy) ---
+sudachipy
+sudachidict_full
+
+# --- Dịch thuật ---
+deep-translator
+
+fastapi
+uvicorn
+
+chromadb
