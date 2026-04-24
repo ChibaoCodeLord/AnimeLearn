@@ -21,9 +21,9 @@ router.get('/user-profile', async (req, res) => {
 
     res.json({
       id: user._id,
-      name: user.name,
+      name: user.fullName || 'Guest',
       email: user.email,
-      avatar: user.avatar || null,
+      avatar: user.profilePicture || null,
     });
   } catch (error) {
     console.error('Get user error:', error);
