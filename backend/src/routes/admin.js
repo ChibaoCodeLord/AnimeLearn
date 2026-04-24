@@ -2,6 +2,7 @@ import express from 'express';
 import { authMiddleware, restrictTo } from '../middleware/auth.js';
 import Video from '../models/Video.js';
 import User from '../models/User.js';
+import { sendVideoRejectedEmail } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -81,21 +82,38 @@ router.delete('/videos/:id', async (req, res) => {
 // approved, rejected, pending (Duyệt/Từ chối/Chờ)
 router.patch('/videos/:id/status', async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, reason } = req.body;
     
     // Kiểm tra class status có hợp lệ không
     if (!['approved', 'rejected', 'pending'].includes(status)) {
       return res.status(400).json({ error: 'Trạng thái không hợp lệ' });
     }
 
+    const existingVideo = await Video.findById(req.params.id).populate('creator', 'fullName email');
+    if (!existingVideo) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
     const video = await Video.findByIdAndUpdate(
       req.params.id, 
       { status }, 
       { new: true }
-    );
+    ).populate('creator', 'fullName email');
 
     if (!video) {
-        return res.status(404).json({ error: 'Video không tồn tại' });
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    if (status === 'rejected' && existingVideo.status !== 'rejected' && video.creator?.email) {
+      void sendVideoRejectedEmail({
+        to: video.creator.email,
+        fullName: video.creator.fullName,
+        title: video.title,
+        reason,
+        videoId: String(video._id),
+      }).catch((emailError) => {
+        console.error('[Admin] Error sending rejection email:', emailError);
+      });
     }
 
     res.status(200).json({ 

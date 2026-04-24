@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { authMiddleware, restrictTo } from '../middleware/auth.js'
 import Vocabulary from '../models/Vocabulary.js';
 import Video from '../models/Video.js';
+import VideoLike from '../models/VideoLike.js';
 import { indexVideoScript } from '../services/ragChatService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -289,6 +290,9 @@ router.get('/detail/:id', authMiddleware, async (req, res) => {
     const currentUserId = req.user?.id || req.user?.userId;
     const isAdmin = req.user?.role === 'admin';
     const isCreator = currentUserId && String(video.creator) === String(currentUserId);
+    const likedByMe = currentUserId
+      ? await VideoLike.exists({ video: video._id, user: currentUserId })
+      : false;
 
     if (video.status !== 'approved' && !isAdmin && !isCreator) {
       return res.status(403).json({ error: 'Video chưa được duyệt nên bạn không có quyền xem' });
@@ -304,13 +308,150 @@ router.get('/detail/:id', authMiddleware, async (req, res) => {
       youtube_url: video.youtube_url,
       script: video.script,
       jlpt_level: video.jlpt_level,
-      status: video.status
+      status: video.status,
+      views_count: video.views_count,
+      likes_count: video.likes_count,
+      likedByMe: Boolean(likedByMe)
     });
   } catch (error) {
     console.error('Lỗi khi lấy thông tin video:', error);
     res.status(500).json({ error: 'Lỗi khi lấy thông tin video' });
   }
 });
+
+router.post('/view/:id', async (req, res) => {
+  try {
+    const videoId = req.params.id;
+    const video = await Video.findById(videoId).select('views_count status');
+
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    if (video.status !== 'approved') {
+      return res.json({
+        message: 'View skipped for unapproved video',
+        views_count: video.views_count,
+      });
+    }
+
+    const updatedVideo = await Video.findByIdAndUpdate(
+      videoId,
+      { $inc: { views_count: 1 } },
+      { new: true }
+    ).select('views_count');
+
+    return res.json({
+      message: 'View counted successfully',
+      views_count: updatedVideo?.views_count ?? video.views_count,
+    });
+  } catch (error) {
+    console.error('Lỗi khi tăng lượt xem video:', error);
+    res.status(500).json({ error: 'Lỗi khi tăng lượt xem video' });
+  }
+});
+
+router.post('/like/:id', authMiddleware, async (req, res) => {
+  try {
+    const videoId = req.params.id;
+    const currentUserId = req.user?.id || req.user?.userId;
+    const video = await Video.findById(videoId).select('likes_count status');
+
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    if (video.status !== 'approved') {
+      return res.json({
+        message: 'Like skipped for unapproved video',
+        likes_count: video.likes_count,
+      });
+    }
+
+    const likeResult = await VideoLike.updateOne(
+      { video: videoId, user: currentUserId },
+      { $setOnInsert: { video: videoId, user: currentUserId } },
+      { upsert: true }
+    );
+
+    if (!likeResult.upsertedCount) {
+      return res.json({
+        message: 'Video đã được thích trước đó',
+        alreadyLiked: true,
+        likes_count: video.likes_count,
+      });
+    }
+
+    const updatedVideo = await Video.findByIdAndUpdate(
+      videoId,
+      { $inc: { likes_count: 1 } },
+      { new: true }
+    ).select('likes_count');
+
+    return res.json({
+      message: 'Like counted successfully',
+      alreadyLiked: false,
+      likes_count: updatedVideo?.likes_count ?? video.likes_count,
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      const video = await Video.findById(req.params.id).select('likes_count');
+      return res.json({
+        message: 'Video đã được thích trước đó',
+        alreadyLiked: true,
+        likes_count: video?.likes_count ?? 0,
+      });
+    }
+
+    console.error('Lỗi khi tăng lượt thích video:', error);
+    res.status(500).json({ error: 'Lỗi khi tăng lượt thích video' });
+  }
+});
+
+router.post('/unlike/:id', authMiddleware, async (req, res) => {
+  try {
+    const videoId = req.params.id;
+    const currentUserId = req.user?.id || req.user?.userId;
+    const video = await Video.findById(videoId).select('likes_count status');
+
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    if (video.status !== 'approved') {
+      return res.json({
+        message: 'Like skipped for unapproved video',
+        likes_count: video.likes_count,
+      });
+    }
+
+    const unlikeResult = await VideoLike.deleteOne({ video: videoId, user: currentUserId });
+
+    if (!unlikeResult.deletedCount) {
+      return res.json({
+        message: 'Video chưa được thích trước đó',
+        alreadyUnliked: true,
+        likes_count: video.likes_count,
+      });
+    }
+
+    const updatedVideo = await Video.findByIdAndUpdate(
+      videoId,
+      { $inc: { likes_count: -1 } },
+      { new: true }
+    ).select('likes_count');
+
+    return res.json({
+      message: 'Unlike counted successfully',
+      alreadyUnliked: false,
+      likes_count: updatedVideo?.likes_count ?? video.likes_count,
+    });
+  } catch (error) {
+    console.error('Lỗi khi bỏ thích video:', error);
+    res.status(500).json({ error: 'Lỗi khi bỏ thích video' });
+  }
+});
+
 
 // Fetch user's created videos with pagination
 router.get('/user/my-videos', authMiddleware, async (req, res) => {

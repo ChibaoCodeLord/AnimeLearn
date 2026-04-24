@@ -1,8 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { MapPin, Flame, Star, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, Save, MoreVertical, Globe } from 'lucide-react';
+import { MapPin, Flame, Star, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, MoreVertical, Globe } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 
@@ -46,7 +45,7 @@ const updateUserProfile = async (data: Partial<UserProfile>): Promise<UserProfil
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.message || 'Failed to update profile');
+    throw new Error(error.error || error.message || 'Failed to update profile');
   }
 
   return response.json();
@@ -316,11 +315,6 @@ export default function Profile() {
       setIsEditing(true);
     }
   };
-
-  const maxBarHeight = 100;
-  const maxHours = Math.max(
-    ...(learningProgress?.weeklyData?.map((d: any) => d.hours) || [1])
-  );
 
   if (isLoading) {
     return (
