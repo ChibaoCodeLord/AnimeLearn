@@ -345,8 +345,25 @@ router.get('/profile-stats', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Update last active date to now
-    await User.findByIdAndUpdate(req.user.id, { lastActiveDate: new Date() });
+    // Check if streak is lost
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    
+    let currentStreak = user.dayStreak || 0;
+    
+    if (user.lastActiveDate) {
+      const lastActive = new Date(user.lastActiveDate);
+      lastActive.setHours(0, 0, 0, 0);
+      
+      const timeDiff = todayDate.getTime() - lastActive.getTime();
+      const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+      
+      // If more than 1 day has passed, streak is broken
+      if (daysDiff > 1 && currentStreak > 0) {
+        currentStreak = 0;
+        await User.findByIdAndUpdate(req.user.id, { dayStreak: 0 });
+      }
+    }
 
     // Get user's rank based on XP points
     const totalUsers = await User.countDocuments();
@@ -372,7 +389,7 @@ router.get('/profile-stats', authMiddleware, async (req, res) => {
 
     res.json({
       totalLearningHours: user.totalLearningHours || 0,
-      dayStreak: user.dayStreak || 0,
+      dayStreak: currentStreak,
       xpPoints: user.xpPoints || 0,
       userRank: userRank,
       ranking: `Top ${percentile}%`,
@@ -536,21 +553,27 @@ router.post('/track-session', authMiddleware, async (req, res) => {
 
     // Get the user to check if they need a streak update
     const currentUser = await User.findById(req.user.id);
-    const now = new Date();
+    // Normalize to calendar days
+    const todayDate = new Date(now);
+    todayDate.setHours(0, 0, 0, 0);
+
     let streakUpdate = {};
 
     if (currentUser.lastActiveDate) {
       const lastActive = new Date(currentUser.lastActiveDate);
-      const timeDiff = now.getTime() - lastActive.getTime();
-      const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
+      lastActive.setHours(0, 0, 0, 0);
 
-      // If more than 24 hours have passed since last activity, reset streak
-      if (daysDiff > 1) {
-        streakUpdate = { dayStreak: 1 };
-      } else {
-        // Same day or within 24 hours, increment streak
+      const timeDiff = todayDate.getTime() - lastActive.getTime();
+      const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+
+      if (daysDiff === 1) {
+        // Active yesterday, not today yet -> increment streak
         streakUpdate = { $inc: { dayStreak: 1 } };
+      } else if (daysDiff > 1) {
+        // Missed yesterday -> reset streak to 1
+        streakUpdate = { dayStreak: 1 };
       }
+      // If daysDiff === 0 (Active today already) -> no change to streak
     } else {
       // First time, start streak at 1
       streakUpdate = { dayStreak: 1 };
