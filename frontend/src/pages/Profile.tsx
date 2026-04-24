@@ -2,7 +2,8 @@ import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { MapPin, Flame, Star, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, Save } from 'lucide-react';
+import { MapPin, Flame, Star, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, Save, MoreVertical, Globe } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 
 interface UserProfile {
@@ -51,8 +52,8 @@ const updateUserProfile = async (data: Partial<UserProfile>): Promise<UserProfil
   return response.json();
 };
 
-const fetchLearningProgress = async () => {
-  const response = await fetch('http://localhost:5000/api/auth/learning-progress', {
+const fetchLearningProgress = async (period: string = 'week') => {
+  const response = await fetch(`http://localhost:5000/api/auth/learning-progress?period=${period}`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -67,8 +68,8 @@ const fetchLearningProgress = async () => {
   return response.json();
 };
 
-const fetchUserCourses = async () => {
-  const response = await fetch('http://localhost:5000/api/auth/courses', {
+const fetchUserVideos = async (page: number = 1) => {
+  const response = await fetch(`http://localhost:5000/api/video/user/my-videos?page=${page}&limit=5`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -77,7 +78,7 @@ const fetchUserCourses = async () => {
   });
 
   if (!response.ok) {
-    throw new Error('Failed to fetch courses');
+    throw new Error('Failed to fetch videos');
   }
 
   return response.json();
@@ -115,21 +116,56 @@ const fetchProfileStats = async () => {
   return response.json();
 };
 
-// Mock data fallback for achievements display
-const mockCourses = [
+const deleteVideo = async (videoId: string) => {
+  const response = await fetch(`http://localhost:5000/api/video/delete/${videoId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to delete video');
+  }
+
+  return response.json();
+};
+
+const updateVideo = async (videoId: string, data: { title: string; visibility?: 'public' | 'private' }) => {
+  const response = await fetch(`http://localhost:5000/api/video/update/${videoId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to update video');
+  }
+
+  return response.json();
+};
+
+// Mock data fallback for videos display
+const mockVideos = [
   {
-    id: 1,
+    _id: '1',
     title: 'Kanji Mastery: N3 Essentials',
-    unit: 'Unit 4: Environment & Nature',
-    progress: 87,
-    color: '#6B5B4D',
+    jlpt_level: 'N3',
+    views_count: 234,
+    status: 'approved',
+    thumbnail_url: '',
   },
   {
-    id: 2,
+    _id: '2',
     title: 'Street Japanese: Casual Talk',
-    unit: 'Unit 1: Meeting Friends',
-    progress: 35,
-    color: '#6B7B8F',
+    jlpt_level: 'N4',
+    views_count: 156,
+    status: 'pending',
+    thumbnail_url: '',
   },
 ];
 
@@ -162,6 +198,13 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<UserProfile>>({});
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingVideo, setEditingVideo] = useState<any | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editVisibility, setEditVisibility] = useState<'public' | 'private'>('public');
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [progressTab, setProgressTab] = useState<'week' | 'month'>('week');
 
   const { data: user, isLoading, error } = useQuery<UserProfile>({
     queryKey: ['profile'],
@@ -169,14 +212,14 @@ export default function Profile() {
   });
 
   const { data: learningProgress } = useQuery({
-    queryKey: ['learningProgress'],
-    queryFn: fetchLearningProgress,
+    queryKey: ['learningProgress', progressTab],
+    queryFn: () => fetchLearningProgress(progressTab),
     enabled: !!user,
   });
 
-  const { data: coursesData } = useQuery({
-    queryKey: ['courses'],
-    queryFn: fetchUserCourses,
+  const { data: videosResponse } = useQuery({
+    queryKey: ['videos', currentPage],
+    queryFn: () => fetchUserVideos(currentPage),
     enabled: !!user,
   });
 
@@ -202,6 +245,33 @@ export default function Profile() {
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Cập nhật profile thất bại');
+    },
+  });
+
+  const deleteVideoMutation = useMutation({
+    mutationFn: deleteVideo,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['videos'] });
+      setDeleteConfirm(null);
+      toast.success('Video đã được xóa');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Xóa video thất bại');
+    },
+  });
+
+  const updateVideoMutation = useMutation({
+    mutationFn: ({ videoId, data }: { videoId: string; data: { title: string; visibility?: 'public' | 'private' } }) =>
+      updateVideo(videoId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['videos'] });
+      setEditingVideo(null);
+      setEditTitle('');
+      setEditVisibility('public');
+      toast.success('Video đã được cập nhật');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Cập nhật video thất bại');
     },
   });
 
@@ -515,103 +585,257 @@ export default function Profile() {
 
         {/* Learning Progress Section */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">Learning Progress</h2>
-          <p className="text-gray-600 mb-4 text-sm">Your weekly activity is up 12% compared to last week.</p>
-
-          <div className="mb-6">
-            <div className="flex items-end justify-around gap-3 h-40 px-4">
-              {(learningProgress?.weeklyData || []).map((data: any, idx: number) => (
-                <div key={idx} className="flex flex-col items-center flex-1">
-                  <div className="w-full bg-gray-200 rounded-lg relative" style={{
-                    height: `${Math.max((data.hours / maxHours) * maxBarHeight, 10)}px`,
-                  }}>
-                    <div 
-                      className="w-full h-full rounded-lg transition-colors"
-                      style={{
-                        backgroundColor: data.day === 'THU' ? '#005537' : '#A5F3C7',
-                      }}
-                    ></div>
-                  </div>
-                  <span className="text-xs text-gray-600 mt-3 font-semibold">{data.day}</span>
-                </div>
-              ))}
+          <div className="flex justify-between items-start mb-8">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">Learning Progress</h2>
+              <p className="text-gray-600 text-sm">Your weekly activity is up 12% compared to last week.</p>
+            </div>
+            {/* Tab Buttons */}
+            <div className="flex gap-6">
+              <button
+                onClick={() => setProgressTab('week')}
+                className={`px-0 py-2 font-medium transition border-b-2 ${
+                  progressTab === 'week'
+                    ? 'text-gray-900'
+                    : 'text-gray-500 border-transparent hover:text-gray-700'
+                }`}
+                style={progressTab === 'week' ? { borderBottomColor: '#005537' } : {}}
+              >
+                Tuần này
+              </button>
+              <button
+                onClick={() => setProgressTab('month')}
+                className={`px-0 py-2 font-medium transition border-b-2 ${
+                  progressTab === 'month'
+                    ? 'text-gray-900'
+                    : 'text-gray-500 border-transparent hover:text-gray-700'
+                }`}
+                style={progressTab === 'month' ? { borderBottomColor: '#005537' } : {}}
+              >
+                Tháng này
+              </button>
             </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <Card className="bg-gray-50 border-0 p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: '#A5F3C7' }}>
-                  <Flame className="w-8 h-8" style={{ color: '#005537' }} />
+          <div className="flex gap-12">
+            {/* Chart Section */}
+            <div className="flex-1">
+              {progressTab === 'week' ? (
+                // Week view - Bar Chart
+                <div className="w-full h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={learningProgress?.weeklyData || []} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis dataKey="day" stroke="#9ca3af" />
+                      <YAxis stroke="#9ca3af" domain={[0, 'dataMax + 0.5']} ticks={[0, 0.5, 1, 1.5, 2, 2.5, 3]} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                        formatter={(value) => [`${Number(value).toFixed(3)}h`, 'Hours']}
+                      />
+                      <Bar dataKey="hours" fill="#216E39" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-                <div>
-                  <div className="text-3xl font-bold text-gray-900">{profileStats?.dayStreak || 0}</div>
-                  <div className="text-sm text-gray-600 font-semibold">DAY STREAK</div>
-                  <div className="text-xs text-gray-500 mt-1">Keep learning every day!</div>
+              ) : (
+                // Monthly view - Line Chart
+                <div className="w-full h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={learningProgress?.monthlyData || []} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis dataKey="month" stroke="#9ca3af" />
+                      <YAxis stroke="#9ca3af" />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                        formatter={(value) => [`${Number(value).toFixed(3)}h`, 'Hours']}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="hours" 
+                        stroke="#216E39" 
+                        strokeWidth={3}
+                        dot={{ fill: '#216E39', r: 5 }}
+                        activeDot={{ r: 7 }}
+                        fill="#9BE9A8"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
-              </div>
-            </Card>
+              )}
+            </div>
 
-            <Card className="bg-gray-50 border-0 p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: '#A5F3C7' }}>
-                  <Star className="w-8 h-8" style={{ color: '#005537' }} />
-                </div>
-                <div>
-                  <div className="text-3xl font-bold text-gray-900">{profileStats?.xpPoints || 0}</div>
-                  <div className="text-sm text-gray-600 font-semibold">{profileStats?.ranking || 'TOP 5%'}</div>
+            {/* Stats Cards Vertical */}
+            <div className="flex flex-col gap-3 w-80">
+              <div className="border border-gray-200 rounded-lg p-6 bg-white">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#A5F3C7' }}>
+                    <Flame className="w-8 h-8" style={{ color: '#005537' }} />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-gray-900">{profileStats?.dayStreak || 0}</div>
+                    <div className="text-sm text-gray-600 font-semibold">DAY STREAK</div>
+                  </div>
                 </div>
               </div>
-            </Card>
+
+              <div className="border border-gray-200 rounded-lg p-6 bg-white">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#A5F3C7' }}>
+                    <Award className="w-8 h-8" style={{ color: '#005537' }} />
+                  </div>
+                  <div>
+                    <div className="text-3xl font-bold text-gray-900">#{profileStats?.userRank || 42}</div>
+                    <div className="text-sm text-gray-600 font-semibold">RANK RANKING</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Current Courses & Achievements */}
+        {/* Current Video Learns & Achievements */}
         <div className="grid grid-cols-3 gap-4 mb-4">
-          {/* Current Courses */}
+          {/* Current Video Learns */}
           <div className="col-span-2 bg-white rounded-xl shadow-sm p-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-gray-900">Current Courses</h2>
-              <a href="#" className="text-green-600 hover:text-green-700 font-semibold text-sm">
-                View All
+              <h2 className="text-2xl font-bold text-gray-900">Current Video Learn</h2>
+              <a href="/VideoWorkspace" className="text-green-600 hover:text-green-700 font-semibold text-sm">
+                Create New
               </a>
             </div>
 
             <div className="space-y-4">
-              {(coursesData && coursesData.length > 0 ? coursesData : mockCourses).map((course: any) => (
-                <div key={course.id || course._id} className="flex items-center gap-4 pb-4 border-b border-gray-200 last:border-0">
+              {(videosResponse?.videos && videosResponse.videos.length > 0 ? videosResponse.videos : mockVideos).map((video: any) => (
+                <div key={video._id || video.id} className="flex items-center gap-4 pb-4 border-b border-gray-200 last:border-0">
                   <div 
-                    className="w-16 h-16 rounded flex items-center justify-center text-2xl flex-shrink-0"
-                    style={{ backgroundColor: course.color, opacity: 0.8 }}
+                    className="w-16 h-16 rounded flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden"
+                    style={{ 
+                      backgroundImage: video.thumbnail_url ? `url(${video.thumbnail_url})` : 'none',
+                      backgroundColor: video.color || '#6B5B4D',
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center'
+                    }}
                   >
-                    <BookOpen className="w-6 h-6 text-white" />
+                    {!video.thumbnail_url && <BookOpen className="w-6 h-6 text-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-gray-900">{course.title}</h3>
-                    <p className="text-sm text-gray-600">{course.unit}</p>
-                    <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="h-2 rounded-full transition-all"
-                        style={{
-                          width: `${course.progress}%`,
-                          backgroundColor: '#005537',
-                        }}
-                      ></div>
+                    <h3 className="font-bold text-gray-900">{video.title}</h3>
+                    <p className="text-sm text-gray-600">
+                      JLPT: {video.jlpt_level || 'Unknown'} • Views: {video.views_count || 0}
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className={`text-xs px-2 py-1 rounded-full font-semibold flex items-center gap-1 ${
+                        video.status === 'approved' ? 'bg-green-100 text-green-700' :
+                        video.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                        'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {video.status === 'approved' ? '✓ Approved' : 
+                         video.status === 'rejected' ? '✗ Rejected' : 
+                         '⏳ Pending'}
+                      </span>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1 ${
+                        (video.visibility || 'public') === 'public'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-200 text-gray-700'
+                      }`}>
+                        {(video.visibility || 'public') === 'public' ? (
+                          <>
+                            <Globe className="w-3.5 h-3.5" />
+                            Public
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="w-3.5 h-3.5" />
+                            Private
+                          </>
+                        )}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className="text-sm font-bold text-gray-600">{course.progress}%</span>
+                  <div className="flex items-center gap-2 flex-shrink-0 relative">
                     <button 
+                      onClick={() => window.location.href = `/VideoWorkspace?id=${video._id}`}
                       className="w-12 h-12 rounded-full flex items-center justify-center text-white hover:opacity-90 transition"
                       style={{ backgroundColor: '#005537' }}
                     >
                       <Play className="w-5 h-5 fill-current" />
                     </button>
+
+                    <div className="relative">
+                      <button
+                        onClick={() => setOpenMenuId(openMenuId === video._id ? null : video._id)}
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-100 transition"
+                      >
+                        <MoreVertical className="w-5 h-5" />
+                      </button>
+
+                      {openMenuId === video._id && (
+                        <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                          <button
+                            onClick={() => {
+                              setEditingVideo(video);
+                              setEditTitle(video.title);
+                              setEditVisibility(video.visibility || 'public');
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-100"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                            Chỉnh sửa
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDeleteConfirm(video._id);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 flex items-center gap-2"
+                          >
+                            <X className="w-4 h-4" />
+                            Xóa
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
+
+            {/* Pagination Controls */}
+            {videosResponse?.pagination && videosResponse.pagination.total > 5 && (
+              <div className="mt-8 flex items-center justify-center gap-3 px-4 py-3">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={!videosResponse.pagination.hasPrevPage}
+                  className="flex items-center gap-1 px-4 py-2 rounded-full hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed transition font-medium text-green-700"
+                >
+                  ←<span>Trước</span>
+                </button>
+                
+                <div className="flex gap-2 mx-2">
+                  {Array.from({ length: videosResponse.pagination.totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition ${
+                        currentPage === page
+                          ? 'bg-green-700 text-white shadow-md'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(Math.min(videosResponse.pagination.totalPages, currentPage + 1))}
+                  disabled={!videosResponse.pagination.hasNextPage}
+                  className="flex items-center gap-1 px-4 py-2 rounded-full hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed transition font-medium text-green-700"
+                >
+                  <span>Tiếp</span>→
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Achievements */}
@@ -661,6 +885,135 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-transparent flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full mx-4">
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                <X className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Xóa video?</h3>
+              <p className="text-gray-600 text-center mb-6">
+                Video này sẽ bị xóa vĩnh viễn khỏi danh sách của bạn.
+              </p>
+              <div className="flex gap-4 w-full">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 px-4 py-3 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition font-semibold"
+                >
+                  Quay lại
+                </button>
+                <button
+                  onClick={() => deleteVideoMutation.mutate(deleteConfirm)}
+                  disabled={deleteVideoMutation.isPending}
+                  className="flex-1 px-4 py-3 rounded-full bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition font-semibold"
+                >
+                  {deleteVideoMutation.isPending ? 'Đang xóa...' : 'Xóa'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Video Modal */}
+      {editingVideo && (
+        <div className="fixed inset-0 bg-transparent flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900">Video details</h3>
+                <p className="text-gray-600 text-sm mt-1">Update your project information and accessibility preferences.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingVideo(null);
+                  setEditTitle('');
+                  setEditVisibility('public');
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Video Title Section */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-green-700 mb-3 uppercase tracking-wider">
+                Video Title
+              </label>
+              <input
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                className="w-full px-4 py-3 rounded-full bg-gray-100 border border-transparent focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                placeholder="Nhập tiêu đề video"
+              />
+            </div>
+
+            {/* Privacy Settings Section */}
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-green-700 mb-3 uppercase tracking-wider">
+                Privacy Settings
+              </label>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setEditVisibility('public')}
+                  className={`flex-1 py-3 px-4 rounded-full flex items-center justify-center gap-2 font-semibold transition ${
+                    editVisibility === 'public'
+                      ? 'bg-green-100 border-2 border-green-700 text-green-700'
+                      : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <Globe className="w-5 h-5" />
+                  Public
+                </button>
+                <button
+                  onClick={() => setEditVisibility('private')}
+                  className={`flex-1 py-3 px-4 rounded-full flex items-center justify-center gap-2 font-semibold transition ${
+                    editVisibility === 'private'
+                      ? 'bg-green-100 border-2 border-green-700 text-green-700'
+                      : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <Lock className="w-5 h-5" />
+                  Private
+                </button>
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setEditingVideo(null);
+                  setEditTitle('');
+                  setEditVisibility('public');
+                }}
+                className="flex-1 px-4 py-3 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (editTitle.trim()) {
+                    updateVideoMutation.mutate({
+                      videoId: editingVideo._id,
+                      data: { title: editTitle, visibility: editVisibility },
+                    });
+                  }
+                }}
+                disabled={updateVideoMutation.isPending || !editTitle.trim()}
+                className="flex-1 px-4 py-3 rounded-full bg-green-700 text-white hover:bg-green-800 disabled:opacity-50 transition font-semibold"
+              >
+                {updateVideoMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

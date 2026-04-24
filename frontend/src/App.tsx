@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client'; // Đảm bảo file này tồn tại hoặc dùng new QueryClient()
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { useEffect, useRef } from 'react';
 
 // Page imports
 import Home from './pages/Home';
@@ -38,6 +39,72 @@ const ProtectedRoute = ({ element }: { element: React.ReactNode }) => {
 };
 
 const AuthenticatedApp = () => {
+  const sessionStartRef = useRef<number>(0);
+
+  // Track session time
+  useEffect(() => {
+    // Initialize session start time inside useEffect to avoid impure function call during render
+    sessionStartRef.current = Date.now();
+
+    const handleBeforeUnload = () => {
+      // Calculate session duration in seconds
+      const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+      
+      // Only track if duration is at least 5 seconds (to avoid accidental page refreshes)
+      if (durationSeconds >= 5) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          // Use sendBeacon to ensure data is sent even if page is unloading
+          const payload = JSON.stringify({
+            durationSeconds,
+            page: window.location.pathname
+          });
+          const blob = new Blob([payload], { type: 'application/json' });
+
+          navigator.sendBeacon(
+            'http://localhost:5000/api/auth/track-session',
+            blob
+          );
+        }
+      }
+    };
+
+    const handlePageVisibilityChange = () => {
+      // Send beacon when tab becomes hidden
+      if (document.hidden) {
+        const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+        
+        if (durationSeconds >= 5) {
+          const token = localStorage.getItem('token');
+          if (token) {
+            const payload = JSON.stringify({
+              durationSeconds,
+              page: window.location.pathname
+            });
+            const blob = new Blob([payload], { type: 'application/json' });
+
+            navigator.sendBeacon(
+              'http://localhost:5000/api/auth/track-session',
+              blob
+            );
+          }
+        }
+        
+        // Reset session start when tab becomes visible again
+      } else {
+        sessionStartRef.current = Date.now();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handlePageVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handlePageVisibilityChange);
+    };
+  }, []);
+
   return (
     <Routes>
       {/* Landing Page - Public */}

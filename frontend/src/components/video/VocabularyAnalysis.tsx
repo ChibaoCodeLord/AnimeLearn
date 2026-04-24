@@ -8,10 +8,13 @@ export interface VocabItem {
   word: string;
   reading?: string;
   meaning: string;
+  pos?: string; // Thêm pos nếu bạn có truyền loại từ vào
 }
 
 interface VocabularyAnalysisProps {
   vocabulary: VocabItem[];
+  // THÊM PROP NÀY ĐỂ KÍCH HOẠT MODAL Ở SCRIPT PANEL
+  onWordClick?: (vocab: any) => void; 
 }
 
 // --- Các hàm tiện ích xử lý Cookie ---
@@ -37,7 +40,7 @@ const saveVocabToCookie = (vocabList: any[]) => {
 
 // --- Component Chính ---
 
-export default function VocabularyAnalysis({ vocabulary }: VocabularyAnalysisProps) {
+export default function VocabularyAnalysis({ vocabulary, onWordClick }: VocabularyAnalysisProps) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
 
   const saveWord = async (vocab: VocabItem) => {
@@ -99,21 +102,28 @@ export default function VocabularyAnalysis({ vocabulary }: VocabularyAnalysisPro
       <p className="text-xs text-slate-500 font-medium">Từ vựng trong câu:</p>
       <div className="space-y-2">
         {vocabulary.map((v, idx) => (
-          <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200">
-            <div className="flex-1 min-w-0">
+          <div 
+            key={idx} 
+            // THÊM HIỆU ỨNG CLICK VÀ GỌI HÀM onWordClick Ở ĐÂY
+            onClick={() => onWordClick && onWordClick(v)}
+            className="flex items-center justify-between gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100/60 transition-colors"
+          >
+            <div className="flex-1 min-w-0 pointer-events-none">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-slate-900">{v.word}</span>
                 <span className="text-sm text-emerald-600">{v.reading}</span>
               </div>
-              <p className="text-xs text-slate-600">{v.meaning}</p>
+              <p className="text-xs text-slate-600 line-clamp-1">{v.meaning}</p>
             </div>
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => saveWord(v)}
+              onClick={(e) => {
+                e.stopPropagation(); // CỰC KỲ QUAN TRỌNG: Ngăn chặn click lan ra ngoài làm mở Modal
+                saveWord(v);
+              }}
               disabled={saving[v.word]}
-              // Thay flex-shrink-0 thành shrink-0 cho chuẩn Tailwind mới
-              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100 gap-1 shrink-0"
+              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-200/50 gap-1 shrink-0"
             >
               {saving[v.word] ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
