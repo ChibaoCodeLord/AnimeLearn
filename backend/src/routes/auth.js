@@ -6,6 +6,7 @@ import UserAchievement from '../models/UserAchievement.js';
 import Achievement from '../models/Achievement.js';
 import LearningActivity from '../models/LearningActivity.js';
 import { updateUserActivity } from '../services/learningActivityService.js';
+import { uploadAvatar } from '../config/cloudinary.js';
 
 const router = express.Router();
 
@@ -133,14 +134,31 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// Wrapper to handle Multer errors gracefully
+const handleAvatarUpload = (req, res, next) => {
+  const upload = uploadAvatar.single('avatar');
+  upload(req, res, function (err) {
+    if (err) {
+      console.error('Multer upload error:', err);
+      return res.status(400).json({ error: 'Lỗi tải ảnh lên: ' + err.message });
+    }
+    next();
+  });
+};
+
 // Update user profile
-router.put('/update-profile', authMiddleware, async (req, res) => {
+router.put('/update-profile', authMiddleware, handleAvatarUpload, async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { fullName, jlptLevel, bio, profilePicture, phone, location } = req.body;
+    const { fullName, jlptLevel, bio, phone, location } = req.body;
+    let profilePicture = req.body.profilePicture; // Fallback in case of string
+
+    if (req.file) {
+      profilePicture = req.file.path; // Cloudinary URL
+    }
 
     // Validate input
     if (fullName && fullName.trim().length < 2) {
@@ -387,8 +405,18 @@ router.get('/profile-stats', authMiddleware, async (req, res) => {
     });
     const weekHours = weekActivities.reduce((sum, a) => sum + (a.hoursSpent || 0), 0);
 
+    // Calculate ACTUAL total learning hours from all activities to fix any sync issues
+    const allActivities = await LearningActivity.find({ userId: req.user.id });
+    const actualTotalHours = allActivities.reduce((sum, a) => sum + (a.hoursSpent || 0), 0);
+
+    // Auto-fix if out of sync
+    if (Math.abs((user.totalLearningHours || 0) - actualTotalHours) > 0.001) {
+      user.totalLearningHours = actualTotalHours;
+      await User.findByIdAndUpdate(req.user.id, { totalLearningHours: actualTotalHours });
+    }
+
     res.json({
-      totalLearningHours: user.totalLearningHours || 0,
+      totalLearningHours: Number((actualTotalHours || 0).toFixed(2)),
       dayStreak: currentStreak,
       xpPoints: user.xpPoints || 0,
       userRank: userRank,
@@ -554,6 +582,8 @@ router.post('/track-session', authMiddleware, async (req, res) => {
     // Get the user to check if they need a streak update
     const currentUser = await User.findById(req.user.id);
     // Normalize to calendar days
+    const now = new Date();
+  
     const todayDate = new Date(now);
     todayDate.setHours(0, 0, 0, 0);
 

@@ -93,8 +93,12 @@ export default function Layout() {
                 aria-expanded={menuOpen}
                 aria-haspopup="menu"
               >
-                <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                  {user.fullName?.[0]?.toUpperCase()}
+                <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-sm font-bold text-white shrink-0 overflow-hidden">
+                  {user.profilePicture ? (
+                    <img src={user.profilePicture} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    user.fullName?.[0]?.toUpperCase()
+                  )}
                 </div>
                 <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.fullName}</span>
               </button>
