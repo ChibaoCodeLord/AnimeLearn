@@ -582,6 +582,8 @@ router.post('/track-session', authMiddleware, async (req, res) => {
     // Get the user to check if they need a streak update
     const currentUser = await User.findById(req.user.id);
     // Normalize to calendar days
+    const now = new Date();
+  
     const todayDate = new Date(now);
     todayDate.setHours(0, 0, 0, 0);
 
