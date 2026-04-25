@@ -736,7 +736,8 @@ export default function VideoWorkspace() {
 
         <TabsContent value="quiz" className="flex-1 m-0 p-0 outline-hidden">
           <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden h-full">
-            <QuizPage />
+            {/* Thêm ytId={ytId} vào đây */}
+            <QuizPage videoId={videoId} script={script} ytId={ytId} onJumpToTime={jumpToLine} />
           </div>
         </TabsContent>
       </Tabs>

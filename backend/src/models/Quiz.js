@@ -2,7 +2,13 @@ import mongoose from 'mongoose';
 
 // Định nghĩa cấu trúc chuẩn của 1 câu hỏi để AI không trả về dữ liệu rác
 const questionSchema = new mongoose.Schema({
-    question: { type: String, required: true },
+    timestamp: { type: String, required: true }, // Mốc thời gian (VD: "00:30")
+    type: { 
+        type: String, 
+        required: true,
+        enum: ['fill_in_blank', 'vocabulary', 'translation'], // Bắt buộc phải thuộc 3 loại này
+    },
+    questionText: { type: String, required: true }, // Khớp với frontend: questionText
     options: {
         type: [{ type: String, required: true }],
         required: true,
@@ -14,7 +20,7 @@ const questionSchema = new mongoose.Schema({
             message: 'Mỗi câu hỏi phải có chính xác 4 đáp án!'
         }
     },
-    correct_index: {
+    correctAnswerIndex: { // Khớp với frontend: correctAnswerIndex thay vì correct_index
         type: Number,
         required: true,
         min: 0,
@@ -28,10 +34,20 @@ const questionSchema = new mongoose.Schema({
 }, { _id: false }); // Không cần tự sinh ID cho từng câu hỏi lẻ
 
 const quizSchema = new mongoose.Schema({
-    video_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Video', required: true },
-    user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    slot_index: { type: Number, min: 1, max: 6, required: true }, // Vị trí 1-6
-    questions: [questionSchema] // Áp dụng cấu trúc câu hỏi ở trên
-}, { timestamps: true });
+    // Đổi tên thành videoId để khớp chuẩn JSON trả về cho React
+    videoId: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'Video', 
+        required: true,
+        unique: true // CỰC KỲ QUAN TRỌNG: Đảm bảo 1 video chỉ có đúng 1 Quiz duy nhất
+    },
+    // Đã xóa user_id vì quiz này tạo ra là dùng chung cho toàn bộ user xem video
+    // Đã xóa slot_index vì bài test gộp chung thành 1 mảng questions
+    questions: [questionSchema] 
+}, { 
+    timestamps: true,
+    toJSON: { virtuals: true, transform: (doc, ret) => { delete ret._id; delete ret.__v; } }, // Tự động map _id thành id cho React dễ xài
+    toObject: { virtuals: true }
+});
 
 export default mongoose.model('Quiz', quizSchema);
