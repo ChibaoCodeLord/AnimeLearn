@@ -7,9 +7,9 @@ import multer from 'multer';
 // 1. Nếu nó nằm trong Object (bản v4)
 // 2. Nếu Node.js bọc nó trong .default
 // 3. Nếu bản thân nó chính là class luôn (bản v2/v3)
-const CloudinaryStorage = 
-  multerCloudinaryPkg.CloudinaryStorage || 
-  multerCloudinaryPkg.default?.CloudinaryStorage || 
+const CloudinaryStorage =
+  multerCloudinaryPkg.CloudinaryStorage ||
+  multerCloudinaryPkg.default?.CloudinaryStorage ||
   multerCloudinaryPkg;
 
 dotenv.config();
@@ -32,3 +32,4 @@ const storage = new CloudinaryStorage({
 
 export const uploadAvatar = multer({ storage: storage });
 export const cloudinaryV2 = cloudinaryPkg.v2;
+
