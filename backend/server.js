@@ -11,6 +11,7 @@ import videoRoutes from './src/routes/video.js';
 import chatRoutes from './src/routes/chat.js';
 import adminRoutes from './src/routes/admin.js';
 import dictionaryRoutes from './src/routes/dictionary.js'
+import quizRoutes from './src/routes/quiz.js';
 
 
 // Load environment variables
@@ -49,6 +50,7 @@ app.use('/api/video', videoRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/dictionary', dictionaryRoutes);
+app.use('/api/quiz', quizRoutes);
 
 // Basic test route
 app.get('/api/health', (req, res) => {
