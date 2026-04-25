@@ -245,6 +245,7 @@ export default function Profile() {
     mutationFn: updateUserProfile,
     onSuccess: (data) => {
       queryClient.setQueryData(['profile'], data);
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
       setIsEditing(false);
       setAvatarPreview(null);
       setAvatarFile(null);
@@ -305,14 +306,16 @@ export default function Profile() {
   const handleSave = () => {
     if (avatarFile) {
       const uploadData = new FormData();
-      uploadData.append('avatar', avatarFile);
 
-      // Append other form data fields
+      // Append other form data fields FIRST
       if (formData.fullName) uploadData.append('fullName', formData.fullName);
       if (formData.phone) uploadData.append('phone', formData.phone);
       if (formData.location) uploadData.append('location', formData.location);
       if (formData.jlptLevel) uploadData.append('jlptLevel', formData.jlptLevel);
       if (formData.bio) uploadData.append('bio', formData.bio);
+      
+      // Append avatar LAST for better compatibility with some multer versions
+      uploadData.append('avatar', avatarFile);
 
       updateMutation.mutate(uploadData as any);
     } else {
@@ -889,13 +892,13 @@ export default function Profile() {
                           <div
                             key={milestone.days}
                             className={`rounded-xl p-4 flex flex-col items-center justify-center transition-all ${unlocked
-                                ? 'bg-white border-2 border-green-200 shadow-sm'
-                                : 'bg-gray-50 border border-gray-200'
+                              ? 'bg-white border-2 border-green-200 shadow-sm'
+                              : 'bg-gray-50 border border-gray-200'
                               }`}
                           >
                             <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 ${unlocked
-                                ? 'bg-gradient-to-br from-orange-100 to-green-100'
-                                : 'bg-gray-100'
+                              ? 'bg-gradient-to-br from-orange-100 to-green-100'
+                              : 'bg-gray-100'
                               }`}>
                               <Flame className={`w-6 h-6 ${unlocked ? 'text-orange-500' : 'text-gray-300'
                                 }`} />
