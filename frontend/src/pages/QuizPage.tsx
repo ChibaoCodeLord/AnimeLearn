@@ -22,7 +22,7 @@ function parseTimestampToSeconds(timestamp: string): number {
 }
 
 // --- Interfaces ---
-type QuestionType = 'fill_in_blank' | 'vocabulary' | 'translation';
+type QuestionType = 'fill_in_blank' | 'vocabulary' | 'translation' | 'grammar_particle' | 'kanji_reading';
 
 export interface QuizQuestion {
   timestamp: string;
@@ -77,7 +77,7 @@ export default function QuizPage({ videoId, script, ytId }: QuizPageProps) {
     enabled: !!videoId,
   });
 
-  // Mutation AI
+  // Mutation AI tạo Quiz và chấm điểm JLPT
   const generateQuizMutation = useMutation({
     mutationFn: async () => {
       if (!videoId) throw new Error('Thiếu mã video');
@@ -94,11 +94,29 @@ export default function QuizPage({ videoId, script, ytId }: QuizPageProps) {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Lỗi khi AI tạo quiz');
-      return data;
+      
+      // Backend lúc này sẽ trả về object: { message, quiz, jlptLevel }
+      return data; 
     },
-    onSuccess: () => {
-      toast.success('🎉 AI đã tạo bài tập thành công!');
+    onSuccess: (data) => {
+      // Hiển thị luôn Level AI vừa chấm được lên Toast
+      toast.success(`🎉 AI đã tạo bài tập và đánh giá trình độ: ${data.jlptLevel || 'Thành công'}!`);
+      
+      // 1. Load lại ngay lập tức dữ liệu bài Quiz
       queryClient.invalidateQueries({ queryKey: ['video-quiz', videoId] });
+      
+      // 2. Load lại danh sách video để cập nhật Badge JLPT ở các nơi khác
+      queryClient.invalidateQueries({ queryKey: ['community-videos'] });
+      queryClient.invalidateQueries({ queryKey: ['video-detail', videoId] });
+
+      /* 💡 MẸO NHỎ: 
+         Vì trong file VideoWorkspace.tsx bạn đang dùng useEffect() gọi fetch() thuần 
+         để lấy thông tin Video (chứ không dùng useQuery), nên invalidateQueries ở trên 
+         có thể không tự động cập nhật cái chữ "Unknown" trên Badge.
+         
+         Nếu bạn thấy Badge JLPT chưa tự đổi số, hãy mở comment dòng dưới đây để reload nhẹ trang:
+      */
+      // setTimeout(() => window.location.reload(), 1500);
     },
     onError: (err: any) => {
       toast.error(err.message || 'Không thể tạo quiz lúc này');
@@ -146,11 +164,14 @@ export default function QuizPage({ videoId, script, ytId }: QuizPageProps) {
     }
   };
 
+  // Cập nhật hàm getQuestionTypeLabel (Khoảng dòng 130)
   const getQuestionTypeLabel = (type: QuestionType) => {
     switch (type) {
       case 'fill_in_blank': return 'Điền từ';
       case 'vocabulary': return 'Từ vựng';
       case 'translation': return 'Dịch thuật';
+      case 'grammar_particle': return 'Ngữ pháp & Trợ từ'; // Mới
+      case 'kanji_reading': return 'Đọc Kanji'; // Mới
       default: return 'Trắc nghiệm';
     }
   };
@@ -184,12 +205,12 @@ export default function QuizPage({ videoId, script, ytId }: QuizPageProps) {
           <Button 
             onClick={() => generateQuizMutation.mutate()}
             disabled={!script || script.length === 0}
-            className="bg-linear-to-r from-violet-600 to-fuchsia-600 hover:opacity-90 text-white rounded-xl px-8 py-6 text-lg h-auto shadow-md w-full sm:w-auto"
+            className="bg-violet-600 hover:opacity-90 text-white rounded-xl px-8 py-6 text-lg h-auto shadow-md w-full sm:w-auto"
           >
             <Sparkles className="w-5 h-5 mr-2" /> Tạo Quiz Ngay Bằng AI
           </Button>
           {(!script || script.length === 0) && (
-            <p className="text-rose-500 text-sm mt-4 font-medium">⚠️ Cần tạo Script AI bên Tab "Luyện Shadowing" trước khi tạo Quiz.</p>
+            <p className="text-rose-500 text-sm mt-4 font-medium">Cần tạo Script AI bên Tab "Luyện Shadowing" trước khi tạo Quiz.</p>
           )}
         </div>
       </div>

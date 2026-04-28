@@ -8,6 +8,8 @@ import Vocabulary from '../models/Vocabulary.js';
 import Video from '../models/Video.js';
 import VideoLike from '../models/VideoLike.js';
 import { indexVideoScript } from '../services/ragChatService.js';
+import Quiz from '../models/Quiz.js';
+import { generateQuizFromScript } from '../services/quizAIService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -240,9 +242,10 @@ router.post('/save-word', authMiddleware, async (req, res) => {
 
 router.post('/save', authMiddleware, async (req, res) => {
   try {
-  console.log("\nĐã tới router save\n");    
-  const { title, youtube_url, jlpt_level, script } = req.body;
+    const { title, youtube_url, script } = req.body;
+    const userId = req.user.id || req.user.userId;
 
+    // 1. Lưu Video như cũ
     const ytMatch = youtube_url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?\s]+)/);
     const ytId = ytMatch ? ytMatch[1] : null;
     const thumbnail_url = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : '';
@@ -251,34 +254,41 @@ router.post('/save', authMiddleware, async (req, res) => {
       title,
       youtube_url,
       thumbnail_url,
-      jlpt_level: jlpt_level || 'Unknown',
       script,
-      creator: req.user.id || req.user.userId
+      creator: userId,
+      jlpt_level: 'Unknown' // Mặc định
     });
 
+    // 2. TỰ ĐỘNG GỌI AI TẠO QUIZ & LEVEL NGAY TẠI ĐÂY
+    console.log("[Auto-AI]: Đang phân tích trình độ và tạo câu hỏi...");
+    const aiResult = await generateQuizFromScript(script); 
+
+    // Cập nhật level vào đối tượng video trước khi save
+    newVideo.jlpt_level = aiResult.jlptLevel || '5';
     await newVideo.save();
 
-    // thêm nội dung video hiện tại vào vector DB
-    let ragIndexStatus = { ok: false, message: 'RAG index was not started' };
-    ragIndexStatus = indexVideoScript(newVideo._id, script || [])
-      .then((ragResult) => {
-        // Khi nào xong thì log kết quả ra console của server
-        console.log('RAG indexing completed...', ragResult);
-      })
-      .catch((ragError) => {
-        // Nếu lỗi thì log lỗi, không làm ảnh hưởng đến request đã trả về cho user
-        console.error('RAG indexing failed...', ragError);
-      });
-
-    // Trả về response ngay lập tức
-    res.status(201).json({
-      message: 'Lưu Video Script thành công',
+    // Lưu Quiz vào collection riêng
+    const newQuiz = new Quiz({
       videoId: newVideo._id,
-      rag: { ok: true, message: 'RAG indexing started asynchronously' }
+      questions: aiResult.questions
     });
+    await newQuiz.save();
+
+    // 3. TRẢ VỀ TOÀN BỘ DATA CHO FRONTEND
+    res.status(201).json({
+      message: 'Hệ thống đã hoàn tất bóc băng và phân tích bài học!',
+      videoId: newVideo._id,
+      jlptLevel: newVideo.jlpt_level, // Level mới N1-N5
+      script: newVideo.script,
+      quiz: newQuiz
+    });
+
+    // Index RAG chạy ngầm (asynchronous) như cũ
+    indexVideoScript(newVideo._id, script).catch(console.error);
+
   } catch (error) {
-    console.error('Lỗi khi lưu video:', error);
-    res.status(500).json({ error: 'Lỗi tạo script video' });
+    console.error('Lỗi quy trình tự động:', error);
+    res.status(500).json({ error: 'Lỗi khi xử lý dữ liệu video và AI' });
   }
 });
 
@@ -489,7 +499,8 @@ router.get('/user/my-videos', authMiddleware, async (req, res) => {
 // Update video
 router.put('/update/:id', authMiddleware, async (req, res) => {
   try {
-    const { title, visibility } = req.body;
+    // 1. Thêm jlpt_level vào destructuring
+    const { title, visibility, jlpt_level } = req.body; 
     const currentUserId = req.user?.id || req.user?.userId;
 
     const video = await Video.findById(req.params.id);
@@ -510,6 +521,11 @@ router.put('/update/:id', authMiddleware, async (req, res) => {
       video.visibility = visibility;
     }
 
+    // 2. Thêm logic cập nhật JLPT Level
+    if (jlpt_level) {
+      video.jlpt_level = String(jlpt_level); // Đảm bảo luôn lưu dưới dạng String ("5", "4", "3"...)
+    }
+
     await video.save();
 
     res.json({
@@ -518,7 +534,7 @@ router.put('/update/:id', authMiddleware, async (req, res) => {
         _id: video._id,
         title: video.title,
         youtube_url: video.youtube_url,
-        jlpt_level: video.jlpt_level,
+        jlpt_level: video.jlpt_level, // Trả về level mới
         status: video.status,
         visibility: video.visibility
       }
