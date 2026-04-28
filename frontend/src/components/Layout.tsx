@@ -216,7 +216,7 @@ export default function Layout() {
                   </div>
                   <span className="font-bold text-slate-900">My Anime</span>
                 </div>
-                <p className="text-sm text-slate-600 max-w-xs">Học tiếng Nhật qua Anime với AI.</p>
+                <p className="text-sm text-slate-600 max-w-xs">Nền tảng Học tiếng Nhật qua Anime với AI.</p>
               </div>
               <div>
                 <h4 className="font-semibold text-slate-900 mb-3">Tính năng</h4>

@@ -6,7 +6,7 @@ const YouTube = (YouTubeOrigin as any).default || YouTubeOrigin;
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain, Eye, EyeOff, Heart, AlertTriangle } from 'lucide-react';
+import { Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain, Eye, EyeOff, Heart, AlertTriangle, BrainCircuit, PlayCircle, X } from 'lucide-react';
 import { toast } from 'sonner';
 import ScriptPanel, { type ScriptLine } from '../components/video/ScriptPanel';
 import SubtitleOverlay from '../components/video/SubtitleOverlay';
@@ -23,6 +23,21 @@ interface CurrentUser {
   email: string;
   fullName: string;
   role?: 'user' | 'admin';
+}
+
+interface QuizQuestion {
+  timestamp: string;
+  type: string;
+  questionText: string;
+  options: string[];
+  correctAnswerIndex: number;
+  explanation: string;
+}
+
+interface QuizData {
+  id: string;
+  videoId: string;
+  questions: QuizQuestion[];
 }
 
 const API_BASE = 'http://localhost:5000/api';
@@ -42,6 +57,103 @@ const STATUS_OPTIONS: Record<VideoStatus, { label: string; className: string }> 
     className: 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100',
   },
 };
+
+const JLPT_COLORS: Record<string, string> = {
+  'N1': 'border-red-200 bg-red-50 text-red-700',
+  'N2': 'border-orange-200 bg-orange-50 text-orange-700',
+  'N3': 'border-yellow-200 bg-yellow-50 text-yellow-700',
+  'N4': 'border-blue-200 bg-blue-50 text-blue-700',
+  'N5': 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  'Unknown': 'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+// Component Modal Pop-up Quiz
+function PopupQuizModal({
+  question,
+  onClose,
+  onResume
+}: {
+  question: QuizQuestion;
+  onClose: () => void;
+  onResume: () => void;
+}) {
+  const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [showResult, setShowResult] = useState(false);
+
+  const handleAnswer = (index: number) => {
+    setSelectedOption(index);
+    setShowResult(true);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-3xl p-6 md:p-8 max-w-xl w-full shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="flex justify-between items-center mb-6">
+          <Badge className="bg-violet-100 text-violet-700 border-0 px-3 py-1 text-xs uppercase tracking-wider font-bold">
+            Kiểm tra nhanh
+          </Badge>
+          <button onClick={onClose} className="text-slate-400 hover:text-rose-500 transition-colors p-1">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Đã sửa lỗi in thẻ HTML <u> */}
+        <h3 
+          className="text-xl font-bold text-slate-900 mb-6 leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: question.questionText }}
+        />
+
+        <div className="space-y-3">
+          {question.options.map((opt, i) => {
+            const isCorrect = i === question.correctAnswerIndex;
+            const isSelected = i === selectedOption;
+
+            return (
+              <button
+                key={i}
+                onClick={() => !showResult && handleAnswer(i)}
+                disabled={showResult}
+                className={`w-full text-left p-4 rounded-2xl border-2 transition-all duration-200 ${
+                  showResult
+                    ? isCorrect
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                      : isSelected
+                        ? 'border-rose-400 bg-rose-50 text-rose-800'
+                        : 'border-slate-100 bg-slate-50 opacity-50 text-slate-500'
+                    : 'border-slate-200 hover:border-violet-400 hover:bg-violet-50 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`w-7 h-7 rounded-md flex items-center justify-center text-sm font-bold shrink-0 ${
+                    showResult && isCorrect ? 'bg-emerald-500 text-white' : 
+                    showResult && isSelected ? 'bg-rose-500 text-white' : 
+                    'bg-slate-100 text-slate-500'
+                  }`}>
+                    {String.fromCharCode(65 + i)}
+                  </span>
+                  <span className="font-medium text-base">{opt}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {showResult && (
+          <div className="mt-6 p-4 rounded-xl bg-violet-50 border border-violet-100 text-sm text-slate-700 animate-in slide-in-from-bottom-4">
+            <span className="font-bold text-violet-700 block mb-1">💡 Giải thích:</span>
+            {question.explanation}
+          </div>
+        )}
+
+        {showResult && (
+          <Button onClick={onResume} className="mt-6 w-full bg-slate-900 hover:bg-slate-800 text-white h-12 rounded-xl text-base font-semibold">
+            Tiếp tục xem video <PlayCircle className="w-5 h-5 ml-2" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function RejectReasonModal({
   title,
@@ -152,7 +264,6 @@ export default function VideoWorkspace() {
   const [loopCount] = useState(3);
   const [generating, setGenerating] = useState(false);
   
-  // STATE MỚI: Quản lý ẩn/hiện danh sách từ vựng
   const [showVocabList, setShowVocabList] = useState(true);
   
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
@@ -162,6 +273,7 @@ export default function VideoWorkspace() {
   const [videoTitle, setVideoTitle] = useState('');
   const [currentYoutubeUrl, setCurrentYoutubeUrl] = useState(youtubeUrl || '');
   const [videoStatus, setVideoStatus] = useState<VideoStatus>('pending');
+  const [jlptLevel, setJlptLevel] = useState<string>('Unknown');
   const [viewsCount, setViewsCount] = useState(0);
   const [likesCount, setLikesCount] = useState(0);
   const [likedByMe, setLikedByMe] = useState(false);
@@ -169,6 +281,11 @@ export default function VideoWorkspace() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
+
+  // STATE POP-UP QUIZ
+  const [enablePopupQuiz, setEnablePopupQuiz] = useState(false);
+  const [activePopupQuestion, setActivePopupQuestion] = useState<QuizQuestion | null>(null);
+  const [shownPopups, setShownPopups] = useState<Set<string>>(new Set());
 
   const playerRef = useRef<any>(null);
   const hasCountedViewRef = useRef(false);
@@ -183,6 +300,21 @@ export default function VideoWorkspace() {
 
   const isAdmin = currentUser?.role === 'admin';
   const showReviewBar = Boolean(videoId) && isAdmin;
+
+  // TẢI DỮ LIỆU QUIZ ĐỂ THEO DÕI THỜI GIAN
+  const { data: existingQuiz } = useQuery<QuizData | null>({
+    queryKey: ['video-quiz', videoId],
+    queryFn: async () => {
+      if (!videoId) return null;
+      const res = await fetch(`${API_BASE}/quiz/${videoId}`, {
+        headers: { ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) }
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error('Lỗi tải quiz');
+      return res.json();
+    },
+    enabled: !!videoId,
+  });
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ status, reason }: { status: VideoStatus; reason?: string }) => {
@@ -216,10 +348,7 @@ export default function VideoWorkspace() {
 
   const likeMutation = useMutation({
     mutationFn: async () => {
-      if (!videoId) {
-        throw new Error('Thiếu mã video');
-      }
-
+      if (!videoId) throw new Error('Thiếu mã video');
       const response = await fetch(`${API_BASE}/video/like/${videoId}`, {
         method: 'POST',
         headers: {
@@ -227,13 +356,8 @@ export default function VideoWorkspace() {
         },
         credentials: 'include',
       });
-
       const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(data?.error || data?.message || 'Không thể thích video');
-      }
-
+      if (!response.ok) throw new Error(data?.error || data?.message || 'Không thể thích video');
       return data as { likes_count?: number; alreadyLiked?: boolean };
     },
     onMutate: async () => {
@@ -244,31 +368,20 @@ export default function VideoWorkspace() {
       return { previousLikes, previousLikedByMe };
     },
     onSuccess: (data) => {
-      if (typeof data.likes_count === 'number') {
-        setLikesCount(data.likes_count);
-      }
-      if (data.alreadyLiked) {
-        setLikedByMe(true);
-      }
+      if (typeof data.likes_count === 'number') setLikesCount(data.likes_count);
+      if (data.alreadyLiked) setLikedByMe(true);
       toast.success(data.alreadyLiked ? 'Video đã được like rồi' : 'Đã like video');
     },
     onError: (error: Error, _variables, context) => {
-      if (typeof context?.previousLikes === 'number') {
-        setLikesCount(context.previousLikes);
-      }
-      if (typeof context?.previousLikedByMe === 'boolean') {
-        setLikedByMe(context.previousLikedByMe);
-      }
+      if (typeof context?.previousLikes === 'number') setLikesCount(context.previousLikes);
+      if (typeof context?.previousLikedByMe === 'boolean') setLikedByMe(context.previousLikedByMe);
       toast.error(error.message || 'Không thể thích video');
     },
   });
 
   const unlikeMutation = useMutation({
     mutationFn: async () => {
-      if (!videoId) {
-        throw new Error('Thiếu mã video');
-      }
-
+      if (!videoId) throw new Error('Thiếu mã video');
       const response = await fetch(`${API_BASE}/video/unlike/${videoId}`, {
         method: 'POST',
         headers: {
@@ -276,13 +389,8 @@ export default function VideoWorkspace() {
         },
         credentials: 'include',
       });
-
       const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(data?.error || data?.message || 'Không thể bỏ thích video');
-      }
-
+      if (!response.ok) throw new Error(data?.error || data?.message || 'Không thể bỏ thích video');
       return data as { likes_count?: number; alreadyUnliked?: boolean };
     },
     onMutate: async () => {
@@ -293,21 +401,13 @@ export default function VideoWorkspace() {
       return { previousLikes, previousLikedByMe };
     },
     onSuccess: (data) => {
-      if (typeof data.likes_count === 'number') {
-        setLikesCount(data.likes_count);
-      }
-      if (data.alreadyUnliked) {
-        setLikedByMe(false);
-      }
+      if (typeof data.likes_count === 'number') setLikesCount(data.likes_count);
+      if (data.alreadyUnliked) setLikedByMe(false);
       toast.success(data.alreadyUnliked ? 'Video chưa được thích trước đó' : 'Đã bỏ thích video');
     },
     onError: (error: Error, _variables, context) => {
-      if (typeof context?.previousLikes === 'number') {
-        setLikesCount(context.previousLikes);
-      }
-      if (typeof context?.previousLikedByMe === 'boolean') {
-        setLikedByMe(context.previousLikedByMe);
-      }
+      if (typeof context?.previousLikes === 'number') setLikesCount(context.previousLikes);
+      if (typeof context?.previousLikedByMe === 'boolean') setLikedByMe(context.previousLikedByMe);
       toast.error(error.message || 'Không thể bỏ thích video');
     },
   });
@@ -333,6 +433,7 @@ export default function VideoWorkspace() {
             setVideoTitle(video.title || '');
             setCurrentYoutubeUrl(video.youtube_url || '');
             setVideoStatus(video.status || 'pending');
+            setJlptLevel(video.jlpt_level || 'Unknown');
             setViewsCount(video.views_count || 0);
             setLikesCount(video.likes_count || 0);
             setLikedByMe(Boolean(video.likedByMe));
@@ -357,15 +458,14 @@ export default function VideoWorkspace() {
       interval = window.setInterval(async () => {
         try {
           const currentTime = await playerRef.current.getCurrentTime();
-          let foundIndex = -1;
           
+          // 1. Logic chạy kịch bản mượt mà
+          let foundIndex = -1;
           for (let i = 0; i < script.length; i++) {
-            // Lấy 'start' siêu chuẩn (nếu có), nếu video cũ chưa có thì dùng 'timestamp' cắt số
             const timeSec = (script[i] as any).start !== undefined 
               ? (script[i] as any).start 
               : parseTimestampToSeconds(script[i].timestamp);
               
-            // ĐÃ BỎ CÁI -0.5 ĐI (Chỉ trừ nhẹ 0.1s để trượt mượt mà)
             if (currentTime >= timeSec - 0.1) {
               foundIndex = i;
             } else {
@@ -377,6 +477,22 @@ export default function VideoWorkspace() {
             setCurrentIndex(foundIndex);
           }
 
+          // 2. Logic Kích hoạt Pop-up Quiz (Sau 6 giây)
+          if (enablePopupQuiz && existingQuiz && !activePopupQuestion) {
+            const popQuestion = existingQuiz.questions.find(q => {
+              const triggerTime = parseTimestampToSeconds(q.timestamp) + 6;
+              return currentTime >= triggerTime && currentTime <= triggerTime + 0.5;
+            });
+
+            if (popQuestion && !shownPopups.has(popQuestion.timestamp)) {
+              playerRef.current.pauseVideo();
+              setIsPlaying(false);
+              setActivePopupQuestion(popQuestion);
+              setShownPopups(prev => new Set(prev).add(popQuestion.timestamp));
+            }
+          }
+
+          // 3. Logic đếm lượt xem
           if (!hasCountedViewRef.current && videoId) {
             const duration = await playerRef.current.getDuration();
 
@@ -390,10 +506,7 @@ export default function VideoWorkspace() {
                 hasCountedViewRef.current = false;
                 sessionStorage.removeItem(`video-view-counted:${videoId}`);
               }).then((response) => {
-                if (!response) {
-                  return;
-                }
-
+                if (!response) return;
                 return response.json().then((data) => {
                   if (typeof data?.views_count === 'number') {
                     setViewsCount(data.views_count);
@@ -403,12 +516,12 @@ export default function VideoWorkspace() {
             }
           }
         } catch (e) { }
-      }, 300); // Lưu ý: Nếu muốn UI nhạy hơn nữa, có thể giảm 500 xuống 250
+      }, 300); 
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isPlaying, script, currentIndex]);
+  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion]);
 
 
   if (videoId && isCheckingAccess) {
@@ -455,6 +568,7 @@ export default function VideoWorkspace() {
 
     try {
       const token = localStorage.getItem('token') || '';
+      
       const response = await fetch('http://localhost:5000/api/video/analyze', {
         method: 'POST',
         headers: { 
@@ -471,20 +585,18 @@ export default function VideoWorkspace() {
       }
 
       const result = await response.json();
-      setScript(result.script);
-      setVideoTitle(result.title);
-
+      
+      // SỬA Ở ĐÂY: Thêm header chứa Token khi gọi save
       const saveRes = await fetch('http://localhost:5000/api/video/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}` 
         },
         credentials: 'omit',
         body: JSON.stringify({
           title: result.title,
           youtube_url: currentYoutubeUrl,
-          jlpt_level: result.jlpt_level,
           script: result.script
         })
       });
@@ -492,9 +604,18 @@ export default function VideoWorkspace() {
       const saveData = await saveRes.json();
 
       if (saveRes.ok && saveData.videoId) {
-        window.history.replaceState(null, '', `?id=${saveData.videoId}`);
+        // CẬP NHẬT STATE NGAY LẬP TỨC
+        setScript(saveData.script);
+        setVideoTitle(result.title);
+        setJlptLevel(saveData.jlptLevel || 'Unknown');
+        
+        toast.success(`🎉 Hoàn tất! Trình độ video: ${saveData.jlptLevel || 'Đã phân tích'}`);
+        
+        // Làm mới cache Quiz
+        queryClient.invalidateQueries({ queryKey: ['video-quiz', saveData.videoId] });
         queryClient.invalidateQueries({ queryKey: ['community-videos'] });
-        toast.success('Bóc băng và lưu trữ Database thành công!');
+
+        window.history.replaceState(null, '', `?id=${saveData.videoId}`);
       } else {
         toast.error(saveData.error || saveData.message || 'Lỗi khi lưu Database');
       }
@@ -534,32 +655,6 @@ export default function VideoWorkspace() {
     setPopupPos(pos);
   };
 
-  if (videoId && isCheckingAccess) {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 px-4">
-        <div className="text-center text-slate-600">
-          <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-emerald-500" />
-          <p className="text-sm font-medium">Đang kiểm tra quyền truy cập...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (videoId && loadError) {
-    return (
-      <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 px-4">
-        <div className="max-w-lg rounded-2xl border border-rose-200 bg-white p-6 shadow-sm text-center">
-          <h2 className="text-xl font-bold text-slate-900">Không thể mở video</h2>
-          <p className="mt-2 text-sm text-slate-600">{loadError}</p>
-          <p className="mt-3 text-xs text-slate-500">
-            Nếu đây là video chưa duyệt, chỉ admin và creator mới được xem.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-
   return (
     <div className={`min-h-[calc(100vh-4rem)] bg-slate-50 flex flex-col p-4 md:p-6 lg:p-8 w-full mx-auto animate-in fade-in duration-500 ${showReviewBar ? 'pb-28' : ''}`}>
       {rejectDialogOpen && (
@@ -580,6 +675,23 @@ export default function VideoWorkspace() {
             updateStatusMutation.mutate({ status: 'rejected', reason: trimmedReason });
           }}
           isSubmitting={updateStatusMutation.isPending}
+        />
+      )}
+
+      {/* Hiển thị Pop-up Quiz */}
+      {activePopupQuestion && (
+        <PopupQuizModal 
+          question={activePopupQuestion}
+          onClose={() => {
+            setActivePopupQuestion(null);
+            playerRef.current?.playVideo();
+            setIsPlaying(true);
+          }}
+          onResume={() => {
+            setActivePopupQuestion(null);
+            playerRef.current?.playVideo();
+            setIsPlaying(true);
+          }}
         />
       )}
 
@@ -604,7 +716,16 @@ export default function VideoWorkspace() {
                     videoId={ytId}
                     className="w-full h-full border-0 absolute inset-0"
                     iframeClassName="w-full h-full"
-                    opts={{ playerVars: { autoplay: 0, controls: 1, playsinline: 1, enablejsapi: 1, rel: 0 } }}
+                    opts={{ 
+                      playerVars: { 
+                        autoplay: 0, 
+                        controls: 1, 
+                        playsinline: 1, 
+                        enablejsapi: 1, 
+                        rel: 0,
+                        origin: window.location.origin // Đã fix lỗi postMessage CORS
+                      } 
+                    }}
                     onReady={(event: any) => { playerRef.current = event.target; }}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
@@ -621,10 +742,27 @@ export default function VideoWorkspace() {
 
             <div className="bg-white rounded-[1.5rem] border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-3">
-                <Button onClick={generateScript} disabled={generating || !ytId} className="bg-linear-to-r from-emerald-500 to-teal-600 text-white hover:opacity-90 shadow-sm rounded-xl px-5">
-                  {generating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                  {generating ? 'Đang phân tích AI...' : 'Tạo Script AI'}
-                </Button>
+                {/* ẨN NÚT NẾU ĐÃ CÓ SCRIPT, NẾU CÓ QUIZ THÌ HIỆN NÚT BẬT/TẮT POP-UP */}
+                {script.length === 0 ? (
+                  <Button onClick={generateScript} disabled={generating || !ytId} className="bg-linear-to-r from-emerald-500 to-teal-600 text-white hover:opacity-90 shadow-sm rounded-xl px-5">
+                    {generating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    {generating ? 'Đang phân tích AI...' : 'Tạo Script AI'}
+                  </Button>
+                ) : existingQuiz ? (
+                  <Button 
+                    variant={enablePopupQuiz ? 'default' : 'outline'}
+                    onClick={() => {
+                      setEnablePopupQuiz(!enablePopupQuiz);
+                      if (!enablePopupQuiz) toast.success('Đã BẬT tính năng Pop-up Quiz khi xem video!');
+                      else toast.info('Đã TẮT tính năng Pop-up Quiz.');
+                    }}
+                    className={`rounded-xl px-5 shadow-sm transition-all duration-300 ${enablePopupQuiz ? 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                  >
+                    <BrainCircuit className={`w-4 h-4 mr-2 ${enablePopupQuiz ? 'animate-pulse' : ''}`} />
+                    {enablePopupQuiz ? 'Đang Bật Pop-up Quiz' : 'Bật Pop-up Quiz'}
+                  </Button>
+                ) : null}
+                
                 <Button variant="outline" className="text-slate-600 border-slate-200 hover:bg-slate-50 rounded-xl px-5" onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Đã copy link bài học!'); }}>
                   <Share2 className="w-4 h-4 mr-2" /> Chia sẻ
                 </Button>
@@ -634,6 +772,17 @@ export default function VideoWorkspace() {
                   <div className="flex flex-col items-start sm:items-end gap-2">
                     <h2 className="text-slate-800 font-bold truncate text-lg" title={videoTitle}>{videoTitle}</h2>
                     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      
+                      {/* ĐÃ THÊM: Badge JLPT */}
+                      {videoId && (
+                        <Badge 
+                          variant="outline" 
+                          className={`font-bold px-3 py-1.5 shadow-sm ${JLPT_COLORS[jlptLevel] || JLPT_COLORS['Unknown']}`}
+                        >
+                          {jlptLevel.startsWith('N') ? jlptLevel : `Level ${jlptLevel}`}
+                        </Badge>
+                      )}
+
                       <div className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-600">
                         <Eye className="w-4 h-4 text-slate-500" />
                         <span>{viewsCount.toLocaleString()} lượt xem</span>
@@ -720,7 +869,7 @@ export default function VideoWorkspace() {
                   currentIndex={currentIndex} 
                   onLineClick={(index) => jumpToLine(index)} 
                   onWordSelect={handleWordSelect} 
-                  showVocabList={showVocabList} // TRUYỀN PROP VÀO ĐÂY
+                  showVocabList={showVocabList} 
                 />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400">
@@ -736,7 +885,6 @@ export default function VideoWorkspace() {
 
         <TabsContent value="quiz" className="flex-1 m-0 p-0 outline-hidden">
           <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden h-full">
-            {/* Thêm ytId={ytId} vào đây */}
             <QuizPage videoId={videoId} script={script} ytId={ytId} onJumpToTime={jumpToLine} />
           </div>
         </TabsContent>
