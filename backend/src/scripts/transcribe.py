@@ -17,7 +17,6 @@ sys.stderr.reconfigure(encoding='utf-8')
 
 # Lưu lại luồng Stdout gốc (sạch)
 REAL_STDOUT = sys.stdout
-# Ép tất cả lệnh print() thông thường chảy vào Stderr
 sys.stdout = sys.stderr 
 
 from faster_whisper import WhisperModel
@@ -42,7 +41,6 @@ global_translator = None
 # 2. CÁC HÀM TIỆN ÍCH & XỬ LÝ ÂM THANH
 # ==========================================
 def log_err(msg):
-    """Hàm log lỗi ra stderr"""
     print(msg, file=sys.stderr, flush=True)
 
 class YTDLPLogger(object):
@@ -105,20 +103,10 @@ def download_youtube_audio(url: str) -> str:
     return os.path.join(tmp_dir, files[0])
 
 def preprocess_audio_for_vocals(input_audio: str) -> str:
-    log_err("Đang tiền xử lý âm thanh (Lọc ồn, làm rõ giọng nói)...")
-    if shutil.which("ffmpeg") is None:
-        return input_audio
-    tmpf = tempfile.NamedTemporaryFile(delete=False, suffix="_cleaned.mp3")
-    cleaned_path = tmpf.name
-    tmpf.close()
-    filters = "highpass=f=80,lowpass=f=8000,afftdn=nf=-20"
-    cmd = ["ffmpeg", "-y", "-i", input_audio, "-af", filters, "-vn", "-acodec", "libmp3lame", "-q:a", "2", cleaned_path]
-    try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return cleaned_path
-    except Exception as e:
-        log_err(f"Lỗi khi tiền xử lý âm thanh: {e}. Sẽ dùng file gốc.")
-        return input_audio
+    # TẮT TOÀN BỘ BỘ LỌC CỦA FFMPEG
+    # Trả về audio gốc để giữ nguyên chất lượng giọng hát, luyến láy, nốt cao.
+    # Whisper đủ thông minh để tự xử lý tạp âm nền nếu không bị can thiệp quá sâu.
+    return input_audio
 
 def add_nvidia_paths():
     def find_bin(pkg_name):
@@ -153,7 +141,7 @@ def init_transcribe_system(use_gpu: bool = True):
     if use_gpu:
         add_nvidia_paths()
         
-    model_id = "small"
+    model_id = "large-v3-turbo"
     try:
         device = "cuda" if use_gpu else "cpu"
         compute_type = "int8_float16" if use_gpu else "int8"
@@ -199,7 +187,7 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
 
         audio_path = preprocess_audio_for_vocals(raw_audio_path)
 
-        log_err("Transcribing & Dịch thuật (Đã tối ưu timestamp siêu chuẩn)...")
+        log_err("Transcribing & Dịch thuật (Tối ưu cho Anime & Ca nhạc)...")
         general_prompt = "これは歌の歌詞、またはアニメのセリフです。文脈に合わせて、漢字と句読点を正しく使って文字起こししてください。"
         
         HALLUCINATION_BLACKLIST = [
@@ -208,16 +196,18 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
             "評価お願い", "twitter", "tiktok", "instagram"
         ]
 
+        # TẮT VAD VÀ TĂNG no_speech_threshold ĐỂ KHÔNG BỎ LỠ LỜI HÁT
         segments, info = global_model.transcribe(
             audio_path,
             language="ja",
             condition_on_previous_text=False,
             initial_prompt=general_prompt,
-            vad_filter=False,
+            vad_filter=False, 
             beam_size=5,
-            word_timestamps=True, # TÍNH NĂNG VÀNG: Căn giờ chuẩn xác đến từng chữ cái!
+            word_timestamps=True,
             temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-            no_speech_threshold=0.6 
+            no_speech_threshold=0.9, 
+            log_prob_threshold=None   
         )
         
         for seg in segments:
@@ -324,8 +314,8 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
             
             results.append({
                 "timestamp": format_time_mm_ss(seg.start),
-                "start": round(seg.start, 3), # THÊM start chuẩn xác (để Frontend xài)
-                "end": round(seg.end, 3),     # THÊM end chuẩn xác
+                "start": round(seg.start, 3),
+                "end": round(seg.end, 3),
                 "japanese": ja_text,
                 "vietnamese": vi_text,
                 "vocabulary": temp_vocab_list
