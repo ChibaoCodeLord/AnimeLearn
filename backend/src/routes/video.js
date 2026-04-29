@@ -210,6 +210,9 @@ except Exception as e:
 
 router.post('/save-word', authMiddleware, async (req, res) => {
   try {
+    const userId = req.user?.id || req.user?.userId;
+    if(!userId) return res.status(401).json({ error: 'Unauthorized' });
+
     const { word, reading, meaning_vi, meaning_en, part_of_speech, jlpt_level, example_sentence, example_meaning } = req.body;
 
     // Check if word already exists for this user
@@ -219,7 +222,7 @@ router.post('/save-word', authMiddleware, async (req, res) => {
     }
 
     const newVocab = new Vocabulary({
-      user: req.user.userId,
+      user: userId,
       word,
       reading,
       meaning_vi,

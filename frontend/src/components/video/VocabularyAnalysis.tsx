@@ -17,10 +17,15 @@ interface VocabularyAnalysisProps {
   onWordClick?: (vocab: any) => void; 
 }
 
-// --- Các hàm tiện ích xử lý Cookie ---
+// --- Các hàm tiện ích xử lý Storage ---
 
-const getSavedVocabFromCookie = () => {
-  const match = document.cookie.match(new RegExp('(^| )my_anime_saved_vocab=([^;]+)'));
+const STORAGE_KEY = 'my_anime_saved_vocab';
+
+const getSavedVocabFromStorage = () => {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) return JSON.parse(stored);
+
+  const match = document.cookie.match(new RegExp('(^| )' + STORAGE_KEY + '=([^;]+)'));
   if (match) {
     try {
       return JSON.parse(decodeURIComponent(match[2]));
@@ -31,11 +36,13 @@ const getSavedVocabFromCookie = () => {
   return [];
 };
 
-const saveVocabToCookie = (vocabList: any[]) => {
+const saveVocabToStorage = (vocabList: any[]) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(vocabList));
+
   // Lưu cookie với thời hạn 30 ngày (tính bằng giây)
   const maxAge = 30 * 24 * 60 * 60;
   // Lưu ý: Chuỗi JSON dài có thể vượt quá giới hạn 4KB của Cookie
-  document.cookie = `my_anime_saved_vocab=${encodeURIComponent(JSON.stringify(vocabList))}; path=/; max-age=${maxAge}`;
+  document.cookie = `${STORAGE_KEY}=${encodeURIComponent(JSON.stringify(vocabList))}; path=/; max-age=${maxAge}`;
 };
 
 // --- Component Chính ---
@@ -62,29 +69,72 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
         }, 1000);
       });
 
-      // 2. Chuẩn bị object từ vựng hoàn chỉnh để lưu
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('Bạn cần đăng nhập để lưu từ vựng.');
+        return;
+      }
+
+      const payload = {
+        word: mockResult.word,
+        reading: mockResult.reading,
+        meaning_vi: mockResult.meaning_vi,
+        meaning_en: mockResult.meaning_en,
+        part_of_speech: vocab.pos || '',
+        jlpt_level: mockResult.jlpt_level || 'Unknown',
+        example_sentence: mockResult.example_sentence || '',
+        example_meaning: mockResult.example_meaning || ''
+      };
+
+      const response = await fetch('http://localhost:5000/api/video/save-word', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'omit',
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        if (data.message === 'Từ này đã có trong sổ tay') {
+          toast.info(data.message);
+        } else {
+          toast.error(data.error || 'Lỗi khi lưu từ vựng!');
+        }
+        return;
+      }
+
+      const savedFromServer = data?.vocab || {};
       const newSavedVocab = {
-        ...mockResult,
+        id: savedFromServer._id || savedFromServer.id || payload.word,
+        word: savedFromServer.word || payload.word,
+        reading: savedFromServer.reading || payload.reading,
+        meaning_vi: savedFromServer.meaning_vi || payload.meaning_vi,
+        meaning_en: savedFromServer.meaning_en || payload.meaning_en,
+        part_of_speech: savedFromServer.part_of_speech || payload.part_of_speech,
+        jlpt_level: savedFromServer.jlpt_level || payload.jlpt_level,
+        example_sentence: savedFromServer.example_sentence || payload.example_sentence,
+        example_meaning: savedFromServer.example_meaning || payload.example_meaning,
         next_review_date: new Date().toISOString().split('T')[0],
         review_interval: 1,
         ease_factor: 2.5,
         review_count: 0,
-        saved_at: new Date().toISOString()
+        saved_at: savedFromServer.saved_at || new Date().toISOString()
       };
 
-      // 3. Xử lý lưu vào Cookie
-      const currentSavedList = getSavedVocabFromCookie();
-      
-      // Kiểm tra xem từ này đã được lưu trước đó chưa
-      const isAlreadySaved = currentSavedList.some((item: any) => item.word === newSavedVocab.word);
+      const currentSavedList = getSavedVocabFromStorage();
+      const existingIndex = currentSavedList.findIndex((item: any) => item.word === newSavedVocab.word);
 
-      if (isAlreadySaved) {
-        toast.info(`Từ "${vocab.word}" đã có trong sổ tay!`);
+      if (existingIndex >= 0) {
+        currentSavedList[existingIndex] = { ...currentSavedList[existingIndex], ...newSavedVocab };
       } else {
         currentSavedList.push(newSavedVocab);
-        saveVocabToCookie(currentSavedList);
-        toast.success(`Đã lưu từ "${vocab.word}" vào Cookie`);
       }
+
+      saveVocabToStorage(currentSavedList);
+      toast.success(data.message || `Đã lưu từ "${vocab.word}" vào Database`);
 
     } catch (error) {
       console.error("Lỗi khi lưu từ vựng:", error);

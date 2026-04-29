@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -64,6 +64,33 @@ function calculateNextReview(quality: number, easeFactor: number, interval: numb
 export default function FlashCard({ words, onReview }: FlashCardProps) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
+
+  useEffect(() => {
+    setCurrentIdx(0);
+    setFlipped(false);
+    setIsFinished(false);
+  }, [words.length]);
+
+  if (isFinished) {
+    return (
+      <div className="max-w-lg mx-auto text-center py-16">
+        <div className="text-5xl mb-4">🎉</div>
+        <h3 className="text-2xl font-bold text-gray mb-2">Chúc mừng bạn đã hoàn thành!!!</h3>
+        <p className="text-gray-400 mb-6">Bạn đã hoàn thành nội dung ôn tập hôm nay</p>
+        <Button
+          onClick={() => {
+            setIsFinished(false);
+            setCurrentIdx(0);
+            setFlipped(false);
+          }}
+          className="bg-emerald-500 text-white hover:bg-emerald-600"
+        >
+          Lam lai tu dau
+        </Button>
+      </div>
+    );
+  }
 
   const word = words[currentIdx];
   if (!word) return null;
@@ -75,6 +102,8 @@ export default function FlashCard({ words, onReview }: FlashCardProps) {
     setFlipped(false);
     if (currentIdx < words.length - 1) {
       setCurrentIdx(currentIdx + 1);
+    } else {
+      setIsFinished(true);
     }
   };
 
