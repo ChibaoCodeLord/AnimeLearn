@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { Clock, X, Volume2, Sparkles } from 'lucide-react';
+import { Clock, X, Volume2, Sparkles, BookOpen } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import VocabularyAnalysis from './VocabularyAnalysis';
 
@@ -19,6 +19,7 @@ interface ScriptPanelProps {
   onLineClick: (index: number) => void;
   onWordSelect: (word: string, position: { x: number; y: number }) => void;
   showVocabList?: boolean; // Tùy chọn ẩn/hiện danh sách từ vựng
+  vocabList?: any[];
 }
 
 export default function ScriptPanel({ 
@@ -26,7 +27,8 @@ export default function ScriptPanel({
   currentIndex, 
   onLineClick, 
   onWordSelect,
-  showVocabList = true // Mặc định là hiện
+  showVocabList = true, // Mặc định là hiện
+  vocabList = []
 }: ScriptPanelProps) {
   
   const activeRef = useRef<HTMLDivElement>(null);
@@ -153,7 +155,12 @@ export default function ScriptPanel({
                 <div onClick={(e) => e.stopPropagation()}>
                   <VocabularyAnalysis 
                     vocabulary={line.vocabulary} 
-                    onWordClick={(vocabData: any) => setCenteredVocab(vocabData)} 
+                    onWordClick={(vocabData: any) => {
+                      // ✨ LOGIC GHÉP DATA: Tìm Kanji trong kho tổng vocabList
+                      const enriched = vocabList.find((v: any) => v.word === vocabData.word);
+                      // Ghép thông tin Kanji vào từ vựng trước khi hiện Modal
+                      setCenteredVocab(enriched ? { ...vocabData, ...enriched } : vocabData);
+                    }}
                   />
                 </div>
               )}
@@ -162,16 +169,16 @@ export default function ScriptPanel({
         </div>
       </div>
 
-      {/* ======================================================== */}
+{/* ======================================================== */}
       {/* MODAL TỪ VỰNG TRUNG TÂM (TO & RÕ RÀNG) */}
       {/* ======================================================== */}
       {centeredVocab && (
         <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm transition-all"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/20 transition-all"
           onClick={() => setCenteredVocab(null)}
         >
           <div 
-            className="w-full max-w-lg bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-pink-100"
+            className="w-full max-w-lg bg-white shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 rounded-2xl border-pink-100"
             onClick={(e) => e.stopPropagation()} // Ngăn click xuyên qua modal
           >
             {/* Nút tắt */}
@@ -211,31 +218,81 @@ export default function ScriptPanel({
               </div>
             </div>
 
-            {/* BODY (ĐỊNH NGHĨA) */}
-            <div className="p-8 bg-[#fffbfd] max-h-[50vh] overflow-y-auto custom-scrollbar">
-              {meaningLines.length > 0 ? (
-                <ul className="space-y-4">
-                  {meaningLines.map((line, idx) => {
-                    const match = line.match(/^([0-9]+\.)(.*)/);
-                    if (match) {
+            {/* NỘI DUNG CUỘN (Chứa Nghĩa + Kanji) */}
+            <div className="max-h-[55vh] overflow-y-auto overscroll-contain custom-scrollbar bg-[#fffbfd]">
+              {/* BODY (ĐỊNH NGHĨA) */}
+              <div className="p-8 pb-6">
+                {meaningLines.length > 0 ? (
+                  <ul className="space-y-4">
+                    {meaningLines.map((line, idx) => {
+                      const match = line.match(/^([0-9]+\.)(.*)/);
+                      if (match) {
+                        return (
+                          <li key={idx} className="text-slate-700 text-lg leading-relaxed flex gap-3">
+                            <span className="font-black text-pink-400 shrink-0 select-none">{match[1]}</span>
+                            <span className="font-medium">{match[2]}</span>
+                          </li>
+                        );
+                      }
                       return (
-                        <li key={idx} className="text-slate-700 text-lg leading-relaxed flex gap-3">
-                          <span className="font-black text-pink-400 shrink-0 select-none">{match[1]}</span>
-                          <span className="font-medium">{match[2]}</span>
+                        <li key={idx} className="text-slate-700 text-lg leading-relaxed relative pl-5 before:absolute before:left-0 before:top-2.5 before:w-2 before:h-2 before:bg-violet-300 before:rounded-full font-medium">
+                          {line}
                         </li>
                       );
-                    }
-                    return (
-                      <li key={idx} className="text-slate-700 text-lg leading-relaxed relative pl-5 before:absolute before:left-0 before:top-2.5 before:w-2 before:h-2 before:bg-violet-300 before:rounded-full font-medium">
-                        {line}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-2 text-slate-400 py-6 italic">
-                  <Sparkles className="w-8 h-8 text-pink-300" />
-                  <span className="text-base">Chưa có định nghĩa chi tiết cho từ này.</span>
+                    })}
+                  </ul>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 text-slate-400 py-6 italic">
+                    <Sparkles className="w-8 h-8 text-pink-300" />
+                    <span className="text-base">Chưa có định nghĩa chi tiết cho từ này.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* ✨ BẢNG PHÂN TÍCH KANJI CHO TỪ VỰNG */}
+              {centeredVocab.kanji_info && centeredVocab.kanji_info.length > 0 && (
+                <div className="px-8 py-6 border-t border-dashed border-pink-200 bg-white">
+                  <p className="text-[12px] font-bold text-pink-400 mb-4 uppercase tracking-widest flex items-center gap-1.5">
+                    <BookOpen className="w-4 h-4" /> Phân tích Hán Tự
+                  </p>
+                  <div className="space-y-3">
+                    {centeredVocab.kanji_info.map((kanji: any, idx: number) => {
+                      // Rút gọn ý nghĩa Kanji nếu nó dài
+                      const shortDetail = kanji.detail
+                        ? kanji.detail.split(/[,;]/).slice(0, 3).join(', ').trim()
+                        : '';
+                      const hasMore = kanji.detail && kanji.detail.split(/[,;]/).length > 3;
+
+                      return (
+                        <div key={idx} className="flex bg-[#fdf8fa] rounded-xl p-4 items-start border border-pink-50 shadow-sm">
+                          {/* Chữ Kanji to */}
+                          <div className="text-4xl text-rose-500 font-black mr-5 w-12 text-center flex-shrink-0 mt-1">
+                            {kanji.kanji}
+                          </div>
+
+                          {/* Chi tiết Kanji */}
+                          <div className="flex-1 min-w-0 text-sm">
+                            <p className="font-bold text-slate-800 text-[15px] mb-1">
+                              {kanji.mean} <span className="font-normal text-slate-400 text-xs ml-1">(N{kanji.level} • {kanji.stroke_count} nét)</span>
+                            </p>
+                            
+                            {shortDetail && (
+                              <p className="text-slate-500 text-xs mb-2.5 leading-relaxed italic border-l-2 border-pink-200 pl-2.5 line-clamp-2">
+                                {shortDetail}{hasMore ? '...' : ''}
+                              </p>
+                            )}
+
+                            <div className="grid grid-cols-[40px_1fr] gap-x-2 gap-y-1.5 text-[12px] mt-2 pt-2 border-t border-pink-100">
+                              <span className="text-pink-400 font-bold uppercase">Kun</span>
+                              <span className="text-slate-600 break-words font-medium">{kanji.kun || '-'}</span>
+                              <span className="text-pink-400 font-bold uppercase">On</span>
+                              <span className="text-slate-600 break-words font-medium">{kanji.on || '-'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
