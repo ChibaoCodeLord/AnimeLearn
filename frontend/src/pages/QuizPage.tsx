@@ -340,7 +340,10 @@ export default function QuizPage({ videoId, script, ytId }: QuizPageProps) {
                     <Clock className="w-3 h-3 mr-1" /> {q.timestamp}
                   </Badge>
                 </div>
-                <h3 className="text-xl md:text-2xl font-bold text-slate-900 leading-snug">{q.questionText}</h3>
+                <h3 
+                  className="text-xl font-bold text-slate-800 mb-4"
+                  dangerouslySetInnerHTML={{ __html: q.questionText }}
+                />
               </div>
             </div>
 

@@ -13,6 +13,7 @@ import adminRoutes from './src/routes/admin.js';
 import dictionaryRoutes from './src/routes/dictionary.js'
 import quizRoutes from './src/routes/quiz.js';
 import vocabularyRouters from './src/routes/vocabulary.js';
+import kanjiRouters from './src/routes/kanji.js';
 
 
 // Load environment variables
@@ -28,7 +29,9 @@ app.use(cors({
   credentials: true
 }));
 app.use(cookieParser()); // Add this to parse cookies
-app.use(express.json()); // Allows us to parse JSON data in the request body
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
@@ -52,7 +55,8 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/dictionary', dictionaryRoutes);
 app.use('/api/quiz', quizRoutes);
-app.use('/api/vocabulary', vocabularyRouters)
+app.use('/api/vocabulary', vocabularyRouters);
+app.use('/api/kanji', kanjiRouters);
 
 // Basic test route
 app.get('/api/health', (req, res) => {

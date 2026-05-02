@@ -583,7 +583,7 @@ router.post('/track-session', authMiddleware, async (req, res) => {
     // Get the user to check if they need a streak update
     const currentUser = await User.findById(req.user.id);
 
-    const todayDate = new Date(now);
+    const todayDate = new Date(Date.now());
     todayDate.setHours(0, 0, 0, 0);
 
     let streakUpdate = {};
@@ -613,7 +613,7 @@ router.post('/track-session', authMiddleware, async (req, res) => {
       req.user.id,
       {
         $inc: { totalLearningHours: durationHours },
-        lastActiveDate: now,
+        lastActiveDate: Date.now(),
         ...streakUpdate
       },
       { new: true }
