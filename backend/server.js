@@ -14,6 +14,7 @@ import dictionaryRoutes from './src/routes/dictionary.js'
 import quizRoutes from './src/routes/quiz.js';
 import vocabularyRouters from './src/routes/vocabulary.js';
 import kanjiRouters from './src/routes/kanji.js';
+import User from './src/models/User.js';
 
 
 // Load environment variables
@@ -22,6 +23,23 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const BAN_SWEEP_INTERVAL_MS = 5 * 60 * 1000; // cứ cách 5p kiểm tra để tự động gở ban
+
+const sweepExpiredBans = async () => {
+  try {
+    const now = new Date();
+    const result = await User.updateMany(
+      { isBanned: true, unbannedAt: { $ne: null, $lte: now } },
+      { $set: { isBanned: false, bannedAt: null, unbannedAt: null, banReason: '' } }
+    );
+
+    if (result?.modifiedCount) {
+      console.log(`[BanSweep] Unbanned ${result.modifiedCount} user(s)`);
+    }
+  } catch (error) {
+    console.error('[BanSweep] Error unbanning users:', error.message || error);
+  }
+};
 
 // Middleware
 app.use(cors({
@@ -37,6 +55,11 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB successfully');
+
+    void sweepExpiredBans();
+    setInterval(() => {
+      void sweepExpiredBans();
+    }, BAN_SWEEP_INTERVAL_MS);
 
     // Start the server only after connecting to the database
     app.listen(PORT, () => {
