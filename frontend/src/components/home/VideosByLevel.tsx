@@ -34,7 +34,7 @@ const levelNames: Record<string, string> = {
   N3: 'Trung cấp (N3)',
   N2: 'Trung - Cao cấp (N2)',
   N1: 'Cao cấp (N1)',
-  Mixed: 'Học tự do (Nguồn ngoài)',
+  Mixed: 'Video chưa phân loại',
 };
 
 function LevelSection({ level, levelVideos }: { level: string; levelVideos: VideoItem[] }) {

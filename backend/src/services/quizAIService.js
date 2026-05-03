@@ -18,7 +18,7 @@ Rule 7: Analyze the overall complexity of the vocabulary and grammar in the scri
 
 Output exactly this JSON structure:
 {
-  "jlptLevel": "N3",
+  "jlptLevel": "N4",
   "questions": [
     {
       "timestamp": "00:15",
@@ -26,7 +26,39 @@ Output exactly this JSON structure:
       "questionText": "Trong câu '図書館___本を読みます', trợ từ cần điền là gì?",
       "options": ["に", "で", "を", "へ"],
       "correctAnswerIndex": 1,
-      "explanation": "Trợ từ 'で' (de) chỉ địa điểm xảy ra hành động."
+      "explanation": "Trợ từ 'で' (de) chỉ địa điểm xảy ra hành động (đọc sách ở thư viện)."
+    },
+    {
+      "timestamp": "01:20",
+      "type": "vocabulary",
+      "questionText": "Từ '約束' (yakusoku) trong đoạn hội thoại có nghĩa là gì?",
+      "options": ["Cuộc họp", "Gia đình", "Lời hứa", "Bạn bè"],
+      "correctAnswerIndex": 2,
+      "explanation": "'約束' (yakusoku) có nghĩa là lời hứa hoặc cuộc hẹn."
+    },
+    {
+      "timestamp": "02:45",
+      "type": "translation",
+      "questionText": "Câu 'お腹がペコペコです' có thể được dịch sang tiếng Việt là gì?",
+      "options": ["Tôi đang rất khát", "Tôi buồn ngủ quá", "Tôi rất đau đầu", "Tôi đang đói meo"],
+      "correctAnswerIndex": 3,
+      "explanation": "'ペコペコ' (pekopeko) là từ tượng thanh dùng để diễn tả trạng thái bụng đói cồn cào."
+    },
+    {
+      "timestamp": "04:10",
+      "type": "fill_in_blank",
+      "questionText": "Chọn từ thích hợp điền vào chỗ trống: '明日、雨が____ 試合は中止になります。'",
+      "options": ["降る", "降ったら", "降って", "降っても"],
+      "correctAnswerIndex": 1,
+      "explanation": "Mẫu ngữ pháp 'V-たら' dùng để diễn tả điều kiện giả định (Nếu ngày mai trời mưa, trận đấu sẽ bị hủy)."
+    },
+    {
+      "timestamp": "05:30",
+      "type": "kanji_reading",
+      "questionText": "Cách đọc của chữ Hán được gạch chân trong câu '<u>地下鉄</u>に乗ります' là gì?",
+      "options": ["ちかてつ", "ちかてん", "じかてつ", "ちかでつ"],
+      "correctAnswerIndex": 0,
+      "explanation": "Từ '地下鉄' (Tàu điện ngầm) được ghép bởi 地 (ち), 下 (か), và 鉄 (てつ), đọc là 'ちかてつ' (chikatetsu)."
     }
   ]
 }

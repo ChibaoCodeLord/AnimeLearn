@@ -24,9 +24,17 @@ from faster_whisper import WhisperModel
 try:
     from sudachipy import tokenizer
     from sudachipy import dictionary
-    from deep_translator import GoogleTranslator
+    import deepl  # THƯ VIỆN CHÍNH HÃNG DEEPL
 except ImportError:
-    print("Vui lòng cài đặt thêm thư viện: pip install sudachipy sudachidict_core sudachidict_full deep-translator", file=sys.stderr)
+    print("Vui lòng cài đặt thêm thư viện: pip install sudachipy sudachidict_core sudachidict_full deepl", file=sys.stderr)
+    sys.exit(1)
+
+# ==========================================
+# CẤU HÌNH DEEPL API KEY (TỪ BIẾN MÔI TRƯỜNG)
+# ==========================================
+DEEPL_API_KEY = os.getenv("DEEPL_API_KEY")
+if not DEEPL_API_KEY:
+    print("LỖI BẢO MẬT: Chưa cấu hình DEEPL_API_KEY trong file .env của Node.js!", file=sys.stderr)
     sys.exit(1)
 
 # ==========================================
@@ -72,6 +80,21 @@ def lookup_words_via_api(words_list):
         log_err(f"Lỗi gọi API từ điển Local: {e}")
     return {}
 
+def lookup_kanji_via_api(kanji_list):
+    if not kanji_list:
+        return {}
+    url = "http://localhost:5000/api/kanji/lookup"
+    payload = json.dumps({"characters": kanji_list}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            if res_data.get("success"):
+                return {k.get("kanji"): k for k in res_data.get("data", [])}
+    except Exception as e:
+        log_err(f"Lỗi gọi API Kanji Local: {e}")
+    return {}
+
 def extract_audio_from_video(video_path: str) -> str:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("Không tìm thấy ffmpeg trong PATH")
@@ -103,9 +126,6 @@ def download_youtube_audio(url: str) -> str:
     return os.path.join(tmp_dir, files[0])
 
 def preprocess_audio_for_vocals(input_audio: str) -> str:
-    # TẮT TOÀN BỘ BỘ LỌC CỦA FFMPEG
-    # Trả về audio gốc để giữ nguyên chất lượng giọng hát, luyến láy, nốt cao.
-    # Whisper đủ thông minh để tự xử lý tạp âm nền nếu không bị can thiệp quá sâu.
     return input_audio
 
 def add_nvidia_paths():
@@ -136,7 +156,7 @@ def format_time_mm_ss(seconds: float):
 
 def init_transcribe_system(use_gpu: bool = True):
     global global_model, global_tokenizer_obj, global_split_mode, global_translator
-    log_err("Đang khởi tạo hệ thống AI (Whisper + SudachiPy)...")
+    log_err("Đang khởi tạo hệ thống AI (Whisper + SudachiPy + DeepL)...")
     
     if use_gpu:
         add_nvidia_paths()
@@ -152,7 +172,8 @@ def init_transcribe_system(use_gpu: bool = True):
         global_model = WhisperModel(model_id, device="cpu", compute_type="int8")
 
     global_tokenizer_obj, global_split_mode = build_tokenizer()
-    global_translator = GoogleTranslator(source='ja', target='vi')
+    global_translator = deepl.Translator(DEEPL_API_KEY)
+    
     log_err("✅ Khởi tạo hệ thống thành công!")
     return True
 
@@ -187,7 +208,7 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
 
         audio_path = preprocess_audio_for_vocals(raw_audio_path)
 
-        log_err("Transcribing & Dịch thuật (Tối ưu cho Anime & Ca nhạc)...")
+        log_err("Transcribing & Dịch thuật bằng DeepL (Tối ưu cho Anime & Ca nhạc)...")
         general_prompt = "これは歌の歌詞、またはアニメのセリフです。文脈に合わせて、漢字と句読点を正しく使って文字起こししてください。"
         
         HALLUCINATION_BLACKLIST = [
@@ -196,7 +217,6 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
             "評価お願い", "twitter", "tiktok", "instagram"
         ]
 
-        # TẮT VAD VÀ TĂNG no_speech_threshold ĐỂ KHÔNG BỎ LỠ LỜI HÁT
         segments, info = global_model.transcribe(
             audio_path,
             language="ja",
@@ -228,7 +248,7 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
             vi_text = ""
             if ja_text:
                 try:
-                    vi_text = global_translator.translate(ja_text)
+                    vi_text = global_translator.translate_text(ja_text, target_lang="VI").text
                 except Exception as e:
                     log_err(f"Lỗi dịch câu: {e}")
             
@@ -243,18 +263,19 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
                     word = tokens[i]
                     pos = word.part_of_speech()[0]
                     
-                    if pos in ("名詞", "動詞", "形容詞", "副詞"):
+                    # ✨ ĐÃ CẬP NHẬT: Thêm "形状詞" (Tính từ đuôi na / 大好き, 綺麗) và "連体詞" (Từ nối / 大きな)
+                    if pos in ("名詞", "代名詞", "動詞", "形容詞", "形状詞", "副詞", "連体詞"):
                         chunk_surface = word.surface()
                         base_words = [(word.dictionary_form(), pos)]
                         
-                        if pos in ("動詞", "形容詞"):
+                        if pos in ("動詞", "形容詞", "形状詞"):
                             j = i + 1
                             while j < len(tokens):
                                 next_word = tokens[j]
                                 next_pos = next_word.part_of_speech()[0]
                                 if next_pos in ("助動詞", "助詞", "動詞", "接尾辞"):
                                     chunk_surface += next_word.surface()
-                                    if next_pos in ("動詞", "形容詞"):
+                                    if next_pos in ("動詞", "形容詞", "形状詞"):
                                         base_words.append((next_word.dictionary_form(), next_pos))
                                     j += 1
                                 else:
@@ -264,16 +285,27 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
                             i += 1
                             
                         chunk_translation = ""
-                        if pos in ("動詞", "形容詞") and chunk_surface != base_words[0][0]:
+                        if pos in ("動詞", "形容詞", "形状詞") and chunk_surface != base_words[0][0]:
                             try:
-                                chunk_translation = global_translator.translate(chunk_surface)
+                                chunk_translation = global_translator.translate_text(chunk_surface, target_lang="VI").text
                                 time.sleep(0.05) 
                             except Exception: pass
                         
                         for lemma, raw_pos in base_words:
                             if lemma in seen_words: continue
                             seen_words.add(lemma)
-                            pos_vi = "Danh từ" if raw_pos == "名詞" else ("Động từ" if raw_pos == "動詞" else ("Tính từ" if raw_pos == "形容詞" else "Trạng từ"))
+                            
+                            # ✨ ĐÃ CẬP NHẬT: Ánh xạ chuẩn ra tiếng Việt
+                            if raw_pos == "代名詞":
+                                pos_vi = "Đại từ"
+                            elif raw_pos == "名詞":
+                                pos_vi = "Danh từ"
+                            elif raw_pos == "動詞":
+                                pos_vi = "Động từ"
+                            elif raw_pos in ("形容詞", "形状詞", "連体詞"):
+                                pos_vi = "Tính từ"
+                            else:
+                                pos_vi = "Trạng từ"
                             
                             words_to_lookup.append(lemma)
                             temp_vocab_list.append({
@@ -282,28 +314,78 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
                                 "pos": pos_vi,
                                 "chunk_surface": chunk_surface if chunk_translation else "",
                                 "chunk_translation": chunk_translation,
-                                "meaning": ""
+                                "meaning": "",
+                                "kanji_info": [] 
                             })
                     else:
                         i += 1
             
             if words_to_lookup:
+                # 1. Gọi API Từ điển chính
                 dict_results = lookup_words_via_api(words_to_lookup)
+                
+                # 2. Lấy KANJI INFO cho TẤT CẢ các từ
+                all_kanjis = []
+                for w in words_to_lookup:
+                    all_kanjis.extend([c for c in w if '\u4e00' <= c <= '\u9faf'])
+                
+                kanji_results = lookup_kanji_via_api(list(set(all_kanjis)))
+
+                # 3. Ráp dữ liệu
                 for vocab in temp_vocab_list:
                     w = vocab["word"]
                     base_meaning = ""
+                    
+                    # Ánh xạ trực tiếp kanji_info vào trong vocab
+                    kanjis_in_w = [c for c in w if '\u4e00' <= c <= '\u9faf']
+                    if kanjis_in_w:
+                        vocab["kanji_info"] = [kanji_results[k] for k in kanjis_in_w if k in kanji_results]
+                    
                     if w in dict_results and len(dict_results[w]) > 0:
                         vocab["reading"] = dict_results[w][0].get("reading", "")
                         meanings_array = dict_results[w][0].get("meanings", [])
                         base_meaning = "\n".join(meanings_array).strip()
                     else:
-                        try:
-                            fallback_meaning = global_translator.translate(w)
-                            base_meaning = fallback_meaning
-                            time.sleep(0.05) 
-                        except Exception as e:
-                            log_err(f"Lỗi Google Dịch (Fallback) cho từ {w}: {e}")
-                            base_meaning = "Không tìm thấy dữ liệu từ điển offline cho từ này."
+                        # FALLBACK 1: Map nghĩa & reading trực tiếp từ API Kanji nếu ko có trong từ điển
+                        found_kanji = False
+                        
+                        if vocab["kanji_info"]:
+                            kanji_meanings = []
+                            readings = []
+                            for k_data in vocab["kanji_info"]:
+                                k_mean = k_data.get("mean", "")
+                                k_detail = k_data.get("detail", "")
+                                
+                                kun = k_data.get("kun", "")
+                                on = k_data.get("on", "")
+                                if kun and kun != "-":
+                                    readings.append(kun.split(",")[0].strip())
+                                elif on and on != "-":
+                                    readings.append(on.split(",")[0].strip())
+                                
+                                if k_detail:
+                                    short_detail = [d.strip() for d in k_detail.replace(';', ',').split(',')]
+                                    short_detail = ", ".join(short_detail[:3])
+                                    kanji_meanings.append(f"{k_mean} ({short_detail})")
+                                else:
+                                    kanji_meanings.append(f"{k_mean}")
+                                    
+                            if kanji_meanings:
+                                base_meaning = " | ".join(kanji_meanings)
+                                found_kanji = True
+                                
+                                if not vocab.get("reading") and readings:
+                                    vocab["reading"] = "".join(readings).replace(".", "")
+                                    
+                        # FALLBACK 2: Dùng DeepL nếu hoàn toàn không có Hán tự
+                        if not found_kanji:
+                            try:
+                                fallback_meaning = global_translator.translate_text(w, target_lang="VI").text
+                                base_meaning = fallback_meaning
+                                time.sleep(0.05) 
+                            except Exception as e:
+                                log_err(f"Lỗi DeepL Dịch (Fallback) cho từ {w}: {e}")
+                                base_meaning = "Không tìm thấy dữ liệu từ điển offline cho từ này."
                         
                     if vocab.get("chunk_translation"):
                         base_meaning += f"\n\n[Ngữ cảnh trong video]\n• {vocab['chunk_surface']}: {vocab['chunk_translation']}"
