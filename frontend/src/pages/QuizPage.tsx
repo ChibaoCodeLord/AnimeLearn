@@ -40,8 +40,8 @@ export interface QuizData {
 }
 
 interface QuizPageProps {
-  videoId: string | null;
-  script: any[];
+  videoId?: string | null;
+  script?: any[];
   ytId?: string | null; // Thêm ytId để chạy video
   onJumpToTime?: (index: number) => void;
 }
@@ -49,7 +49,7 @@ interface QuizPageProps {
 const API_BASE = 'http://localhost:5000/api';
 
 // --- COMPONENT CHÍNH ---
-export default function QuizPage({ videoId, script, ytId }: QuizPageProps) {
+export default function QuizPage({ videoId = null, script = [], ytId }: QuizPageProps) {
   const queryClient = useQueryClient();
   const playerRef = useRef<any>(null);
 

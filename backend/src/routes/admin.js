@@ -3,6 +3,7 @@ import { authMiddleware, restrictTo } from '../middleware/auth.js';
 import Video from '../models/Video.js';
 import User from '../models/User.js';
 import { sendVideoRejectedEmail } from '../services/emailService.js';
+import { banUser as banUserService, unbanUser as unbanUserService } from '../services/adminService.js';
 
 const router = express.Router();
 
@@ -149,7 +150,11 @@ router.get('/users', async (req, res) => {
       role: u.role,
       jlptLevel: u.jlptLevel,
       createdAt: u.createdAt,
-      isVerified: u.isVerified
+      isVerified: u.isVerified,
+      isBanned: u.isBanned,
+      bannedAt: u.bannedAt,
+      unbannedAt: u.unbannedAt,
+      banReason: u.banReason
     }));
 
     res.json(mappedUsers);
@@ -175,7 +180,100 @@ router.patch('/users/:id/role', async (req, res) => {
   }
 });
 
+router.patch('/users/:id/ban', async(req, res) => {
+  try {
+    const { banReason, unbannedAt } = req.body;
+    
+    // Validate required fields
+    if (!banReason || !banReason.trim()) {
+      return res.status(400).json({ error: 'banReason là bắt buộc' });
+    }
+
+    // Ban user
+    const updated = await banUserService(
+      req.params.id,
+      banReason.trim(),
+      new Date(),
+      unbannedAt ? new Date(unbannedAt) : null
+    );
+
+    if (!updated) {
+      return res.status(404).json({ error: 'User không tồn tại' });
+    }
+
+    res.json({ 
+      message: 'Đã ban user thành công', 
+      user: { 
+        id: updated._id, 
+        fullName: updated.fullName,
+        email: updated.email,
+        isBanned: updated.isBanned,
+        bannedAt: updated.bannedAt,
+        unbannedAt: updated.unbannedAt,
+        banReason: updated.banReason
+      } 
+    });
+  } catch (error) {
+    console.error('[Admin] Error banning user:', error);
+    res.status(500).json({ error: error.message || 'Lỗi ban user' });
+  }
+});
+
 // --- STATS ---
+
+// GET /api/admin/users/:id - Lấy thông tin chi tiết user kèm trạng thái ban
+router.get('/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User không tồn tại' });
+    }
+
+    res.json({
+      id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      jlptLevel: user.jlptLevel,
+      createdAt: user.createdAt,
+      isVerified: user.isVerified,
+      isBanned: user.isBanned,
+      bannedAt: user.bannedAt,
+      unbannedAt: user.unbannedAt,
+      banReason: user.banReason,
+      totalLearningHours: user.totalLearningHours,
+      dayStreak: user.dayStreak,
+      xpPoints: user.xpPoints
+    });
+  } catch (error) {
+    console.error('[Admin] Error fetching user:', error);
+    res.status(500).json({ error: 'Lỗi lấy thông tin user' });
+  }
+});
+
+// PATCH /api/admin/users/:id/unban - Gỡ ban user
+router.patch('/users/:id/unban', async (req, res) => {
+  try {
+    const user = await unbanUserService(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User không tồn tại' });
+    }
+
+    res.json({ 
+      message: 'Đã gỡ ban user thành công', 
+      user: { 
+        id: user._id, 
+        fullName: user.fullName,
+        email: user.email,
+        isBanned: user.isBanned
+      } 
+    });
+  } catch (error) {
+    console.error('[Admin] Error unbanning user:', error);
+    res.status(500).json({ error: error.message || 'Lỗi gỡ ban user' });
+  }
+});
 
 // GET /api/admin/stats - Thống kê tổng quan
 router.get('/stats', async (req, res) => {
