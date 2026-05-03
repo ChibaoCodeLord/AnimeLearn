@@ -3,7 +3,7 @@ import { authMiddleware, restrictTo } from '../middleware/auth.js';
 import Video from '../models/Video.js';
 import User from '../models/User.js';
 import { sendVideoRejectedEmail } from '../services/emailService.js';
-import { banUser as banUserService, unbanUser as unbanUserService } from '../services/adminService.js';
+import { banUser, unbanUser } from '../controllers/adminController.js';
 
 const router = express.Router();
 
@@ -180,44 +180,7 @@ router.patch('/users/:id/role', async (req, res) => {
   }
 });
 
-router.patch('/users/:id/ban', async(req, res) => {
-  try {
-    const { banReason, unbannedAt } = req.body;
-    
-    // Validate required fields
-    if (!banReason || !banReason.trim()) {
-      return res.status(400).json({ error: 'banReason là bắt buộc' });
-    }
-
-    // Ban user
-    const updated = await banUserService(
-      req.params.id,
-      banReason.trim(),
-      new Date(),
-      unbannedAt ? new Date(unbannedAt) : null
-    );
-
-    if (!updated) {
-      return res.status(404).json({ error: 'User không tồn tại' });
-    }
-
-    res.json({ 
-      message: 'Đã ban user thành công', 
-      user: { 
-        id: updated._id, 
-        fullName: updated.fullName,
-        email: updated.email,
-        isBanned: updated.isBanned,
-        bannedAt: updated.bannedAt,
-        unbannedAt: updated.unbannedAt,
-        banReason: updated.banReason
-      } 
-    });
-  } catch (error) {
-    console.error('[Admin] Error banning user:', error);
-    res.status(500).json({ error: error.message || 'Lỗi ban user' });
-  }
-});
+router.patch('/users/:id/ban', banUser);
 
 // --- STATS ---
 
@@ -252,28 +215,7 @@ router.get('/users/:id', async (req, res) => {
 });
 
 // PATCH /api/admin/users/:id/unban - Gỡ ban user
-router.patch('/users/:id/unban', async (req, res) => {
-  try {
-    const user = await unbanUserService(req.params.id);
-
-    if (!user) {
-      return res.status(404).json({ error: 'User không tồn tại' });
-    }
-
-    res.json({ 
-      message: 'Đã gỡ ban user thành công', 
-      user: { 
-        id: user._id, 
-        fullName: user.fullName,
-        email: user.email,
-        isBanned: user.isBanned
-      } 
-    });
-  } catch (error) {
-    console.error('[Admin] Error unbanning user:', error);
-    res.status(500).json({ error: error.message || 'Lỗi gỡ ban user' });
-  }
-});
+router.patch('/users/:id/unban', unbanUser);
 
 // GET /api/admin/stats - Thống kê tổng quan
 router.get('/stats', async (req, res) => {

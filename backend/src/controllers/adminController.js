@@ -1,16 +1,22 @@
-import {banUser as banUserService} from '../services/adminService.js'
+import { banUser as banUserService, unbanUser as unbanUserService } from '../services/adminService.js'
 
 export const banUser = async(req, res) => {
     try {
-        const {userId, banReason, bannedAt, unbannedAt} = req.body;
+        const userId = req.params.id;
+        const { banReason, unbannedAt } = req.body;
 
         // Validate required fields
-        if (!userId || !banReason) {
-            return res.status(400).json({ error: 'userId và banReason là bắt buộc' });
+        if (!banReason || !banReason.trim()) {
+            return res.status(400).json({ error: 'banReason là bắt buộc' });
         }
 
         // Call service to ban user
-        const updated = await banUserService(userId, banReason, bannedAt || null, unbannedAt || null);
+        const updated = await banUserService(
+            userId,
+            banReason.trim(),
+            new Date(),
+            unbannedAt ? new Date(unbannedAt) : null
+        );
 
         if (!updated) {
             return res.status(404).json({ error: 'User không tồn tại' });
@@ -29,7 +35,31 @@ export const banUser = async(req, res) => {
             } 
         });
     } catch (error) {
-        console.error('ban user error:', error);
+        console.error('[Admin Controller] ban user error:', error);
         return res.status(500).json({ error: error.message || 'Lỗi ban user' });
     }
-}
+};
+
+export const unbanUser = async(req, res) => {
+    try {
+        const userId = req.params.id;
+        const user = await unbanUserService(userId);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User không tồn tại' });
+        }
+
+        return res.json({ 
+            message: 'Đã gỡ ban user thành công', 
+            user: { 
+                id: user._id, 
+                fullName: user.fullName,
+                email: user.email,
+                isBanned: user.isBanned
+            } 
+        });
+    } catch (error) {
+        console.error('[Admin Controller] unban user error:', error);
+        return res.status(500).json({ error: error.message || 'Lỗi gỡ ban user' });
+    }
+};
