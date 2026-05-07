@@ -223,10 +223,7 @@ def _ask_llm(context: str, question: str, history: Any) -> str:
     history_text = _build_history_text(history)
 
     system_content = (
-        "Ban la tro ly hoc tieng Nhat cho nen tang AnimeLearn. "
-        "Chi tra loi dua tren Context duoc cung cap va lien quan truc tiep den video hien tai. "
-        "Neu context khong du thong tin thi tra loi ro rang: 'Toi khong tim thay thong tin trong video nay.' "
-        "Tra loi bằng tiếng Việt, ngan gon, de hieu, co the trich dan timestamp neu co."
+        "Bạn là trợ lý học tiếng Nhật. Chỉ trả lời câu hỏi dựa trên nội dung được cung cấp và liên quan đển trực tiếp đến video hiện tại. . Hãy trả lời bằng tiếng Việt ngắn gọn dễ hiểu"
     )
 
     user_parts = []
@@ -346,7 +343,7 @@ def chat(payload: Dict[str, Any]) -> Dict[str, Any]:
             "sources": [],
         }
 
-    _log(f"query DB (Preview chunk 1): {docs[0].page_content[:100]}...\n")
+    _log(f"query DB : {docs[0].page_content[:100]}...\n")
 
     context_parts: List[str] = []
     sources: List[Dict[str, Any]] = []

@@ -14,7 +14,6 @@ const navItems = [
   { path: '/home', label: 'Trang chủ', icon: Home },
   { path: '/Dictionary', label: 'Từ điển', icon: Search },
   { path: '/Vocabulary', label: 'Flashcard', icon: Brain },
-  { path: '/VocabularyNotebook', label: 'Sổ tay từ vựng', icon: BookOpen },
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
   { path: '/AIChatTutor', label: 'AI Tutor', icon: MessageCircle },
 ];
