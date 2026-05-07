@@ -580,7 +580,7 @@ router.post('/track-session', authMiddleware, async (req, res) => {
     await activity.save();
 
     // 🌟 KHAI BÁO BIẾN `now` ĐỂ FIX LỖI "now is not defined" 🌟
-    const now = new Date();
+
 
     // Get the user to check if they need a streak update
     const currentUser = await User.findById(req.user.id);
