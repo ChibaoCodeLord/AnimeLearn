@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client'; // Đảm bảo file này tồn tại hoặc dùng new QueryClient()
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { useParams, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 
 // Page imports
@@ -18,6 +19,7 @@ import Profile from './pages/Profile';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Layout from './components/Layout';
+import DictionaryPage from './pages/DictionaryPage';
 import UserBannedError from './components/UserBannedError';
 
 // Authentication check function
@@ -150,6 +152,7 @@ const AuthenticatedApp = () => {
         <Route path="/VocabularyNotebook" element={<ProtectedRoute element={<VocabularyNotebook />} />} />
         <Route path="/QuizPage" element={<ProtectedRoute element={<QuizPage />} />} />
         <Route path="/Dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
+        <Route path="/Dictionary" element={<ProtectedRoute element={<DictionaryPage />} />} />
         <Route path="/AIChatTutor" element={<ProtectedRoute element={<AIChatTutor />} />} />
         <Route path="/Profile" element={<ProtectedRoute element={<Profile />} />} />
         <Route path="/AdminPanel" element={<ProtectedRoute element={<AdminPanel />} />} />
