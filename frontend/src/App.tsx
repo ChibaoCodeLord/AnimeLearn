@@ -10,7 +10,7 @@ import Home from './pages/Home';
 import Home_guest from './pages/Home_guest';
 import VideoWorkspace from './pages/VideoWorkspace';
 import Vocabulary from './pages/Vocabulary';
-import VocabularyNotebook from './pages/VocabularyNotebook';
+// import VocabularyNotebook from './pages/VocabularyNotebook';
 import QuizPage from './pages/QuizPage';
 import Dashboard from './pages/Dashboard';
 import AIChatTutor from './pages/AIChatTutor';
@@ -149,7 +149,6 @@ const AuthenticatedApp = () => {
         {/* Các trang chức năng */}
         <Route path="/VideoWorkspace" element={<ProtectedRoute element={<VideoWorkspace />} />} />
         <Route path="/Vocabulary" element={<ProtectedRoute element={<Vocabulary />} />} />
-        <Route path="/VocabularyNotebook" element={<ProtectedRoute element={<VocabularyNotebook />} />} />
         <Route path="/QuizPage" element={<ProtectedRoute element={<QuizPage />} />} />
         <Route path="/Dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
         <Route path="/Dictionary" element={<ProtectedRoute element={<DictionaryPage />} />} />
