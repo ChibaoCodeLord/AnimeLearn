@@ -6,7 +6,7 @@ const questionSchema = new mongoose.Schema({
     type: { 
         type: String, 
         required: true,
-        enum: ['fill_in_blank', 'vocabulary', 'translation'], // Bắt buộc phải thuộc 3 loại này
+        enum: ['fill_in_blank', 'vocabulary', 'translation', 'grammar_particle', 'kanji_reading'],
     },
     questionText: { type: String, required: true }, // Khớp với frontend: questionText
     options: {
