@@ -1,12 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, Menu, GraduationCap, ChevronRight } from 'lucide-react';
+import { 
+  Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, 
+  Menu, GraduationCap, ChevronRight, Search // ✨ Đã import thêm icon Search
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
 
+// ✨ Đã thêm path '/Dictionary' vào danh sách menu
 const navItems = [
   { path: '/home', label: 'Trang chủ', icon: Home },
+  { path: '/Dictionary', label: 'Từ điển', icon: Search },
   { path: '/Vocabulary', label: 'Flashcard', icon: Brain },
   { path: '/VocabularyNotebook', label: 'Sổ tay từ vựng', icon: BookOpen },
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -159,7 +164,7 @@ export default function Layout() {
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map(item => {
             const Icon = item.icon;
-            const active = location.pathname === item.path;
+            const active = location.pathname.toLowerCase().includes(item.path.toLowerCase());
             return (
               <Link key={item.path} to={item.path}>
                 <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group

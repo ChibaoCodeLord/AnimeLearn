@@ -40,8 +40,8 @@ export interface QuizData {
 }
 
 interface QuizPageProps {
-  videoId: string | null;
-  script: any[];
+  videoId?: string | null;
+  script?: any[];
   ytId?: string | null; // Thêm ytId để chạy video
   onJumpToTime?: (index: number) => void;
 }
