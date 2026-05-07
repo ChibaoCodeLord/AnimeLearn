@@ -86,11 +86,20 @@ export default function VideoRagChatWidget({ videoId, bottomOffsetClassName = 'b
       return;
     }
 
+    const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('Bạn cần đăng nhập để lưu từ vựng.');
+        return;
+      }
+
     setIsSyncing(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/chat/video/${videoId}/index`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
       });
 
       const result = await response.json();
@@ -112,6 +121,12 @@ export default function VideoRagChatWidget({ videoId, bottomOffsetClassName = 'b
       return;
     }
 
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast.error('Bạn cần đăng nhập để chat RAG.');
+      return;
+    }
+
     const question = messageInput.trim();
     if (!question || isSending) return;
 
@@ -123,7 +138,10 @@ export default function VideoRagChatWidget({ videoId, bottomOffsetClassName = 'b
       const history = toHistory(messages);
       const response = await fetch(`${API_BASE_URL}/api/chat/video/${videoId}/ask`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ question, history }),
       });
 
