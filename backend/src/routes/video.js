@@ -9,6 +9,7 @@ import Video from '../models/Video.js';
 import VideoLike from '../models/VideoLike.js';
 import { indexVideoScript } from '../services/ragChatService.js';
 import Quiz from '../models/Quiz.js';
+import Kanji from '../models/Kanji.js';
 import { generateQuizFromScript } from '../services/quizAIService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -248,45 +249,106 @@ router.post('/save', authMiddleware, async (req, res) => {
     const { title, youtube_url, script } = req.body;
     const userId = req.user.id || req.user.userId;
 
-    // 1. Lưu Video như cũ
+    // 1. Xử lý ID YouTube và Thumbnail
     const ytMatch = youtube_url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?\s]+)/);
     const ytId = ytMatch ? ytMatch[1] : null;
     const thumbnail_url = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : '';
 
+    // ==============================================================
+    // 2. GOM TỪ VỰNG & TRA KANJI NGAY TẠI THỜI ĐIỂM TẠO VIDEO
+    // ==============================================================
+    const vocabMap = new Map();
+    const allKanjiSet = new Set();
+
+    if (script && Array.isArray(script)) {
+      script.forEach(segment => {
+        if (segment.vocabulary && Array.isArray(segment.vocabulary)) {
+          segment.vocabulary.forEach(v => {
+            if (!vocabMap.has(v.word)) {
+              vocabMap.set(v.word, v);
+              // Lọc tách từng chữ Kanji ra
+              const chars = v.word.split('');
+              chars.forEach(char => {
+                if (char.match(/[\u4e00-\u9faf]/)) {
+                  allKanjiSet.add(char);
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+
+    const uniqueKanjis = Array.from(allKanjiSet);
+
+    // Chọc Database Kanji ĐÚNG 1 LẦN để lấy thông tin
+    const kanjiData = await Kanji.find({ kanji: { $in: uniqueKanjis } })
+      .select('kanji mean kun on level stroke_count detail img').lean();
+
+    const kanjiMap = {};
+    kanjiData.forEach(k => kanjiMap[k.kanji] = k);
+
+    // Đóng gói mảng Từ vựng đã ngậm sẵn Kanji
+    const enrichedVocabList = Array.from(vocabMap.values()).map(vocab => {
+      const kanjiDetails = vocab.word.split('')
+        .filter(char => char.match(/[\u4e00-\u9faf]/))
+        .map(char => kanjiMap[char])
+        .filter(Boolean);
+
+      return {
+        word: vocab.word,
+        reading: vocab.reading,
+        meaning: vocab.meaning,
+        pos: vocab.pos,
+        kanji_info: kanjiDetails // Lưu chết cục này vào DB luôn
+      };
+    });
+    // ==============================================================
+
+    // 3. Lưu Video với tất cả dữ liệu
     const newVideo = new Video({
       title,
       youtube_url,
       thumbnail_url,
       script,
+      vocab_list: enrichedVocabList, // LƯU VÀO DATABASE TẠI ĐÂY
       creator: userId,
-      jlpt_level: 'Unknown' // Mặc định
+      jlpt_level: 'Unknown'
     });
 
-    // 2. TỰ ĐỘNG GỌI AI TẠO QUIZ & LEVEL NGAY TẠI ĐÂY
-    console.log("[Auto-AI]: Đang phân tích trình độ và tạo câu hỏi...");
-    const aiResult = await generateQuizFromScript(script); 
+    // 4. TỰ ĐỘNG GỌI AI ĐỂ TẠO QUIZ
+    let aiResult = null;
+    try {
+      console.log("[Auto-AI]: Đang phân tích trình độ và tạo câu hỏi...");
+      aiResult = await generateQuizFromScript(script); 
+    } catch (aiError) {
+      console.warn("⚠️ [Auto-AI] Gemini API đang quá tải hoặc lỗi. Bỏ qua tạo Quiz:", aiError.message);
+    }
 
-    // Cập nhật level vào đối tượng video trước khi save
-    newVideo.jlpt_level = aiResult.jlptLevel || '5';
-    await newVideo.save();
+    newVideo.jlpt_level = aiResult?.jlptLevel || 'Unknown';
+    await newVideo.save(); // Lệnh Save hoàn thiện 100% data
 
-    // Lưu Quiz vào collection riêng
-    const newQuiz = new Quiz({
-      videoId: newVideo._id,
-      questions: aiResult.questions
-    });
-    await newQuiz.save();
+    // Lưu Quiz
+    let newQuiz = null;
+    if (aiResult && aiResult.questions) {
+      newQuiz = new Quiz({
+        videoId: newVideo._id,
+        questions: aiResult.questions
+      });
+      await newQuiz.save();
+    }
 
-    // 3. TRẢ VỀ TOÀN BỘ DATA CHO FRONTEND
+    // 5. TRẢ VỀ FRONTEND
     res.status(201).json({
-      message: 'Hệ thống đã hoàn tất bóc băng và phân tích bài học!',
+      message: aiResult ? 'Hoàn tất bóc băng và tạo bài tập!' : 'Đã bóc băng xong! (AI đang bận nên chưa tạo Quiz được)',
       videoId: newVideo._id,
-      jlptLevel: newVideo.jlpt_level, // Level mới N1-N5
+      jlptLevel: newVideo.jlpt_level,
       script: newVideo.script,
+      vocab_list: newVideo.vocab_list, // Trả luôn cho FrontEnd nếu cần
       quiz: newQuiz
     });
 
-    // Index RAG chạy ngầm (asynchronous) như cũ
+    // Index RAG chạy ngầm
     indexVideoScript(newVideo._id, script).catch(console.error);
 
   } catch (error) {
@@ -310,16 +372,14 @@ router.get('/detail/:id', authMiddleware, async (req, res) => {
     if (video.status !== 'approved' && !isAdmin && !isCreator) {
       return res.status(403).json({ error: 'Video chưa được duyệt nên bạn không có quyền xem' });
     }
-
-
-    
-
-    // Tạo data tương thích với frontend load từ local storage
+    // ... code kiểm tra quyền xem video ở trên giữ nguyên ...
+    // Trả về thẳng cho frontend
     res.json({
       id: video._id,
       title: video.title,
       youtube_url: video.youtube_url,
       script: video.script,
+      vocab_list: video.vocab_list, // THÊM DÒNG NÀY (Data đã có sẵn Kanji)
       jlpt_level: video.jlpt_level,
       status: video.status,
       views_count: video.views_count,
@@ -569,6 +629,72 @@ router.delete('/delete/:id', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi xóa video:', error);
     res.status(500).json({ error: 'Lỗi khi xóa video' });
+  }
+});
+
+// ==========================================
+// API: LẤY DANH SÁCH TỪ VỰNG & KANJI CỦA VIDEO
+// ==========================================
+router.get('/vocabulary/:id', async (req, res) => {
+  try {
+    // 1. Lấy script của video
+    const video = await Video.findById(req.params.id).select('script').lean();
+    if (!video || !video.script || video.script.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // 2. Gom tất cả từ vựng từ các câu thoại (script) & Lọc trùng lặp
+    const vocabMap = new Map();
+    const allKanjiSet = new Set();
+
+    video.script.forEach(segment => {
+      if (segment.vocabulary && Array.isArray(segment.vocabulary)) {
+        segment.vocabulary.forEach(v => {
+          if (!vocabMap.has(v.word)) {
+            vocabMap.set(v.word, v);
+            
+            // Lọc tách từng chữ Kanji ra để chuẩn bị tra cứu
+            const chars = v.word.split('');
+            chars.forEach(char => {
+              if (char.match(/[\u4e00-\u9faf]/)) { // Regex bắt chuẩn chữ Kanji
+                allKanjiSet.add(char);
+              }
+            });
+          }
+        });
+      }
+    });
+
+    const uniqueKanjis = Array.from(allKanjiSet);
+
+    // 3. Truy vấn bảng Kanji (Gọi 1 lần duy nhất cho toàn bộ video)
+    const kanjiData = await Kanji.find({ kanji: { $in: uniqueKanjis } })
+      .select('kanji mean kun on level stroke_count detail img').lean();
+
+    // Biến thành Dictionary để tra cứu tốc độ cao O(1)
+    const kanjiMap = {};
+    kanjiData.forEach(k => kanjiMap[k.kanji] = k);
+
+    // 4. Nhồi thông tin Kanji vào từng từ vựng
+    const enrichedVocabList = Array.from(vocabMap.values()).map(vocab => {
+      const kanjiDetails = vocab.word.split('')
+        .filter(char => char.match(/[\u4e00-\u9faf]/))
+        .map(char => kanjiMap[char])
+        .filter(Boolean); // Bỏ qua nếu DB thiếu chữ đó
+
+      return {
+        word: vocab.word,
+        reading: vocab.reading,
+        meaning: vocab.meaning,
+        pos: vocab.pos,
+        kanji_info: kanjiDetails // ✨ Đây là "cục vàng" dành cho Frontend
+      };
+    });
+
+    res.json({ success: true, data: enrichedVocabList });
+  } catch (error) {
+    console.error('Lỗi khi lấy từ vựng và Kanji của video:', error);
+    res.status(500).json({ success: false, error: 'Lỗi máy chủ' });
   }
 });
 

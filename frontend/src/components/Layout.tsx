@@ -1,12 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, Menu, GraduationCap, ChevronRight } from 'lucide-react';
+import { 
+  Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, 
+  Menu, GraduationCap, ChevronRight, Search // ✨ Đã import thêm icon Search
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
+import UserBannedError from '@/components/UserBannedError';
 
+// ✨ Đã thêm path '/Dictionary' vào danh sách menu
 const navItems = [
   { path: '/home', label: 'Trang chủ', icon: Home },
+  { path: '/Dictionary', label: 'Từ điển', icon: Search },
   { path: '/Vocabulary', label: 'Flashcard', icon: Brain },
   { path: '/VocabularyNotebook', label: 'Sổ tay từ vựng', icon: BookOpen },
   { path: '/Dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -23,16 +29,34 @@ interface User {
   role?: 'user' | 'admin';
 }
 
+interface AuthError {
+  status?: number;
+  data?: { error?: string; bannedAt?: string; unbannedAt?: string; banReason?: string };
+}
+
 const fetchUserProfile = async (): Promise<User> => {
+  const token = localStorage.getItem('token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const response = await fetch('http://localhost:5000/api/auth/me', {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     credentials: 'include',
   });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err: AuthError & Error = new Error(data?.error || 'Khong the lay thong tin nguoi dung');
+    err.status = response.status;
+    err.data = data;
+    throw err;
+  }
 
-  return response.json();
+  return data;
 };
 
 export default function Layout() {
@@ -49,6 +73,49 @@ export default function Layout() {
     staleTime: 10 * 60 * 1000,
     retry: 2,
   });
+
+  const authError = error as AuthError | undefined;
+  const banInfo = authError?.status === 403
+    ? authError?.data || { error: 'User is banned' }
+    : null;
+
+  useEffect(() => {
+    const authError = error as AuthError | undefined;
+    if (!authError || authError.status !== 401) return;
+
+    const logout = async () => {
+      try {
+        await fetch('http://localhost:5000/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
+      } catch (e) {
+        console.error('Logout failed', e);
+      } finally {
+        localStorage.removeItem('token');
+        queryClient.setQueryData(['current-user'], null);
+        navigate('/login', { replace: true });
+      }
+    };
+
+    void logout();
+  }, [error, navigate, queryClient]);
+
+  if (banInfo) {
+    try {
+      sessionStorage.setItem('banInfo', JSON.stringify(banInfo));
+    } catch (e) {
+      console.error('Cannot persist ban info', e);
+    }
+    return (
+      <UserBannedError
+        banReason={banInfo.banReason}
+        bannedAt={banInfo.bannedAt}
+        unbannedAt={banInfo.unbannedAt}
+      />
+    );
+  }
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -159,7 +226,7 @@ export default function Layout() {
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map(item => {
             const Icon = item.icon;
-            const active = location.pathname === item.path;
+            const active = location.pathname.toLowerCase().includes(item.path.toLowerCase());
             return (
               <Link key={item.path} to={item.path}>
                 <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group
