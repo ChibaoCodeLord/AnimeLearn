@@ -1,4 +1,4 @@
-import { getALLVocabulary, updateVocabulary as updateVocabularyService } from "../services/vocabularyService.js";
+import { getALLVocabulary, updateVocabulary as updateVocabularyService, deleteVocabulary as deleteVocabularyService } from "../services/vocabularyService.js";
 
 
 export const getVocabulary = async(req, res) => {
@@ -32,4 +32,20 @@ export const updateVocabulary = async(req, res) => {
         console.error('updateVocabularyReview error:', error);
         return res.status(500).json({ error: 'Server error' });
     }
-}
+};
+
+export const deleteVocabulary = async(req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { id } = req.params;
+
+        const deleted = await deleteVocabularyService(userId, id);
+        if (!deleted) {
+            return res.status(404).json({ error: 'Vocabulary not found' });
+        }
+        return res.json({ message: 'Vocabulary deleted successfully', vocab: deleted });
+    } catch (error) {
+        console.error('deleteVocabulary error:', error);
+        return res.status(500).json({ error: 'Server error' });
+    }
+};

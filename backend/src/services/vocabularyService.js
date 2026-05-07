@@ -11,3 +11,9 @@ export const updateVocabulary = async(userId, vocabId, data) => {
         {new: true}
     );
 };
+
+export const deleteVocabulary = async(userId, vocabId,) => {
+    return Vocabulary.findOneAndDelete(
+        {_id: vocabId, user: userId}
+    );
+}

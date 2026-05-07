@@ -49,10 +49,10 @@ export default function VocabularyNotebook() {
   const [filterLevel, setFilterLevel] = useState('all');
 
   // 3. Mock Query
+  //TODO
   const { data: vocabulary = [], isLoading } = useQuery<VocabItem[]>({
     queryKey: ['vocabulary-notebook'],
     queryFn: async () => {
-      await new Promise(r => setTimeout(r, 600)); // Delay giả lập
       return getVocabFromStorage();
     },
     initialData: [],
