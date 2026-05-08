@@ -419,15 +419,3 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
         if audio_path and audio_path != raw_audio_path and os.path.exists(audio_path):
             try: os.remove(audio_path)
             except Exception: pass
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        log_err("Cần cung cấp URL video")
-        sys.exit(1)
-    
-    init_transcribe_system()
-    final_results = transcribe_media(sys.argv[1])
-    
-    print(json.dumps(final_results, ensure_ascii=False), file=REAL_STDOUT)
-    REAL_STDOUT.flush()
-    os._exit(0)

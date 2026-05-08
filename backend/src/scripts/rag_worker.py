@@ -328,6 +328,7 @@ def chat(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     store = GLOBAL_STORE
     
+    #tra cứu chrome vector DB
     docs = store.similarity_search(
         query=f"query: {question}",
         k=max(1, k),
