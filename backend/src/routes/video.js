@@ -15,6 +15,9 @@ import { generateQuizFromScript } from '../services/quizAIService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const scriptPath = path.join(__dirname, '../scripts/transcribe.py');
+const AI_SERVICE = process.env.AI_SERVICE; 
+
 function resolvePythonCommand() {
   if (process.env.PYTHON_PATH) {
     return process.env.PYTHON_PATH;
@@ -71,74 +74,72 @@ function parsePythonJsonOutput(rawOutput) {
   throw new Error('Không tìm thấy JSON hợp lệ trong output của Python');
 }
 
+function normalizeUtf8Value(value) {
+  if (typeof value === 'string') {
+    return value.normalize('NFC');
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeUtf8Value);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, normalizeUtf8Value(entry)])
+    );
+  }
+
+  return value;
+}
+
 //Router dịch script
 //chỉ có user đã đăng nhập mới được tạo script
-router.post('/analyze', authMiddleware, (req, res) => {
+router.post('/analyze', authMiddleware, async (req, res) =>  {
   const { url } = req.body;
+  const endpoint = 'transcribe';
   console.log(`[analyze Log]: đã gọi analyze}`);
 
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
   }
 
-  // Define Path to python script
-  const scriptPath = path.join(__dirname, '../scripts/transcribe.py');
+  try {
+    const response = await fetch(`${AI_SERVICE}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-KEY': process.env.AI_KEY
+      },
+      body:JSON.stringify({
+        media_path: url,
+        use_gpu: true
+      })
+    });
 
-  // Start python process
-  const pythonProcess = spawn(PYTHON_CMD, [scriptPath, url]);
-
-  const stdoutChunks = [];
-  let errorString = '';
-  let isHandled = false;
-
-
-  pythonProcess.stdout.on('data', (data) => {
-    stdoutChunks.push(data);
-  });
-
-  pythonProcess.stderr.on('data', (data) => {
-    errorString += data.toString();
-    console.error(`[Python Log]: ${data.toString().trim()}`);
-  });
-
-  pythonProcess.on('error', (err) => {
-    if (isHandled) return;
-    isHandled = true;
-    console.error(`Failed to start Python process: ${err.message}`);
-    return res.status(500).json({ error: 'Failed to start transcription process', details: err.message });
-  });
-
-  pythonProcess.on('close', (code, signal) => {
-    if (isHandled) return;
-    isHandled = true;
-    const dataString = Buffer.concat(stdoutChunks).toString('utf8');
-
-    try {
-      const parsed = parsePythonJsonOutput(dataString);
-      const result = Array.isArray(parsed) ? { title: 'Youtube Video (Auto-Transcription)', script: parsed } : parsed;
-
-      if (code !== 0 || signal) {
-        console.warn(`[analyze] Python exited with code=${code}, signal=${signal ?? 'none'} but returned valid JSON output.`);
-      }
-
-      return res.json({
-        title: result.title || 'Youtube Video (Auto-Transcription)',
-        jlpt_level: "Unknown",
-        script: result.script || result
-      });
-    } catch (parseError) {
-      console.error(`Process exited with code=${code}, signal=${signal ?? 'none'}. stderr: ${errorString}`);
-      console.error('Failed to parse Python output:', dataString);
-
-      const baseError = code !== 0 || signal ? 'Failed to transcribe video' : 'Invalid output format from transcription script';
-      return res.status(500).json({
-        error: baseError,
-        details: errorString,
-        exitCode: code,
-        signal: signal ?? null
-      });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Script Service error: ${response.status}`);
     }
-  });
+
+    const responseData = await response.json().catch(() => ({}));
+    const script = Array.isArray(responseData.segments)
+      ? normalizeUtf8Value(responseData.segments)
+      : (Array.isArray(responseData.script) ? normalizeUtf8Value(responseData.script) : []);
+
+    
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.json({
+        title: typeof responseData.title === 'string' ? responseData.title.normalize('NFC') : 'Youtube Video (Auto-Transcription)',
+        jlpt_level: typeof responseData.jlpt_level === 'string' ? responseData.jlpt_level.normalize('NFC') : (responseData.jlpt_level || 'Unknown'),
+        script
+      });
+  } catch (error) {
+    console.error(`[SCRIPT_API_ERROR] ${endpoint}:`, error.message);
+    return res.status(500).json({
+      error: 'Failed to analyze video',
+      details: error.message
+    });
+  }
 });
 
 router.post('/translate-word', (req, res) => {
