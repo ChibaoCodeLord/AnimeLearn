@@ -698,4 +698,67 @@ router.get('/vocabulary/:id', async (req, res) => {
   }
 });
 
+// ==========================================
+// API: LẤY DANH SÁCH VIDEO CHO TRANG CHỦ (CÓ PHÂN TRANG TỪNG LEVEL)
+// Endpoint: GET /api/videos/public-videos?level=N5&page=1&limit=4
+// ==========================================
+router.get('/public-videos', async (req, res) => {
+  try {
+    const { level, page = 1, limit = 4 } = req.query;
+    
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // 1. Khởi tạo điều kiện query cơ bản: Chỉ video Công khai & Đã duyệt
+    const query = {
+      status: 'approved',
+      visibility: 'public' // Giả sử model của bạn có trường này, nếu không thì bỏ qua
+    };
+
+    // 2. Xử lý bộ lọc JLPT Level
+    if (level === 'Mixed') {
+      // Nhóm "Mixed" là những video không nằm trong phổ N1-N5 hoặc chưa phân loại
+      query.jlpt_level = { $nin: ['N1', 'N2', 'N3', 'N4', 'N5'] };
+    } else if (level) {
+      query.jlpt_level = level;
+    }
+
+    // 3. Chạy song song 2 lệnh: Lấy data và Đếm tổng số
+    const [videos, totalCount] = await Promise.all([
+      Video.find(query)
+        // Chỉ select những trường cần thiết cho Card ở trang Home để tiết kiệm băng thông
+        .select('_id title thumbnail_url jlpt_level views_count likes_count created_date')
+        .sort({ created_date: -1 }) // Mới nhất xếp trước
+        .skip(skip)
+        .limit(limitNum)
+        .lean(), // Trả về plain JS object cho nhẹ
+      Video.countDocuments(query)
+    ]);
+
+    // 4. Map lại _id thành id cho khớp với interface VideoItem của React
+    const formattedVideos = videos.map(v => ({
+      id: v._id,
+      title: v.title,
+      thumbnail_url: v.thumbnail_url,
+      jlpt_level: v.jlpt_level,
+      views_count: v.views_count,
+      likes_count: v.likes_count,
+      created_date: v.created_date
+    }));
+
+    // 5. Trả về kết quả
+    res.status(200).json({
+      success: true,
+      data: formattedVideos,
+      hasMore: totalCount > (skip + videos.length),
+      total: totalCount
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi lấy danh sách video trang chủ:', error);
+    res.status(500).json({ success: false, error: 'Lỗi server khi tải danh sách video' });
+  }
+});
+
 export default router;

@@ -33,26 +33,41 @@ router.get('/videos', async (req, res) => {
     const total = await Video.countDocuments(filter);
 
     const videos = await Video.find(filter)
+      .select('-vocab_list -script.vocabulary -script.text') 
       .sort({ created_date: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('creator', 'fullName email');
+      .populate('creator', 'fullName email')
+      .lean();
 
-    const mappedVideos = videos.map(v => ({
-      id: v._id,
-      title: v.title,
-      youtube_url: v.youtube_url,
-      thumbnail_url: v.thumbnail_url,
-      jlpt_level: v.jlpt_level,
-      status: v.status || 'pending',
-      views_count: v.views_count,
-      likes_count: v.likes_count,
-      created_date: v.created_date,
-      script_length: v.script?.length || 0,
-      creator: v.creator
-        ? { id: v.creator._id, fullName: v.creator.fullName, email: v.creator.email }
-        : { id: null, fullName: 'Đã xóa', email: '' }
-    }));
+    // 🚀 BỌC GIÁP PHÒNG THỦ CHỐNG CRASH VÒNG LẶP .MAP()
+    const mappedVideos = videos.map(v => {
+      let creatorInfo = { id: null, fullName: 'Đã xóa hoặc Lỗi', email: '' };
+      
+      if (v.creator && typeof v.creator === 'object') {
+        creatorInfo = {
+          id: v.creator._id || v.creator.id || null,
+          fullName: v.creator.fullName || 'Không có tên',
+          email: v.creator.email || ''
+        };
+      } else if (v.creator) {
+        creatorInfo = { id: String(v.creator), fullName: 'Lỗi Populate ID', email: '' };
+      }
+
+      return {
+        id: v._id,
+        title: v.title || 'Video không tiêu đề',
+        youtube_url: v.youtube_url || '',
+        thumbnail_url: v.thumbnail_url || '',
+        jlpt_level: v.jlpt_level || 'Unknown',
+        status: v.status || 'pending',
+        views_count: v.views_count || 0,
+        likes_count: v.likes_count || 0,
+        created_date: v.created_date,
+        script_length: Array.isArray(v.script) ? v.script.length : 0, 
+        creator: creatorInfo
+      };
+    });
 
     res.json({
       videos: mappedVideos,
@@ -89,7 +104,11 @@ router.patch('/videos/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Trạng thái không hợp lệ' });
     }
 
-    const existingVideo = await Video.findById(req.params.id).populate('creator', 'fullName email');
+    // Vẫn áp dụng .select để khi update xong không bị dính cục data nặng
+    const existingVideo = await Video.findById(req.params.id)
+      .select('-vocab_list')
+      .populate('creator', 'fullName email');
+      
     if (!existingVideo) {
       return res.status(404).json({ error: 'Video không tồn tại' });
     }
@@ -98,7 +117,9 @@ router.patch('/videos/:id/status', async (req, res) => {
       req.params.id, 
       { status }, 
       { new: true }
-    ).populate('creator', 'fullName email');
+    )
+    .select('-vocab_list')
+    .populate('creator', 'fullName email');
 
     if (!video) {
       return res.status(404).json({ error: 'Video không tồn tại' });
@@ -141,7 +162,7 @@ router.get('/users', async (req, res) => {
       ];
     }
 
-    const users = await User.find(filter).sort({ createdAt: -1 });
+    const users = await User.find(filter).sort({ createdAt: -1 }).lean();
     const mappedUsers = users.map(u => ({
       id: u._id,
       fullName: u.fullName,
@@ -166,7 +187,7 @@ router.patch('/users/:id/role', async (req, res) => {
     if (!['user', 'admin'].includes(role)) {
       return res.status(400).json({ error: 'Role không hợp lệ' });
     }
-    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true });
+    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).lean();
     if (!user) return res.status(404).json({ error: 'User không tồn tại' });
     res.json({ message: 'Cập nhật quyền thành công', user: { id: user._id, role: user.role } });
   } catch (error) {
