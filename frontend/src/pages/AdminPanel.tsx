@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -65,21 +65,46 @@ interface StatsData {
   totalAdmins: number;
 }
 
-// ─── API ───────────────────────────────────────────────────────────────────────
+// ─── API (ĐÃ TÍCH HỢP DEBUG LOGS) ──────────────────────────────────────────────
 
 const API_BASE = 'http://localhost:5000/api';
 
 const apiFetch = async (path: string, options?: RequestInit) => {
-  const res = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'Lỗi không xác định' }));
-    throw new Error(err.error || 'Lỗi API');
+  console.log(`[🚀 API START] ${options?.method || 'GET'} ${path}`);
+  const startTime = performance.now();
+  
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    
+    const endTime = performance.now();
+    const timeTaken = (endTime - startTime).toFixed(2);
+    
+    console.log(`[✅ API END] ${options?.method || 'GET'} ${path} - ⏱️ Hết ${timeTaken}ms - Status: ${res.status}`);
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Lỗi không xác định' }));
+      throw new Error(err.error || 'Lỗi API');
+    }
+    
+    // Đo lường thời gian parse JSON (đôi khi data quá to parse cũng chậm)
+    const jsonStartTime = performance.now();
+    const data = await res.json();
+    const jsonEndTime = performance.now();
+    
+    if (jsonEndTime - jsonStartTime > 10) {
+      console.warn(`[⚠️ CẢNH BÁO] API ${path} tốn ${(jsonEndTime - jsonStartTime).toFixed(2)}ms chỉ để parse JSON (Dữ liệu quá lớn?)`);
+    }
+
+    return data;
+  } catch (error) {
+    const endTime = performance.now();
+    console.error(`[❌ API ERROR] ${options?.method || 'GET'} ${path} - ⏱️ Thất bại sau ${(endTime - startTime).toFixed(2)}ms`, error);
+    throw error;
   }
-  return res.json();
 };
 
 // ─── Cấu hình trạng thái ──────────────────────────────────────────────────────
@@ -112,7 +137,6 @@ const STATUS_CONFIG: Record<VideoStatus, {
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
-/** Badge inline trạng thái (dùng trong cột bảng) */
 function StatusBadge({ status }: { status: VideoStatus }) {
   const cfg = STATUS_CONFIG[status];
   return (
@@ -123,7 +147,6 @@ function StatusBadge({ status }: { status: VideoStatus }) {
   );
 }
 
-/** Thumbnail video với bar trạng thái ở đáy */
 function VideoThumbnail({ url, title, status }: { url: string; title: string; status: VideoStatus }) {
   const [err, setErr] = useState(false);
   const cfg = STATUS_CONFIG[status];
@@ -134,13 +157,11 @@ function VideoThumbnail({ url, title, status }: { url: string; title: string; st
       ) : (
         <Film className="w-4 h-4 text-slate-400" />
       )}
-      {/* Bar màu trạng thái ở đáy thumbnail */}
       <div className={`absolute bottom-0 left-0 right-0 h-1 ${cfg.barCls}`} />
     </div>
   );
 }
 
-/** Thẻ thống kê — đồng bộ với Dashboard */
 function StatCard({
   icon: Icon, label, value, colorClass, bgClass, isLoading,
 }: {
@@ -165,7 +186,6 @@ function StatCard({
   );
 }
 
-/** Modal xác nhận xóa */
 function DeleteConfirmModal({
   video, onConfirm, onCancel, isDeleting,
 }: {
@@ -203,24 +223,13 @@ function DeleteConfirmModal({
 }
 
 function RejectReasonModal({
-  video,
-  reason,
-  onReasonChange,
-  onConfirm,
-  onCancel,
-  isSubmitting,
+  video, reason, onReasonChange, onConfirm, onCancel, isSubmitting,
 }: {
-  video: VideoItem | null;
-  reason: string;
-  onReasonChange: (value: string) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-  isSubmitting: boolean;
+  video: VideoItem | null; reason: string; onReasonChange: (value: string) => void;
+  onConfirm: () => void; onCancel: () => void; isSubmitting: boolean;
 }) {
   if (!video) return null;
-
   const trimmedReason = reason.trim();
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl">
@@ -233,12 +242,10 @@ function RejectReasonModal({
             <p className="text-sm text-slate-500">Lý do này sẽ được gửi về email của người tạo video.</p>
           </div>
         </div>
-
         <div className="bg-slate-50 rounded-xl p-3 mb-4 border border-slate-100">
           <p className="text-sm text-slate-800 font-medium line-clamp-2">{video.title}</p>
           <p className="text-xs text-slate-500 mt-1">Tạo bởi: {video.creator.fullName}</p>
         </div>
-
         <label className="block text-sm font-semibold text-slate-700 mb-2" htmlFor="reject-reason">
           Lý do từ chối
         </label>
@@ -250,11 +257,9 @@ function RejectReasonModal({
           placeholder="Ví dụ: Âm thanh chưa rõ, nội dung chưa đúng chủ đề..."
           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 resize-none"
         />
-
         <p className="mt-2 text-xs text-slate-500">
           Tối thiểu nhập một lý do ngắn để người dùng biết cần sửa phần nào.
         </p>
-
         <div className="mt-5 flex gap-3">
           <Button variant="outline" onClick={onCancel} disabled={isSubmitting} className="flex-1">
             Hủy bỏ
@@ -403,6 +408,13 @@ function UnbanConfirmModal({
 
 export default function AdminPanel() {
   const queryClient = useQueryClient();
+  const renderCount = useRef(0);
+
+  // Debug Renders
+  useEffect(() => {
+    renderCount.current += 1;
+    console.log(`[⚛️ REACT RENDER] AdminPanel Component Re-rendered (Total: ${renderCount.current})`);
+  });
 
   // Video filters
   const [videoSearch, setVideoSearch] = useState('');
@@ -418,9 +430,10 @@ export default function AdminPanel() {
   const [banUntil, setBanUntil] = useState('');
   const [unbanTarget, setUnbanTarget] = useState<UserItem | null>(null);
 
-  // User search
+  // User search & pagination
   const [userSearch, setUserSearch] = useState('');
   const [userSearchDebounced, setUserSearchDebounced] = useState('');
+  const [userPage, setUserPage] = useState(1);
 
   // Debounce
   useEffect(() => {
@@ -429,7 +442,7 @@ export default function AdminPanel() {
   }, [videoSearch]);
 
   useEffect(() => {
-    const t = setTimeout(() => setUserSearchDebounced(userSearch), 400);
+    const t = setTimeout(() => { setUserSearchDebounced(userSearch); setUserPage(1); }, 400);
     return () => clearTimeout(t);
   }, [userSearch]);
 
@@ -451,7 +464,7 @@ export default function AdminPanel() {
   const videosQuery = useQuery<VideosResponse>({
     queryKey: ['admin-videos', videoSearchDebounced, jlptFilter, statusFilter, page],
     queryFn: () => apiFetch(
-      `/admin/videos?search=${encodeURIComponent(videoSearchDebounced)}&jlpt=${jlptFilter}&status=${statusFilter}&page=${page}&limit=15`
+      `/admin/videos?search=${encodeURIComponent(videoSearchDebounced)}&jlpt=${jlptFilter}&status=${statusFilter}&page=${page}&limit=10`
     ),
     enabled: currentUser?.role === 'admin',
   });
@@ -461,6 +474,12 @@ export default function AdminPanel() {
     queryFn: () => apiFetch(`/admin/users?search=${encodeURIComponent(userSearchDebounced)}`),
     enabled: currentUser?.role === 'admin',
   });
+
+  // Debug Trạng thái Queries
+  useEffect(() => {
+    if (videosQuery.isFetching) console.log('🔄 Đang lấy dữ liệu Videos...');
+    if (usersQuery.isFetching) console.log('🔄 Đang lấy dữ liệu Users (Có thể nặng nề)...');
+  }, [videosQuery.isFetching, usersQuery.isFetching]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -559,7 +578,12 @@ export default function AdminPanel() {
   const videos = videosQuery.data?.videos ?? [];
   const videosTotal = videosQuery.data?.total ?? 0;
   const totalPages = videosQuery.data?.totalPages ?? 1;
+  
+  // Áp dụng phân trang Frontend cho Users
   const users = usersQuery.data ?? [];
+  const usersPerPage = 10;
+  const paginatedUsers = users.slice((userPage - 1) * usersPerPage, userPage * usersPerPage);
+  const totalUserPages = Math.ceil(users.length / usersPerPage);
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -714,6 +738,7 @@ export default function AdminPanel() {
                     focus:outline-none focus:ring-2 focus:ring-slate-300"
                 >
                   <option value="all">Tất cả cấp độ</option>
+                  <option value="pending">⏳ Đang xử lý</option>
                   {['N1', 'N2', 'N3', 'N4', 'N5', 'Unknown'].map(l => (
                     <option key={l} value={l}>{l}</option>
                   ))}
@@ -871,7 +896,7 @@ export default function AdminPanel() {
                 </table>
               </div>
 
-              {/* Phân trang */}
+              {/* Phân trang Video */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100">
                   <p className="text-sm text-slate-500">
@@ -889,7 +914,7 @@ export default function AdminPanel() {
                           className={`w-8 h-8 p-0 text-xs font-bold ${p === page
                             ? 'bg-slate-900 text-white hover:bg-slate-800'
                             : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                          }`}>
+                            }`}>
                           {p}
                         </Button>
                       );
@@ -940,13 +965,13 @@ export default function AdminPanel() {
                       <Skeleton className="h-12 bg-slate-100 rounded-xl" />
                     </div>
                   ))
-                ) : users.length === 0 ? (
+                ) : paginatedUsers.length === 0 ? (
                   <div className="py-16 text-center">
                     <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
                     <p className="text-slate-500">Không tìm thấy người dùng</p>
                   </div>
                 ) : (
-                  users.map(u => (
+                  paginatedUsers.map(u => (
                     <div key={u.id}
                       className="flex items-center justify-between px-5 py-4 hover:bg-slate-50/80 transition-colors group">
                       <div className="flex items-center gap-4">
@@ -984,7 +1009,7 @@ export default function AdminPanel() {
                         <Badge className={`border-0 w-22 justify-center ${u.role === 'admin'
                           ? 'bg-slate-900 text-white hover:bg-slate-800'
                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}>
+                          }`}>
                           {u.role === 'admin' ? 'Quản trị' : 'Người dùng'}
                         </Badge>
                         {u.isBanned && (
@@ -1039,6 +1064,37 @@ export default function AdminPanel() {
                   ))
                 )}
               </div>
+              
+              {/* Phân trang Người dùng */}
+              {totalUserPages > 1 && (
+                <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100">
+                  <p className="text-sm text-slate-500">
+                    Trang <span className="font-semibold text-slate-700">{userPage}</span> / {totalUserPages}
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <Button variant="outline" size="sm"
+                      onClick={() => setUserPage(p => Math.max(1, p - 1))} disabled={userPage === 1}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    {Array.from({ length: Math.min(5, totalUserPages) }, (_, i) => {
+                      const p = Math.max(1, Math.min(userPage - 2, totalUserPages - 4)) + i;
+                      return (
+                        <Button key={p} size="sm" onClick={() => setUserPage(p)}
+                          className={`w-8 h-8 p-0 text-xs font-bold ${p === userPage
+                            ? 'bg-slate-900 text-white hover:bg-slate-800'
+                            : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                            }`}>
+                          {p}
+                        </Button>
+                      );
+                    })}
+                    <Button variant="outline" size="sm"
+                      onClick={() => setUserPage(p => Math.min(totalUserPages, p + 1))} disabled={userPage === totalUserPages}>
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
           </Tabs>

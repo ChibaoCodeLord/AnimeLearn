@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, Heart, Clock, ChevronRight, ChevronDown } from 'lucide-react';
+import { Eye, Heart, Clock, ChevronRight, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import moment from 'moment';
+import axios from 'axios';
 
 export interface VideoItem {
   id: string | number;
@@ -12,11 +13,6 @@ export interface VideoItem {
   views_count?: number;
   likes_count?: number;
   created_date: string | Date;
-}
-
-interface VideosByLevelProps {
-  videos?: VideoItem[];
-  isLoading?: boolean;
 }
 
 const jlptColors: Record<string, string> = {
@@ -37,12 +33,82 @@ const levelNames: Record<string, string> = {
   Mixed: 'Video chưa phân loại',
 };
 
-function LevelSection({ level, levelVideos }: { level: string; levelVideos: VideoItem[] }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const displayedVideos = isExpanded ? levelVideos : levelVideos.slice(0, 4);
+const fetchVideosFromApi = async (level: string, page: number, limit: number): Promise<{data: VideoItem[], hasMore: boolean}> => {
+  try {
+    // Lưu ý: Đổi /api/videos thành route gốc video của bạn (vd: /api/video/public-videos)
+    const res = await axios.get(`http://localhost:5000/api/video/public-videos?level=${level}&page=${page}&limit=${limit}`);
+    
+    return {
+      data: res.data.data,
+      hasMore: res.data.hasMore
+    };
+  } catch (error) {
+    console.error("Lỗi fetch video level", level, error);
+    return { data: [], hasMore: false };
+  }
+};
+
+function LevelSection({ level }: { level: string }) {
+  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
+  // Gọi API lần đầu khi component được render
+  useEffect(() => {
+    loadVideos(1);
+  }, [level]);
+
+  const loadVideos = async (pageNumber: number) => {
+    if (pageNumber === 1) setIsLoading(true);
+    else setIsLoadingMore(true);
+
+    const limit = 4; // Lấy 4 video mỗi lần (vừa đẹp 1 hàng)
+    const result = await fetchVideosFromApi(level, pageNumber, limit);
+
+    if (pageNumber === 1) {
+      setVideos(result.data);
+    } else {
+      setVideos(prev => [...prev, ...result.data]);
+    }
+    
+    setHasMore(result.hasMore);
+    setIsLoading(false);
+    setIsLoadingMore(false);
+  };
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    loadVideos(nextPage);
+  };
+
+  // Nếu loading lần đầu thì hiện Skeleton
+  if (isLoading) {
+    return (
+      <section className="mb-12">
+        <div className="h-8 bg-emerald-100 rounded w-48 mb-6 animate-pulse" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="rounded-xl bg-white border border-slate-200 overflow-hidden animate-pulse">
+              <div className="aspect-video bg-slate-100" />
+              <div className="p-3 space-y-2">
+                <div className="h-4 bg-slate-200 rounded w-3/4" />
+                <div className="h-3 bg-slate-200 rounded w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  // Nếu level này không có video nào thì ẩn luôn section
+  if (videos.length === 0) return null;
 
   return (
-    <section>
+    <section className="mb-12">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Badge className={`${jlptColors[level]} border text-base px-3 py-1`}>
@@ -50,20 +116,10 @@ function LevelSection({ level, levelVideos }: { level: string; levelVideos: Vide
           </Badge>
           <h2 className="text-2xl font-bold text-slate-900">{levelNames[level]}</h2>
         </div>
-        
-        {levelVideos.length > 4 && (
-          <button 
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1 cursor-pointer outline-none transition-colors"
-          >
-            {isExpanded ? 'Thu gọn' : 'Xem tất cả'}
-            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </button>
-        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {displayedVideos.map(video => (
+        {videos.map(video => (
           <Link key={video.id} to={`/VideoWorkspace?id=${video.id}`}>
             <div className="group rounded-xl bg-white border border-slate-200 overflow-hidden hover:border-emerald-300 hover:shadow-lg transition-all flex flex-col h-full">
               <div className="aspect-video bg-slate-100 relative overflow-hidden shrink-0">
@@ -74,7 +130,7 @@ function LevelSection({ level, levelVideos }: { level: string; levelVideos: Vide
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-emerald-100 to-teal-100">
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-emerald-100 to-teal-100">
                     <span className="text-4xl">🎬</span>
                   </div>
                 )}
@@ -105,61 +161,37 @@ function LevelSection({ level, levelVideos }: { level: string; levelVideos: Vide
           </Link>
         ))}
       </div>
+
+      {/* Nút Xem thêm */}
+      {hasMore && (
+        <div className="flex justify-center mt-6">
+          <button 
+            onClick={handleLoadMore}
+            disabled={isLoadingMore}
+            className="flex items-center gap-2 px-6 py-2 rounded-full border border-emerald-200 text-emerald-700 font-medium hover:bg-emerald-50 transition-colors disabled:opacity-50"
+          >
+            {isLoadingMore ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Đang tải...</>
+            ) : (
+              <>Xem thêm video {level} <ChevronRight className="w-4 h-4" /></>
+            )}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
 
-export default function VideosByLevel({ videos = [], isLoading }: VideosByLevelProps) {
-  if (isLoading) {
-    return (
-      <div className="py-12 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse space-y-12">
-            {[1, 2, 3].map(i => (
-              <div key={i}>
-                <div className="h-8 bg-emerald-100 rounded w-32 mb-6" />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[1, 2, 3, 4].map(j => (
-                    <div key={j} className="rounded-xl bg-white border border-slate-200 overflow-hidden">
-                      <div className="aspect-video bg-slate-100" />
-                      <div className="p-3 space-y-2">
-                        <div className="h-4 bg-slate-100 rounded w-3/4" />
-                        <div className="h-3 bg-slate-100 rounded w-1/2" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const videosByLevel: Record<string, VideoItem[]> = {
-    N5: videos.filter(v => v.jlpt_level === 'N5'),
-    N4: videos.filter(v => v.jlpt_level === 'N4'),
-    N3: videos.filter(v => v.jlpt_level === 'N3'),
-    N2: videos.filter(v => v.jlpt_level === 'N2'),
-    N1: videos.filter(v => v.jlpt_level === 'N1'),
-    Mixed: videos.filter(v => !['N1', 'N2', 'N3', 'N4', 'N5'].includes(v.jlpt_level || '')),
-  };
+// Parent Component bây giờ cực kỳ gọn nhẹ
+export default function VideosByLevel() {
+  const levels = ['N5', 'N4', 'N3', 'N2', 'N1', 'Mixed'];
 
   return (
     <div className="py-12 px-4">
-      <div className="max-w-7xl mx-auto space-y-12">
-        {Object.entries(videosByLevel).map(([level, levelVideos]) => {
-          if (levelVideos.length === 0) return null;
-          
-          return (
-            <LevelSection 
-              key={level} 
-              level={level} 
-              levelVideos={levelVideos} 
-            />
-          );
-        })}
+      <div className="max-w-7xl mx-auto">
+        {levels.map(level => (
+          <LevelSection key={level} level={level} />
+        ))}
       </div>
     </div>
   );

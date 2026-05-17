@@ -8,7 +8,8 @@ const VocabularySchema = new mongoose.Schema({
   },
   word: {
     type: String,
-    required: true
+    required: true,
+    index: true // Tối ưu hóa khi tìm kiếm theo từ khóa
   },
   reading: {
     type: String
@@ -26,6 +27,14 @@ const VocabularySchema = new mongoose.Schema({
     type: String,
     default: 'Unknown'
   },
+  
+  // ---> TRƯỜNG LƯU TRỮ THỨ HẠNG PHỔ BIẾN <---
+  popularity_score: {
+    type: Number,
+    default: 999999, // Số càng nhỏ càng phổ biến. Default lớn để đẩy các từ hiếm xuống đáy.
+    index: true 
+  },
+
   example_sentence: {
     type: String
   },
@@ -41,5 +50,8 @@ const VocabularySchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Tạo Compound Index để tối ưu triệt để câu lệnh VỪA SEARCH word VỪA SORT popularity
+VocabularySchema.index({ word: 1, popularity_score: 1 });
 
 export default mongoose.model('Vocabulary', VocabularySchema);
