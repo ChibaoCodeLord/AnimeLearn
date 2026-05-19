@@ -15,6 +15,9 @@ import { generateQuizFromScript } from '../services/quizAIService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const scriptPath = path.join(__dirname, '../scripts/transcribe.py');
+const AI_SERVICE = process.env.AI_SERVICE; 
+
 function resolvePythonCommand() {
   if (process.env.PYTHON_PATH) {
     return process.env.PYTHON_PATH;
@@ -71,74 +74,72 @@ function parsePythonJsonOutput(rawOutput) {
   throw new Error('Không tìm thấy JSON hợp lệ trong output của Python');
 }
 
+function normalizeUtf8Value(value) {
+  if (typeof value === 'string') {
+    return value.normalize('NFC');
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeUtf8Value);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, normalizeUtf8Value(entry)])
+    );
+  }
+
+  return value;
+}
+
 //Router dịch script
 //chỉ có user đã đăng nhập mới được tạo script
-router.post('/analyze', authMiddleware, (req, res) => {
+router.post('/analyze', authMiddleware, async (req, res) =>  {
   const { url } = req.body;
+  const endpoint = 'transcribe';
   console.log(`[analyze Log]: đã gọi analyze}`);
 
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
   }
 
-  // Define Path to python script
-  const scriptPath = path.join(__dirname, '../scripts/transcribe.py');
+  try {
+    const response = await fetch(`${AI_SERVICE}/${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-KEY': process.env.AI_KEY
+      },
+      body:JSON.stringify({
+        media_path: url,
+        use_gpu: true
+      })
+    });
 
-  // Start python process
-  const pythonProcess = spawn(PYTHON_CMD, [scriptPath, url]);
-
-  const stdoutChunks = [];
-  let errorString = '';
-  let isHandled = false;
-
-
-  pythonProcess.stdout.on('data', (data) => {
-    stdoutChunks.push(data);
-  });
-
-  pythonProcess.stderr.on('data', (data) => {
-    errorString += data.toString();
-    console.error(`[Python Log]: ${data.toString().trim()}`);
-  });
-
-  pythonProcess.on('error', (err) => {
-    if (isHandled) return;
-    isHandled = true;
-    console.error(`Failed to start Python process: ${err.message}`);
-    return res.status(500).json({ error: 'Failed to start transcription process', details: err.message });
-  });
-
-  pythonProcess.on('close', (code, signal) => {
-    if (isHandled) return;
-    isHandled = true;
-    const dataString = Buffer.concat(stdoutChunks).toString('utf8');
-
-    try {
-      const parsed = parsePythonJsonOutput(dataString);
-      const result = Array.isArray(parsed) ? { title: 'Youtube Video (Auto-Transcription)', script: parsed } : parsed;
-
-      if (code !== 0 || signal) {
-        console.warn(`[analyze] Python exited with code=${code}, signal=${signal ?? 'none'} but returned valid JSON output.`);
-      }
-
-      return res.json({
-        title: result.title || 'Youtube Video (Auto-Transcription)',
-        jlpt_level: "Unknown",
-        script: result.script || result
-      });
-    } catch (parseError) {
-      console.error(`Process exited with code=${code}, signal=${signal ?? 'none'}. stderr: ${errorString}`);
-      console.error('Failed to parse Python output:', dataString);
-
-      const baseError = code !== 0 || signal ? 'Failed to transcribe video' : 'Invalid output format from transcription script';
-      return res.status(500).json({
-        error: baseError,
-        details: errorString,
-        exitCode: code,
-        signal: signal ?? null
-      });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Script Service error: ${response.status}`);
     }
-  });
+
+    const responseData = await response.json().catch(() => ({}));
+    const script = Array.isArray(responseData.segments)
+      ? normalizeUtf8Value(responseData.segments)
+      : (Array.isArray(responseData.script) ? normalizeUtf8Value(responseData.script) : []);
+
+    
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.json({
+        title: typeof responseData.title === 'string' ? responseData.title.normalize('NFC') : 'Youtube Video (Auto-Transcription)',
+        jlpt_level: typeof responseData.jlpt_level === 'string' ? responseData.jlpt_level.normalize('NFC') : (responseData.jlpt_level || 'Unknown'),
+        script
+      });
+  } catch (error) {
+    console.error(`[SCRIPT_API_ERROR] ${endpoint}:`, error.message);
+    return res.status(500).json({
+      error: 'Failed to analyze video',
+      details: error.message
+    });
+  }
 });
 
 router.post('/translate-word', (req, res) => {
@@ -695,6 +696,69 @@ router.get('/vocabulary/:id', async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi lấy từ vựng và Kanji của video:', error);
     res.status(500).json({ success: false, error: 'Lỗi máy chủ' });
+  }
+});
+
+// ==========================================
+// API: LẤY DANH SÁCH VIDEO CHO TRANG CHỦ (CÓ PHÂN TRANG TỪNG LEVEL)
+// Endpoint: GET /api/videos/public-videos?level=N5&page=1&limit=4
+// ==========================================
+router.get('/public-videos', async (req, res) => {
+  try {
+    const { level, page = 1, limit = 4 } = req.query;
+    
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // 1. Khởi tạo điều kiện query cơ bản: Chỉ video Công khai & Đã duyệt
+    const query = {
+      status: 'approved',
+      visibility: 'public' // Giả sử model của bạn có trường này, nếu không thì bỏ qua
+    };
+
+    // 2. Xử lý bộ lọc JLPT Level
+    if (level === 'Mixed') {
+      // Nhóm "Mixed" là những video không nằm trong phổ N1-N5 hoặc chưa phân loại
+      query.jlpt_level = { $nin: ['N1', 'N2', 'N3', 'N4', 'N5'] };
+    } else if (level) {
+      query.jlpt_level = level;
+    }
+
+    // 3. Chạy song song 2 lệnh: Lấy data và Đếm tổng số
+    const [videos, totalCount] = await Promise.all([
+      Video.find(query)
+        // Chỉ select những trường cần thiết cho Card ở trang Home để tiết kiệm băng thông
+        .select('_id title thumbnail_url jlpt_level views_count likes_count created_date')
+        .sort({ created_date: -1 }) // Mới nhất xếp trước
+        .skip(skip)
+        .limit(limitNum)
+        .lean(), // Trả về plain JS object cho nhẹ
+      Video.countDocuments(query)
+    ]);
+
+    // 4. Map lại _id thành id cho khớp với interface VideoItem của React
+    const formattedVideos = videos.map(v => ({
+      id: v._id,
+      title: v.title,
+      thumbnail_url: v.thumbnail_url,
+      jlpt_level: v.jlpt_level,
+      views_count: v.views_count,
+      likes_count: v.likes_count,
+      created_date: v.created_date
+    }));
+
+    // 5. Trả về kết quả
+    res.status(200).json({
+      success: true,
+      data: formattedVideos,
+      hasMore: totalCount > (skip + videos.length),
+      total: totalCount
+    });
+
+  } catch (error) {
+    console.error('Lỗi khi lấy danh sách video trang chủ:', error);
+    res.status(500).json({ success: false, error: 'Lỗi server khi tải danh sách video' });
   }
 });
 

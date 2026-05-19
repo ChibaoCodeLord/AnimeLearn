@@ -8,7 +8,8 @@ import yt_dlp
 import time
 import urllib.request
 import urllib.error
-
+import time
+import math
 # ==========================================
 # MA THUẬT: KHÓA MÕM CÁC THƯ VIỆN IN RÁC RA STDOUT
 # ==========================================
@@ -178,6 +179,7 @@ def init_transcribe_system(use_gpu: bool = True):
     log_err("✅ Khởi tạo hệ thống thành công!")
     return True
 
+
 def transcribe_media(media_path: str, use_gpu: bool = True):
     global global_model, global_tokenizer_obj, global_split_mode, global_translator
     
@@ -209,7 +211,7 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
 
         audio_path = preprocess_audio_for_vocals(raw_audio_path)
 
-        log_err("Transcribing & Dịch thuật bằng DeepL (Tối ưu cho Anime & Ca nhạc)...")
+        log_err("Đang khởi chạy Whisper AI để bóc băng (Transcribing)...")
         general_prompt = "これは歌の歌詞、またはアニメのセリフです。文脈に合わせて、漢字と句読点を正しく使って文字起こししてください。"
         
         HALLUCINATION_BLACKLIST = [
@@ -218,7 +220,10 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
             "評価お願い", "twitter", "tiktok", "instagram"
         ]
 
-        segments, info = global_model.transcribe(
+        # 1. BẮT ĐẦU ĐO THỜI GIAN TRANSCRIBE
+        start_time = time.time()
+
+        segments_generator, info = global_model.transcribe(
             audio_path,
             language="ja",
             condition_on_previous_text=False,
@@ -230,6 +235,42 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
             no_speech_threshold=0.9, 
             log_prob_threshold=None   
         )
+        
+        # Ép generator chạy hết để đo chính xác thời gian xử lý của riêng Whisper (không bị lẫn thời gian gọi API DeepL)
+        segments = list(segments_generator)
+        
+        # 2. KẾT THÚC ĐO THỜI GIAN
+        end_time = time.time()
+
+        # 3. TÍNH TOÁN CÁC CHỈ SỐ BÁO CÁO KHOA HỌC
+        process_time = end_time - start_time
+        video_duration = info.duration
+        speed_ratio = video_duration / process_time if process_time > 0 else 0
+        
+        total_confidence = 0.0
+        segment_count = len(segments)
+        
+        for seg in segments:
+            # avg_logprob là logarit tự nhiên của xác suất. Dùng hàm exp để chuyển ngược về dạng % (0-100)
+            confidence = math.exp(seg.avg_logprob) * 100 
+            total_confidence += confidence
+            
+        avg_accuracy = (total_confidence / segment_count) if segment_count > 0 else 0.0
+        error_rate = 100.0 - avg_accuracy
+
+        # 4. IN LOG BÁO CÁO RA TERMINAL
+        log_err("\n" + "="*55)
+        log_err("📊 BÁO CÁO KẾT QUẢ TRANSCRIBE (DÀNH CHO NGHIÊN CỨU)")
+        log_err("="*55)
+        log_err(f"🤖 Mô hình AI        : Whisper (Large-v3-Turbo)")
+        log_err(f"⏱️  Thời lượng Video : {video_duration / 60:.2f} phút ({video_duration:.1f} giây)")
+        log_err(f"⚡ Thời gian xử lý   : {process_time / 60:.2f} phút ({process_time:.1f} giây)")
+        log_err(f"🚀 Tốc độ (RTF)      : Nhanh gấp {speed_ratio:.1f} lần thời gian thực")
+        log_err(f"🎯 Độ chính xác (Est): {avg_accuracy:.2f}% (Tính toán từ Confidence Score)")
+        log_err(f"⚠️  Tỉ lệ sai sót     : {error_rate:.2f}%")
+        log_err("="*55 + "\n")
+
+        log_err("Transcribing xong. Bắt đầu Dịch thuật bằng DeepL và bóc tách từ vựng...")
         
         for seg in segments:
             ja_text = seg.text.strip()
@@ -264,7 +305,6 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
                     word = tokens[i]
                     pos = word.part_of_speech()[0]
                     
-                    # ✨ ĐÃ CẬP NHẬT: Thêm "形状詞" (Tính từ đuôi na / 大好き, 綺麗) và "連体詞" (Từ nối / 大きな)
                     if pos in ("名詞", "代名詞", "動詞", "形容詞", "形状詞", "副詞", "連体詞"):
                         chunk_surface = word.surface()
                         base_words = [(word.dictionary_form(), pos)]
@@ -296,7 +336,6 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
                             if lemma in seen_words: continue
                             seen_words.add(lemma)
                             
-                            # ✨ ĐÃ CẬP NHẬT: Ánh xạ chuẩn ra tiếng Việt
                             if raw_pos == "代名詞":
                                 pos_vi = "Đại từ"
                             elif raw_pos == "名詞":
@@ -337,7 +376,6 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
                     w = vocab["word"]
                     base_meaning = ""
                     
-                    # Ánh xạ trực tiếp kanji_info vào trong vocab
                     kanjis_in_w = [c for c in w if '\u4e00' <= c <= '\u9faf']
                     if kanjis_in_w:
                         vocab["kanji_info"] = [kanji_results[k] for k in kanjis_in_w if k in kanji_results]
@@ -347,7 +385,6 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
                         meanings_array = dict_results[w][0].get("meanings", [])
                         base_meaning = "\n".join(meanings_array).strip()
                     else:
-                        # FALLBACK 1: Map nghĩa & reading trực tiếp từ API Kanji nếu ko có trong từ điển
                         found_kanji = False
                         
                         if vocab["kanji_info"]:
@@ -378,7 +415,6 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
                                 if not vocab.get("reading") and readings:
                                     vocab["reading"] = "".join(readings).replace(".", "")
                                     
-                        # FALLBACK 2: Dùng DeepL nếu hoàn toàn không có Hán tự
                         if not found_kanji:
                             try:
                                 fallback_meaning = global_translator.translate_text(w, target_lang="VI").text
@@ -420,15 +456,3 @@ def transcribe_media(media_path: str, use_gpu: bool = True):
         if audio_path and audio_path != raw_audio_path and os.path.exists(audio_path):
             try: os.remove(audio_path)
             except Exception: pass
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        log_err("Cần cung cấp URL video")
-        sys.exit(1)
-    
-    init_transcribe_system()
-    final_results = transcribe_media(sys.argv[1])
-    
-    print(json.dumps(final_results, ensure_ascii=False), file=REAL_STDOUT)
-    REAL_STDOUT.flush()
-    os._exit(0)

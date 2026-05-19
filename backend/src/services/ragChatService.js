@@ -7,7 +7,7 @@ import 'dotenv/config';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const scriptPath = path.join(__dirname, '../scripts/rag_worker.py');
-const RAG_SERVICE_URL = process.env.RAG_SERVICE_URL; 
+const AI_SERVICE = process.env.AI_SERVICE; 
 
 
 
@@ -16,7 +16,7 @@ const RAG_SERVICE_URL = process.env.RAG_SERVICE_URL;
  */
 async function callRAGService(endpoint, payload) {
   try {
-    const response = await fetch(`${RAG_SERVICE_URL}/${endpoint}`, {
+    const response = await fetch(`${AI_SERVICE}/${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

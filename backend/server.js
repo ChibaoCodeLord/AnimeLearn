@@ -16,10 +16,16 @@ import vocabularyRouters from './src/routes/vocabulary.js';
 import kanjiRouters from './src/routes/kanji.js';
 import User from './src/models/User.js';
 
+import Video from './src/models/Video.js';
+
 
 // Load environment variables
 dotenv.config({ path: '.env' });
 dotenv.config();
+
+Video.syncIndexes()
+  .then(() => console.log('✅ Đã tạo Index thành công, từ nay khỏi lo tràn RAM!'))
+  .catch(err => console.log('Lỗi tạo Index:', err));
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -69,6 +75,16 @@ mongoose.connect(process.env.MONGO_URI)
   .catch((error) => {
     console.error('❌ Error connecting to MongoDB:', error.message);
   });
+
+mongoose.connection.once('open', async () => {
+  try {
+    // Đi cửa sau: Can thiệp thẳng vào collection 'videos' để tạo Index mà không cần Import Model
+    await mongoose.connection.db.collection('videos').createIndex({ created_date: -1 });
+    console.log('✅ ĐÃ TẠO INDEX XẾP HẠNG THÀNH CÔNG! Vĩnh biệt lỗi 32MB RAM!');
+  } catch (err) {
+    console.error('❌ Lỗi khi tạo Index:', err);
+  }
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
