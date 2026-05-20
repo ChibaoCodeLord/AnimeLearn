@@ -49,7 +49,7 @@ interface QuizPageProps {
 const API_BASE = 'http://localhost:5000/api';
 
 // --- COMPONENT CHÍNH ---
-export default function QuizPage({ videoId, script, ytId }: QuizPageProps) {
+export default function QuizPage({ videoId = null, script = [], ytId }: QuizPageProps) {
   const queryClient = useQueryClient();
   const playerRef = useRef<any>(null);
 

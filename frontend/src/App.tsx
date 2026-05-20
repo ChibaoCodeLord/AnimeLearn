@@ -3,14 +3,14 @@ import { queryClientInstance } from '@/lib/query-client'; // Đảm bảo file n
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useParams, useLocation } from 'react-router-dom';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Page imports
 import Home from './pages/Home';
 import Home_guest from './pages/Home_guest';
 import VideoWorkspace from './pages/VideoWorkspace';
 import Vocabulary from './pages/Vocabulary';
-import VocabularyNotebook from './pages/VocabularyNotebook';
+// import VocabularyNotebook from './pages/VocabularyNotebook';
 import QuizPage from './pages/QuizPage';
 import Dashboard from './pages/Dashboard';
 import AIChatTutor from './pages/AIChatTutor';
@@ -20,6 +20,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Layout from './components/Layout';
 import DictionaryPage from './pages/DictionaryPage';
+import UserBannedError from './components/UserBannedError';
 
 // Authentication check function
 const isAuthenticated = (): boolean => {
@@ -34,6 +35,29 @@ const PageNotFound = () => (
     <a href="/" className="mt-6 text-[#ff6b9d] hover:underline">Quay lại Trang chủ</a>
   </div>
 );
+
+const BannedRoute = () => {
+  const [banInfo, setBanInfo] = useState<{ bannedAt?: string; unbannedAt?: string; banReason?: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('banInfo');
+      if (raw) {
+        setBanInfo(JSON.parse(raw));
+      }
+    } catch (e) {
+      console.error('Cannot read ban info', e);
+    }
+  }, []);
+
+  return (
+    <UserBannedError
+      banReason={banInfo?.banReason}
+      bannedAt={banInfo?.bannedAt}
+      unbannedAt={banInfo?.unbannedAt}
+    />
+  );
+};
 
 // Protected Route Component
 const ProtectedRoute = ({ element }: { element: React.ReactNode }) => {
@@ -115,6 +139,7 @@ const AuthenticatedApp = () => {
       {/* Login & Signup - Public Routes (không bọc trong Layout) */}
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/banned" element={<BannedRoute />} />
 
       {/* Authenticated Routes bọc trong Layout (Sidebar + Header) */}
       <Route element={<Layout />}>
@@ -124,7 +149,6 @@ const AuthenticatedApp = () => {
         {/* Các trang chức năng */}
         <Route path="/VideoWorkspace" element={<ProtectedRoute element={<VideoWorkspace />} />} />
         <Route path="/Vocabulary" element={<ProtectedRoute element={<Vocabulary />} />} />
-        <Route path="/VocabularyNotebook" element={<ProtectedRoute element={<VocabularyNotebook />} />} />
         <Route path="/QuizPage" element={<ProtectedRoute element={<QuizPage />} />} />
         <Route path="/Dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
         <Route path="/Dictionary" element={<ProtectedRoute element={<DictionaryPage />} />} />

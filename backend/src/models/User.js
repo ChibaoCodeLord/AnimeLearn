@@ -52,6 +52,22 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin'],
       default: 'user'
     },
+    isBanned: {
+      type: Boolean,
+      default: false
+    },
+    bannedAt: {
+      type: Date,
+      default: null
+    },
+    banReason: {
+      type: String,
+      default: ''
+    },
+    unbannedAt: {
+      type: Date,
+      default: null
+    },
     totalLearningHours: {
       type: Number,
       default: 0

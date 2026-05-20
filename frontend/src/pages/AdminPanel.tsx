@@ -53,6 +53,10 @@ interface UserItem {
   jlptLevel: string;
   createdAt: string;
   isVerified: boolean;
+  isBanned?: boolean;
+  bannedAt?: string | null;
+  unbannedAt?: string | null;
+  banReason?: string;
 }
 
 interface StatsData {
@@ -273,6 +277,133 @@ function RejectReasonModal({
   );
 }
 
+function BanUserModal({
+  user,
+  reason,
+  unbannedAt,
+  onReasonChange,
+  onUnbannedAtChange,
+  onConfirm,
+  onCancel,
+  isSubmitting,
+}: {
+  user: UserItem | null;
+  reason: string;
+  unbannedAt: string;
+  onReasonChange: (value: string) => void;
+  onUnbannedAtChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isSubmitting: boolean;
+}) {
+  if (!user) return null;
+  const trimmedReason = reason.trim();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-rose-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Ban người dùng</h3>
+            <p className="text-sm text-slate-500">Thông báo sẽ được gửi qua email.</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 rounded-xl p-3 mb-4 border border-slate-100">
+          <p className="text-sm text-slate-800 font-medium line-clamp-2">{user.fullName || 'Ẩn danh'}</p>
+          <p className="text-xs text-slate-500 mt-1">{user.email}</p>
+        </div>
+
+        <label className="block text-sm font-semibold text-slate-700 mb-2" htmlFor="ban-reason">
+          Lý do ban
+        </label>
+        <textarea
+          id="ban-reason"
+          value={reason}
+          onChange={(e) => onReasonChange(e.target.value)}
+          rows={4}
+          placeholder="Ví dụ: Spam bình luận, nội dung không phù hợp..."
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300 resize-none"
+        />
+
+        <label className="block text-sm font-semibold text-slate-700 mt-4 mb-2" htmlFor="ban-until">
+          Thời gian mở khóa (tùy chọn)
+        </label>
+        <input
+          id="ban-until"
+          type="date"
+          value={unbannedAt}
+          onChange={(e) => onUnbannedAtChange(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-300 focus:border-rose-300"
+        />
+
+        <div className="mt-5 flex gap-3">
+          <Button variant="outline" onClick={onCancel} disabled={isSubmitting} className="flex-1">
+            Hủy bỏ
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={isSubmitting || !trimmedReason}
+            className="flex-1 bg-rose-600 hover:bg-rose-700 text-white border-0"
+          >
+            {isSubmitting ? 'Đang xử lý...' : 'Ban user'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnbanConfirmModal({
+  user,
+  onConfirm,
+  onCancel,
+  isSubmitting,
+}: {
+  user: UserItem | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isSubmitting: boolean;
+}) {
+  if (!user) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+            <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Gỡ ban người dùng</h3>
+            <p className="text-sm text-slate-500">Tài khoản sẽ được mở lại ngay lập tức.</p>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 rounded-xl p-3 mb-5 border border-slate-100">
+          <p className="text-sm text-slate-800 font-medium line-clamp-2">{user.fullName || 'Ẩn danh'}</p>
+          <p className="text-xs text-slate-500 mt-1">{user.email}</p>
+        </div>
+
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={onCancel} disabled={isSubmitting} className="flex-1">
+            Hủy bỏ
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={isSubmitting}
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white border-0"
+          >
+            {isSubmitting ? 'Đang xử lý...' : 'Gỡ ban'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── COMPONENT CHÍNH ──────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
@@ -294,6 +425,10 @@ export default function AdminPanel() {
   const [deleteTarget, setDeleteTarget] = useState<VideoItem | null>(null);
   const [rejectTarget, setRejectTarget] = useState<VideoItem | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [banTarget, setBanTarget] = useState<UserItem | null>(null);
+  const [banReasonText, setBanReasonText] = useState('');
+  const [banUntil, setBanUntil] = useState('');
+  const [unbanTarget, setUnbanTarget] = useState<UserItem | null>(null);
 
   // User search & pagination
   const [userSearch, setUserSearch] = useState('');
@@ -384,6 +519,32 @@ export default function AdminPanel() {
     onError: (e: Error) => toast.error(`Lỗi: ${e.message}`),
   });
 
+  const banUserMutation = useMutation({
+    mutationFn: ({ id, banReason, unbannedAt }: { id: string; banReason: string; unbannedAt?: string | null }) =>
+      apiFetch(`/admin/users/${id}/ban`, {
+        method: 'PATCH',
+        body: JSON.stringify({ banReason, unbannedAt: unbannedAt || null }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      toast.success('Đã ban người dùng');
+      setBanTarget(null);
+      setBanReasonText('');
+      setBanUntil('');
+    },
+    onError: (e: Error) => toast.error(`Lỗi: ${e.message}`),
+  });
+
+  const unbanUserMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/admin/users/${id}/unban`, { method: 'PATCH' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      toast.success('Đã gỡ ban người dùng');
+      setUnbanTarget(null);
+    },
+    onError: (e: Error) => toast.error(`Lỗi: ${e.message}`),
+  });
+
   // ── Render: Loading / Unauthorized ────────────────────────────────────────
 
   if (isLoadingAuth) {
@@ -452,6 +613,38 @@ export default function AdminPanel() {
           updateStatusMutation.mutate({ id: rejectTarget.id, status: 'rejected', reason: trimmedReason });
         }}
         isSubmitting={updateStatusMutation.isPending}
+      />
+      <BanUserModal
+        user={banTarget}
+        reason={banReasonText}
+        unbannedAt={banUntil}
+        onReasonChange={setBanReasonText}
+        onUnbannedAtChange={setBanUntil}
+        onCancel={() => {
+          setBanTarget(null);
+          setBanReasonText('');
+          setBanUntil('');
+        }}
+        onConfirm={() => {
+          if (!banTarget) return;
+          const trimmedReason = banReasonText.trim();
+          if (!trimmedReason) {
+            toast.error('Vui lòng nhập lý do ban');
+            return;
+          }
+          banUserMutation.mutate({
+            id: banTarget.id,
+            banReason: trimmedReason,
+            unbannedAt: banUntil || null,
+          });
+        }}
+        isSubmitting={banUserMutation.isPending}
+      />
+      <UnbanConfirmModal
+        user={unbanTarget}
+        onCancel={() => setUnbanTarget(null)}
+        onConfirm={() => unbanTarget && unbanUserMutation.mutate(unbanTarget.id)}
+        isSubmitting={unbanUserMutation.isPending}
       />
 
       <div className="w-full px-4 md:px-6 py-6 animate-in fade-in duration-500">
@@ -819,6 +1012,11 @@ export default function AdminPanel() {
                           }`}>
                           {u.role === 'admin' ? 'Quản trị' : 'Người dùng'}
                         </Badge>
+                        {u.isBanned && (
+                          <Badge className="border-0 w-22 justify-center bg-rose-100 text-rose-700 hover:bg-rose-200">
+                            Bị cấm
+                          </Badge>
+                        )}
                         {/* Nút đổi quyền */}
                         <button
                           onClick={() => changeRoleMutation.mutate({
@@ -834,6 +1032,33 @@ export default function AdminPanel() {
                         >
                           <UserCog className="w-3.5 h-3.5" />
                         </button>
+                        {u.isBanned ? (
+                          <button
+                            onClick={() => setUnbanTarget(u)}
+                            disabled={unbanUserMutation.isPending || u.role === 'admin'}
+                            title={u.role === 'admin' ? 'Không thể gỡ ban admin' : 'Gỡ ban người dùng'}
+                            className="w-8 h-8 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600
+                              hover:bg-emerald-100 flex items-center justify-center transition-colors
+                              opacity-0 group-hover:opacity-100"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setBanTarget(u);
+                              setBanReasonText('');
+                              setBanUntil('');
+                            }}
+                            disabled={banUserMutation.isPending || u.role === 'admin'}
+                            title={u.role === 'admin' ? 'Không thể ban admin' : 'Ban người dùng'}
+                            className="w-8 h-8 rounded-lg border border-rose-200 bg-rose-50 text-rose-600
+                              hover:bg-rose-100 flex items-center justify-center transition-colors
+                              opacity-0 group-hover:opacity-100"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
