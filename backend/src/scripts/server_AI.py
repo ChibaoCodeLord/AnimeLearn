@@ -7,6 +7,7 @@ import uvicorn
 from fastapi import Request
 from fastapi.responses import JSONResponse
 import os
+import yt_dlp
 
 # Import RAG functions
 from rag_worker import _vectorstore, ingest, chat, init_rag_system
@@ -83,6 +84,29 @@ class TranscribePayload(BaseModel):
     media_path: str
     use_gpu: Optional[bool] = True
 
+
+def extract_media_title(media_path: str) -> str:
+    if not media_path:
+        return 'Youtube Video (Auto-Transcription)'
+
+    if media_path.startswith(('http://', 'https://')):
+        try:
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'noplaylist': True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(media_path, download=False)
+                title = info.get('title') if isinstance(info, dict) else None
+                if title:
+                    return str(title).strip()
+        except Exception as e:
+            print(f"⚠️ Không lấy được title YouTube: {e}", file=sys.stderr)
+
+    base_name = os.path.splitext(os.path.basename(media_path))[0].strip()
+    return base_name or 'Youtube Video (Auto-Transcription)'
+
 # ============================================================================
 # ENDPOINTS - RAG
 # ============================================================================
@@ -125,8 +149,12 @@ async def api_transcribe(payload: TranscribePayload):
             use_gpu=payload.use_gpu
         )
         log_err(f"✅ Transcribe thành công: {len(results)} segments")
+        title = extract_media_title(payload.media_path)
+
+        
         return {
             "ok": True,
+            "title": title,
             "segments": results
         }
     except Exception as e:
@@ -134,4 +162,4 @@ async def api_transcribe(payload: TranscribePayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.5", port=9000)
+    uvicorn.run(app, host="127.0.0.1", port=9000)
