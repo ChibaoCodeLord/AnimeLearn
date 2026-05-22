@@ -13,9 +13,32 @@ import Kanji from '../models/Kanji.js';
 import { generateQuizFromScript } from '../services/quizAIService.js';
 import axios from 'axios';
 
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import KuroshiroModule from "kuroshiro";
+import KuromojiAnalyzerModule from "kuroshiro-analyzer-kuromoji";
+
+const Kuroshiro = KuroshiroModule.default || KuroshiroModule;
+const KuromojiAnalyzer =
+  KuromojiAnalyzerModule.default || KuromojiAnalyzerModule;
+
+const kuroshiro = new Kuroshiro();
+
+let isKuroshiroInit = false;
+let kuroshiroInitPromise = null;
+
+async function initKuroshiro() {
+  if (isKuroshiroInit) return;
+
+  if (!kuroshiroInitPromise) {
+    kuroshiroInitPromise = kuroshiro.init(new KuromojiAnalyzer());
+  }
+
+  await kuroshiroInitPromise;
+  isKuroshiroInit = true;
+}
 const scriptPath = path.join(__dirname, '../scripts/transcribe.py');
 const AI_SERVICE = process.env.AI_SERVICE; 
 
@@ -812,5 +835,36 @@ router.get('/public-videos', async (req, res) => {
     res.status(500).json({ success: false, error: 'Lỗi server khi tải danh sách video' });
   }
 });
+
+
+// API xử lý Furigana On-the-fly cho duy nhất 1 câu
+router.post("/furigana-line", async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    if (!text || !String(text).trim()) {
+      return res.json({ html: "" });
+    }
+
+    await initKuroshiro();
+
+    const htmlResult = await kuroshiro.convert(String(text), {
+      mode: "furigana",
+      to: "hiragana",
+    });
+
+    return res.json({
+      html: htmlResult,
+    });
+  } catch (error) {
+    console.error("Lỗi convert Furigana:", error);
+
+    return res.status(500).json({
+      html: "",
+      error: "Không thể xử lý Furigana",
+    });
+  }
+});
+
 
 export default router;

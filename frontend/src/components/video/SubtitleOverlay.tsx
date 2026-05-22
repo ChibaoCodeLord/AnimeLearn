@@ -16,11 +16,13 @@ export interface PopupAnchorPosition {
 
 interface SubtitleOverlayProps {
   currentLine: SubtitleLine | null;
+  currentFurigana: string;
   onWordSelect: (word: string, position: PopupAnchorPosition) => void;
 }
 
 export default function SubtitleOverlay({
   currentLine,
+  currentFurigana,
   onWordSelect,
 }: SubtitleOverlayProps) {
   if (!currentLine) return null;
@@ -55,7 +57,89 @@ export default function SubtitleOverlay({
     hover:decoration-emerald-300
   `;
 
+  // 🚀 HÀM PHỤ: Bóc chữ Kanji ra khỏi thẻ HTML để gọi hàm tra từ điển
+  const extractKanjiFromRuby = (htmlString: string) => {
+    return htmlString
+      .replace(/<r[pt]>[\s\S]*?<\/r[pt]>/g, '') // Xóa phần chữ nhỏ Furigana
+      .replace(/<[^>]+>/g, '') // Xóa thẻ <ruby>
+      .trim();
+  };
+
   const renderSegments = () => {
+    // ==========================================
+    // NẾU CÓ FURIGANA: Băm nhỏ chuỗi HTML ra để bọc thẻ Span
+    // ==========================================
+    if (currentFurigana) {
+      // Dùng Regex tách các cụm Kanji (<ruby>) ra khỏi chữ Hiragana bình thường
+      const parts = currentFurigana.split(/(<ruby>[\s\S]*?<\/ruby>)/);
+
+      return parts.map((part, index) => {
+        if (!part) return null;
+
+        // Nếu là cụm Kanji có Furigana -> Bọc vào Span mang class hover gốc
+        if (part.startsWith('<ruby>')) {
+          const word = extractKanjiFromRuby(part);
+          return (
+            <span
+              key={`ruby-${index}`}
+              className={`
+                ${wordClassName}
+                [&_ruby]:mx-[1px]
+                [&_rt]:text-[0.65em]
+                [&_rt]:font-bold
+                [&_rt]:text-emerald-500
+                [&_rt]:pb-[4px]
+                [&_rt]:tracking-normal
+                [&_rt]:pointer-events-none 
+              `}
+              onClick={(e) => handleWordClick(e, word)}
+              dangerouslySetInnerHTML={{ __html: part }}
+            />
+          );
+        }
+
+        // Nếu là chữ Hiragana/Trợ từ bình thường -> Cho đi qua máy chém Segmenter gốc của ông
+        try {
+          const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+          const segments = Array.from(segmenter.segment(part));
+
+          return segments.map((seg, i) => {
+            if (seg.segment.trim() === '') {
+              return <span key={`text-${index}-${i}`}>{seg.segment}</span>;
+            }
+            return (
+              <span
+                key={`text-${index}-${i}`}
+                className={wordClassName}
+                onClick={(e) => handleWordClick(e, seg.segment)}
+              >
+                {seg.segment}
+              </span>
+            );
+          });
+        } catch {
+          const segments = part.split(/(\s+)/);
+          return segments.map((seg, i) => {
+            if (seg.trim() === '') {
+              return <span key={`text-${index}-${i}`}>{seg}</span>;
+            }
+            return (
+              <span
+                key={`text-${index}-${i}`}
+                className={wordClassName}
+                onClick={(e) => handleWordClick(e, seg)}
+              >
+                {seg}
+              </span>
+            );
+          });
+        }
+      });
+    }
+
+    // ==========================================
+    // LOGIC GỐC CỦA ÔNG (Khi chưa load xong Furigana)
+    // ==========================================
     const text = currentLine.japanese || '';
     if (!text) return null;
 
@@ -126,6 +210,7 @@ export default function SubtitleOverlay({
             break-words
           "
         >
+          {/* TRẢ LẠI GỌI HÀM GỐC */}
           {renderSegments()}
         </div>
 

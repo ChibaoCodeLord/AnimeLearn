@@ -17,8 +17,16 @@ interface ScriptPanelProps {
   script: ScriptLine[];
   currentIndex: number;
   onLineClick: (index: number) => void;
-  onWordSelect: (word: string, position: { x: number; y: number }) => void;
-  showVocabList?: boolean; // Tùy chọn ẩn/hiện danh sách từ vựng
+  currentFurigana: string;
+  onWordSelect: (word: string, position: {
+    x: number;
+    y: number;
+    anchorTop?: number;
+    anchorBottom?: number;
+    anchorLeft?: number;
+    anchorRight?: number;
+  }) => void;
+  showVocabList?: boolean;
   vocabList?: any[];
 }
 
@@ -26,24 +34,22 @@ export default function ScriptPanel({
   script,
   currentIndex,
   onLineClick,
+  currentFurigana,
   onWordSelect,
-  showVocabList = true, // Mặc định là hiện
+  showVocabList = true,
   vocabList = [],
 }: ScriptPanelProps) {
   const activeRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // STATE QUẢN LÝ MODAL TỪ VỰNG Ở GIỮA MÀN HÌNH
   const [centeredVocab, setCenteredVocab] = useState<any | null>(null);
 
-  // HIỆU ỨNG CUỘN ĐỈNH NHẤT QUÁN
   useEffect(() => {
     if (activeRef.current && containerRef.current) {
       const container = containerRef.current;
       const element = activeRef.current;
 
-      // Lấy chính xác vị trí đỉnh của thẻ, trừ đi 16px (bằng đúng padding-top của container)
-      const scrollToPosition = element.offsetTop - 16;
+      const scrollToPosition = element.offsetTop - 10;
 
       container.scrollTo({
         top: scrollToPosition,
@@ -54,12 +60,130 @@ export default function ScriptPanel({
 
   const handleWordClick = (e: React.MouseEvent<HTMLSpanElement>, word: string) => {
     e.stopPropagation();
-    const target = e.target as HTMLSpanElement;
+    const target = e.currentTarget;
     const rect = target.getBoundingClientRect();
-    onWordSelect(word, { x: rect.left, y: rect.bottom });
+
+    onWordSelect(word, {
+      x: rect.left + rect.width / 2,
+      y: rect.bottom,
+      anchorTop: rect.top,
+      anchorBottom: rect.bottom,
+      anchorLeft: rect.left,
+      anchorRight: rect.right,
+    });
   };
 
-  const renderJapaneseText = (text: string) => {
+  const extractKanjiFromRuby = (htmlString: string) => {
+    return htmlString
+      .replace(/<r[pt]>[\s\S]*?<\/r[pt]>/g, '')
+      .replace(/<[^>]+>/g, '')
+      .trim();
+  };
+
+  const wordClassName = `
+    inline-block
+    my-1.5
+    leading-loose
+    cursor-pointer
+    rounded-md
+    px-0.5
+    underline
+    decoration-teal-400
+    decoration-2
+    underline-offset-4
+    transition-colors
+    hover:bg-amber-100
+    hover:text-amber-700
+    hover:decoration-amber-400
+  `;
+
+  const rubyWordClassName = `
+    inline-block
+    my-1.5
+    leading-loose
+    cursor-pointer
+    rounded-md
+    px-0.5
+    underline
+    decoration-teal-400
+    decoration-2
+    underline-offset-4
+    transition-colors
+    hover:bg-amber-100
+    hover:text-amber-700
+    hover:decoration-amber-400
+
+    [&_ruby]:mx-[1px]
+    [&_rt]:text-[0.65em]
+    [&_rt]:font-bold
+    [&_rt]:text-teal-600
+    [&_rt]:pb-[2px]
+    [&_rt]:tracking-normal
+    [&_rt]:pointer-events-none
+    [&_rt]:select-none
+  `;
+
+  const renderJapaneseText = (text: string, isCurrentLineFurigana?: boolean) => {
+    if (isCurrentLineFurigana && currentFurigana) {
+      const parts = currentFurigana.split(/(<ruby>[\s\S]*?<\/ruby>)/);
+
+      return parts.map((part, index) => {
+        if (!part) return null;
+
+        if (part.startsWith('<ruby>')) {
+          const word = extractKanjiFromRuby(part);
+
+          return (
+            <span
+              key={`ruby-${index}`}
+              className={rubyWordClassName}
+              onClick={(e) => handleWordClick(e, word)}
+              dangerouslySetInnerHTML={{ __html: part }}
+            />
+          );
+        }
+
+        try {
+          const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
+          const segments = Array.from(segmenter.segment(part));
+
+          return segments.map((seg, i) => {
+            if (seg.segment.trim() === '') {
+              return <span key={`text-${index}-${i}`}>{seg.segment}</span>;
+            }
+
+            return (
+              <span
+                key={`text-${index}-${i}`}
+                className={wordClassName}
+                onClick={(e) => handleWordClick(e, seg.segment)}
+              >
+                {seg.segment}
+              </span>
+            );
+          });
+        } catch (e) {
+          const segments = part.split(/(\s+)/);
+
+          return segments.map((segment, i) => {
+            if (segment.trim() === '') {
+              return <span key={`text-${index}-${i}`}>{segment}</span>;
+            }
+
+            return (
+              <span
+                key={`text-${index}-${i}`}
+                className={wordClassName}
+                onClick={(e) => handleWordClick(e, segment)}
+              >
+                {segment}
+              </span>
+            );
+          });
+        }
+      });
+    }
+
     try {
       const segmenter = new Intl.Segmenter('ja', { granularity: 'word' });
       const segments = Array.from(segmenter.segment(text));
@@ -70,19 +194,7 @@ export default function ScriptPanel({
         return (
           <span
             key={i}
-            className="
-              cursor-pointer
-              rounded-md
-              px-0.5
-              underline
-              decoration-emerald-300
-              decoration-2
-              underline-offset-4
-              transition-colors
-              hover:bg-emerald-100
-              hover:text-emerald-700
-              hover:decoration-emerald-400
-            "
+            className={wordClassName}
             onClick={(e) => handleWordClick(e, seg.segment)}
           >
             {seg.segment}
@@ -98,19 +210,7 @@ export default function ScriptPanel({
         return (
           <span
             key={i}
-            className="
-              cursor-pointer
-              rounded-md
-              px-0.5
-              underline
-              decoration-emerald-200
-              decoration-2
-              underline-offset-4
-              transition-colors
-              hover:bg-emerald-100
-              hover:text-emerald-700
-              hover:decoration-emerald-400
-            "
+            className={wordClassName}
             onClick={(e) => handleWordClick(e, segment)}
           >
             {segment}
@@ -120,7 +220,6 @@ export default function ScriptPanel({
     }
   };
 
-  // Hàm phát âm Audio cho Modal trung tâm
   const playAudio = (word: string) => {
     if (!word) return;
     const utterance = new SpeechSynthesisUtterance(word);
@@ -129,7 +228,6 @@ export default function ScriptPanel({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Logic bóc tách Hán Việt cho Modal trung tâm
   let hanViet = '';
   let meaningLines: string[] = [];
 
@@ -149,9 +247,9 @@ export default function ScriptPanel({
 
   if (!script || script.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-3 bg-white text-center px-6">
-        <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-          <Sparkles className="w-8 h-8 text-emerald-400" />
+      <div className="h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-white via-emerald-50 to-sky-50 text-center px-6">
+        <div className="w-16 h-16 rounded-2xl bg-white border border-teal-100 shadow-sm flex items-center justify-center">
+          <Sparkles className="w-8 h-8 text-teal-400" />
         </div>
         <p className="text-sm font-medium text-slate-500">
           Chưa có kịch bản. Nhấn "Tạo Script AI" để bắt đầu.
@@ -169,10 +267,10 @@ export default function ScriptPanel({
           overflow-y-auto
           custom-scrollbar
           relative
-          bg-white
+          bg-gradient-to-b
         "
       >
-        <div className="space-y-2 p-3">
+        <div className="space-y-2.5 p-3 md:pb-200 xl:pb-200">
           {script.map((line, index) => {
             const isActive = index === currentIndex;
 
@@ -183,39 +281,40 @@ export default function ScriptPanel({
                 onClick={() => onLineClick(index)}
                 className={`
                   relative
+                  min-w-0
                   cursor-pointer
                   rounded-2xl
                   border
-                  p-2
+                  p-2.5
                   px-3
                   transition-all
                   duration-200
                   ${
                     isActive
-                      ? 'border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-white shadow-sm'
-                      : 'border-transparent bg-white hover:border-slate-200 hover:bg-slate-50'
+                      ? 'border-teal-400 bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50 shadow-md shadow-teal-100/70'
+                      : 'border-slate-400 bg-white/90 hover:border-slate-800 hover:bg-slate-100/80 hover:shadow-sm transition-colors duration-200 hover:shadow-sm'
                   }
                 `}
               >
                 {isActive && (
-                  <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-emerald-500" />
+                  <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-gradient-to-b from-emerald-500 to-teal-500" />
                 )}
 
-                <div className="flex items-center justify-between pl-1 mb-1">
+                <div className="flex items-center justify-between gap-2 pl-1 mb-1">
                   <div
                     className={`
-                      inline-flex items-center gap-1.5 rounded-full border-slate-600 px-2.5 py-1
+                      inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1
                       ${
                         isActive
-                          ? 'border-emerald-200 bg-white text-emerald-700'
+                          ? 'border-teal-200 bg-white/90 text-teal-700 shadow-xs'
                           : 'border-slate-200 bg-slate-50 text-slate-500'
                       }
                     `}
                   >
                     <Clock
                       className={`
-                        w-2 h-2
-                        ${isActive ? 'text-emerald-500' : 'text-slate-400'}
+                        w-3 h-3
+                        ${isActive ? 'text-teal-500' : 'text-slate-400'}
                       `}
                     />
                     <span className="text-[11px] font-mono font-semibold">
@@ -224,7 +323,7 @@ export default function ScriptPanel({
                   </div>
 
                   {isActive && (
-                    <span className="text-[11px] font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full">
+                    <span className="text-[11px] font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-1 rounded-full shadow-xs">
                       Đang phát
                     </span>
                   )}
@@ -245,7 +344,7 @@ export default function ScriptPanel({
                     }
                   `}
                 >
-                  {renderJapaneseText(line.japanese)}
+                  {renderJapaneseText(line.japanese, isActive)}
                 </p>
 
                 <p
@@ -266,27 +365,46 @@ export default function ScriptPanel({
                 </p>
 
                 {line.english && (
-                  <p className="pl-1 mt-1 text-xs leading-relaxed text-slate-400">
+                  <p className="pl-1 mt-1 text-xs leading-relaxed text-slate-400 wrap-anywhere">
                     {line.english}
                   </p>
                 )}
 
-                {/* Chỉ hiện danh sách từ vựng khi showVocabList = true */}
-                {showVocabList && line.vocabulary && line.vocabulary.length > 0 && (
+                {line.vocabulary && line.vocabulary.length > 0 && (
                   <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-3 rounded-2xl bg-white/70"
+                    className={`
+                      grid
+                      transition-all
+                      duration-300
+                      ease-out
+                      ${
+                        showVocabList
+                          ? 'grid-rows-[1fr] opacity-100 mt-3'
+                          : 'grid-rows-[0fr] opacity-0 mt-0'
+                      }
+                    `}
                   >
-                    <VocabularyAnalysis
-                      vocabulary={line.vocabulary}
-                      onWordClick={(vocabData: any) => {
-                        // ✨ LOGIC GHÉP DATA: Tìm Kanji trong kho tổng vocabList
-                        const enriched = vocabList.find((v: any) => v.word === vocabData.word);
-
-                        // Ghép thông tin Kanji vào từ vựng trước khi hiện Modal
-                        setCenteredVocab(enriched ? { ...vocabData, ...enriched } : vocabData);
-                      }}
-                    />
+                    <div className="overflow-hidden">
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="
+                          rounded-2xl
+                          border border-teal-100/70
+                          bg-gradient-to-br from-white via-emerald-50/40 to-amber-50/30
+                          transition-all
+                          duration-300
+                          ease-out
+                        "
+                      >
+                        <VocabularyAnalysis
+                          vocabulary={line.vocabulary}
+                          onWordClick={(vocabData: any) => {
+                            const enriched = vocabList.find((v: any) => v.word === vocabData.word);
+                            setCenteredVocab(enriched ? { ...vocabData, ...enriched } : vocabData);
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -295,9 +413,6 @@ export default function ScriptPanel({
         </div>
       </div>
 
-      {/* ======================================================== */}
-      {/* MODAL TỪ VỰNG TRUNG TÂM */}
-      {/* ======================================================== */}
       {centeredVocab && (
         <div
           className="
@@ -316,14 +431,14 @@ export default function ScriptPanel({
               w-full max-w-lg
               overflow-hidden
               rounded-3xl
-              border border-slate-200
+              border border-teal-100
               bg-white
               shadow-2xl
               animate-in zoom-in-95 duration-200
+              overscroll-contain
             "
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Nút tắt */}
             <button
               onClick={() => setCenteredVocab(null)}
               className="
@@ -344,19 +459,18 @@ export default function ScriptPanel({
               <X className="w-5 h-5" />
             </button>
 
-            {/* HEADER */}
             <div
               className="
                 relative
                 shrink-0
-                border-b border-emerald-100
-                bg-gradient-to-br from-emerald-50 via-teal-50 to-white
+                border-b border-teal-100
+                bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50
                 p-7
               "
             >
               <div className="pr-10">
                 <div className="flex items-center gap-3 mb-3">
-                  <p className="text-emerald-600 font-bold text-base tracking-widest">
+                  <p className="text-teal-700 font-bold text-base tracking-widest">
                     {centeredVocab.reading || '???'}
                   </p>
 
@@ -367,12 +481,12 @@ export default function ScriptPanel({
                       w-9 h-9
                       rounded-full
                       bg-white
-                      border border-emerald-100
-                      text-emerald-600
+                      border border-teal-100
+                      text-teal-600
                       shadow-sm
                       transition-colors
-                      hover:bg-emerald-100
-                      hover:text-emerald-700
+                      hover:bg-teal-100
+                      hover:text-teal-700
                       active:scale-95
                     "
                     aria-label="Phát âm từ vựng"
@@ -388,7 +502,7 @@ export default function ScriptPanel({
 
               <div className="flex flex-wrap gap-2 mt-5">
                 {hanViet && (
-                  <Badge className="bg-emerald-100 hover:bg-emerald-100 text-emerald-700 border-none font-bold text-sm tracking-widest px-3 py-1 shadow-xs">
+                  <Badge className="bg-amber-100 hover:bg-amber-100 text-amber-700 border-none font-bold text-sm tracking-widest px-3 py-1 shadow-xs">
                     {hanViet}
                   </Badge>
                 )}
@@ -404,9 +518,7 @@ export default function ScriptPanel({
               </div>
             </div>
 
-            {/* NỘI DUNG CUỘN */}
             <div className="max-h-[55vh] overflow-y-auto overscroll-contain custom-scrollbar bg-white">
-              {/* BODY: ĐỊNH NGHĨA */}
               <div className="p-7 pb-6">
                 {meaningLines.length > 0 ? (
                   <ul className="space-y-3.5">
@@ -420,15 +532,15 @@ export default function ScriptPanel({
                             className="
                               flex gap-3
                               rounded-2xl
-                              bg-slate-50
-                              border border-slate-100
+                              bg-gradient-to-r from-slate-50 to-teal-50/40
+                              border border-teal-100/70
                               px-4 py-3
                               text-slate-700
                               text-base
                               leading-relaxed
                             "
                           >
-                            <span className="font-black text-emerald-500 shrink-0 select-none">
+                            <span className="font-black text-teal-500 shrink-0 select-none">
                               {match[1]}
                             </span>
                             <span className="font-medium">{match[2]}</span>
@@ -442,8 +554,8 @@ export default function ScriptPanel({
                           className="
                             relative
                             rounded-2xl
-                            bg-slate-50
-                            border border-slate-100
+                            bg-gradient-to-r from-slate-50 to-emerald-50/40
+                            border border-teal-100/70
                             px-4 py-3 pl-7
                             text-slate-700
                             text-base
@@ -454,7 +566,7 @@ export default function ScriptPanel({
                             before:top-5
                             before:w-2
                             before:h-2
-                            before:bg-emerald-400
+                            before:bg-teal-400
                             before:rounded-full
                           "
                         >
@@ -465,23 +577,21 @@ export default function ScriptPanel({
                   </ul>
                 ) : (
                   <div className="flex flex-col items-center justify-center gap-2 text-slate-400 py-6 italic">
-                    <Sparkles className="w-8 h-8 text-emerald-300" />
+                    <Sparkles className="w-8 h-8 text-teal-300" />
                     <span className="text-base">Chưa có định nghĩa chi tiết cho từ này.</span>
                   </div>
                 )}
               </div>
 
-              {/* BẢNG PHÂN TÍCH KANJI CHO TỪ VỰNG */}
               {centeredVocab.kanji_info && centeredVocab.kanji_info.length > 0 && (
-                <div className="px-7 py-6 border-t border-dashed border-emerald-200 bg-slate-50/80">
-                  <p className="text-[12px] font-bold text-emerald-600 mb-4 uppercase tracking-widest flex items-center gap-1.5">
+                <div className="px-7 py-6 border-t border-dashed border-teal-200 bg-gradient-to-br from-slate-50 to-emerald-50/50">
+                  <p className="text-[12px] font-bold text-teal-700 mb-4 uppercase tracking-widest flex items-center gap-1.5">
                     <BookOpen className="w-4 h-4" />
                     Phân tích Hán Tự
                   </p>
 
                   <div className="space-y-3">
                     {centeredVocab.kanji_info.map((kanji: any, idx: number) => {
-                      // Rút gọn ý nghĩa Kanji nếu nó dài
                       const shortDetail = kanji.detail
                         ? kanji.detail.split(/[,;]/).slice(0, 3).join(', ').trim()
                         : '';
@@ -494,13 +604,12 @@ export default function ScriptPanel({
                           className="
                             flex items-start
                             rounded-2xl
-                            border border-emerald-100
+                            border border-teal-100
                             bg-white
                             p-4
                             shadow-sm
                           "
                         >
-                          {/* Chữ Kanji to */}
                           <div
                             className="
                               mr-5 mt-1
@@ -509,13 +618,12 @@ export default function ScriptPanel({
                               text-center
                               text-4xl
                               font-black
-                              text-emerald-600
+                              text-teal-600
                             "
                           >
                             {kanji.kanji}
                           </div>
 
-                          {/* Chi tiết Kanji */}
                           <div className="flex-1 min-w-0 text-sm">
                             <p className="font-bold text-slate-800 text-[15px] mb-1">
                               {kanji.mean}
@@ -533,7 +641,7 @@ export default function ScriptPanel({
                                   leading-relaxed
                                   italic
                                   border-l-2
-                                  border-emerald-200
+                                  border-amber-200
                                   pl-2.5
                                   line-clamp-2
                                 "
@@ -543,13 +651,13 @@ export default function ScriptPanel({
                               </p>
                             )}
 
-                            <div className="grid grid-cols-[40px_1fr] gap-x-2 gap-y-1.5 text-[12px] mt-2 pt-2 border-t border-emerald-100">
-                              <span className="text-emerald-500 font-bold uppercase">Kun</span>
+                            <div className="grid grid-cols-[40px_1fr] gap-x-2 gap-y-1.5 text-[12px] mt-2 pt-2 border-t border-teal-100">
+                              <span className="text-teal-600 font-bold uppercase">Kun</span>
                               <span className="text-slate-600 break-words font-medium">
                                 {kanji.kun || '-'}
                               </span>
 
-                              <span className="text-emerald-500 font-bold uppercase">On</span>
+                              <span className="text-teal-600 font-bold uppercase">On</span>
                               <span className="text-slate-600 break-words font-medium">
                                 {kanji.on || '-'}
                               </span>

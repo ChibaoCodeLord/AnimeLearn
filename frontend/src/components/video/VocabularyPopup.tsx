@@ -326,7 +326,7 @@ export default function VocabularyPopup({
           rounded-2xl
           border border-pink-100
           bg-white
-          shadow-xl
+          shadow-xl 
         "
         style={{
           left: adjustedPos.x,
@@ -343,7 +343,7 @@ export default function VocabularyPopup({
             text-pink-300
             hover:text-pink-600
             hover:bg-pink-100/60
-            transition-colors
+            transition-colors 
           "
           aria-label="Đóng popup từ vựng"
         >
