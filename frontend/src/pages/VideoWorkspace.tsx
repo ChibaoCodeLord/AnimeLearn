@@ -238,6 +238,7 @@ export default function VideoWorkspace() {
   const [activePopupQuestion, setActivePopupQuestion] = useState<QuizQuestion | null>(null);
   const [shownPopups, setShownPopups] = useState<Set<string>>(new Set());
 
+
   // ... các state cũ
   const [activeTab, setActiveTab] = useState("shadowing"); // Khai báo tab mặc định
 
@@ -399,7 +400,44 @@ export default function VideoWorkspace() {
     }
   }, [videoId]);
 
+
   
+  //furigana
+  const [currentFurigana, setCurrentFurigana] = useState<string>('');
+  const furiganaCache = useRef<Record<string, string>>({});
+  // Đặt useEffect này bên dưới mấy cái useEffect cũ
+  useEffect(() => {
+    const activeLineText = script[currentIndex]?.japanese;
+    
+    if (!activeLineText) {
+      setCurrentFurigana('');
+      return;
+    }
+
+    // Nếu đã dịch câu này rồi thì lôi trong Cache ra xài
+    if (furiganaCache.current[activeLineText]) {
+      setCurrentFurigana(furiganaCache.current[activeLineText]);
+      return;
+    }
+
+    // Chưa có thì gọi API dịch đúng 1 câu này
+    fetch('http://localhost:5000/api/video/furigana-line', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: activeLineText })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.html) {
+          furiganaCache.current[activeLineText] = data.html; // Lưu cache
+          setCurrentFurigana(data.html); // Cập nhật state
+        }
+      })
+      .catch(err => {
+        console.error("Lỗi lấy Furigana:", err);
+        setCurrentFurigana('');
+      });
+  }, [currentIndex, script]); // Chỉ chạy lại khi nhảy sang câu mới
 
   useEffect(() => {
     if (!isResizing) return;
@@ -737,7 +775,7 @@ export default function VideoWorkspace() {
             
             <div className="bg-white rounded-[0.5rem] border border-slate-300 shadow-sm overflow-hidden flex flex-col relative">
               <div className="flex-1 p-0 relative z-10">
-                <SubtitleOverlay currentLine={currentLine} onWordSelect={handleWordSelect} />
+                <SubtitleOverlay currentLine={currentLine} currentFurigana={currentFurigana} onWordSelect={handleWordSelect} />
               </div>
               {/* <div className="bg-slate-50/80 border-t border-slate-100 p-2 relative z-20 backdrop-blur-sm">
                 <PlayerControls
@@ -753,183 +791,183 @@ export default function VideoWorkspace() {
               </div> */}
             </div>
             <div className="bg-white rounded-[0.75rem] border border-slate-300 p-4 shadow-sm flex flex-col gap-3">
-  {/* Title */}
-  <div className="min-w-0">
-    {videoTitle ? (
-      <h2
-        className="
-          max-w-full
-          truncate
-          text-base md:text-lg
-          font-bold
-          text-slate-800
-          leading-tight
-        "
-        title={videoTitle}
-      >
-        {videoTitle}
-      </h2>
-    ) : (
-      <span className="text-slate-400 text-sm italic">
-        Video Workspace
-      </span>
-    )}
-  </div>
+              {/* Title */}
+              <div className="min-w-0">
+                {videoTitle ? (
+                  <h2
+                    className="
+                      max-w-full
+                      truncate
+                      text-base md:text-lg
+                      font-bold
+                      text-slate-800
+                      leading-tight
+                    "
+                    title={videoTitle}
+                  >
+                    {videoTitle}
+                  </h2>
+                ) : (
+                  <span className="text-slate-400 text-sm italic">
+                    Video Workspace
+                  </span>
+                )}
+              </div>
 
-  {/* Actions + Metadata */}
-  <div className="flex flex-wrap items-center gap-2">
-    {script.length === 0 ? (
-      <Button
-        onClick={generateScript}
-        disabled={generating || !ytId}
-        className={`
-          ${pillBase}
-          min-w-[132px]
-          bg-linear-to-r from-emerald-500 to-teal-600
-          text-white
-          hover:opacity-90
-          shadow-sm
-          border-0
-        `}
-      >
-        {generating ? (
-          <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
-        ) : (
-          <Sparkles className="w-4 h-4 shrink-0" />
-        )}
-        <span className="truncate">
-          {generating ? 'Đang phân tích...' : 'Tạo Script AI'}
-        </span>
-      </Button>
-    ) : existingQuiz ? (
-      <Button
-        type="button"
-        variant={enablePopupQuiz ? 'default' : 'outline'}
-        onClick={() => {
-          setEnablePopupQuiz(!enablePopupQuiz);
-          if (!enablePopupQuiz) toast.success('Đã BẬT tính năng Pop-up Quiz khi xem video!');
-          else toast.info('Đã TẮT tính năng Pop-up Quiz.');
-        }}
-        className={`
-          ${pillBase}
-          min-w-[132px]
-          transition-all duration-200
-          ${
-            enablePopupQuiz
-              ? 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600 shadow-sm'
-              : 'bg-white text-slate-600 border-slate-200 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-200'
-          }
-        `}
-      >
-        <BrainCircuit
-          className={`
-            w-4 h-4 shrink-0
-            ${enablePopupQuiz ? 'animate-pulse' : ''}
-          `}
-        />
-        <span className="truncate">
-          {enablePopupQuiz ? 'Pop-up Quiz bật' : 'Bật Quiz'}
-        </span>
-      </Button>
-    ) : null}
+              {/* Actions + Metadata */}
+              <div className="flex flex-wrap items-center gap-2">
+                {script.length === 0 ? (
+                  <Button
+                    onClick={generateScript}
+                    disabled={generating || !ytId}
+                    className={`
+                      ${pillBase}
+                      min-w-[132px]
+                      bg-linear-to-r from-emerald-500 to-teal-600
+                      text-white
+                      hover:opacity-90
+                      shadow-sm
+                      border-0
+                    `}
+                  >
+                    {generating ? (
+                      <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 shrink-0" />
+                    )}
+                    <span className="truncate">
+                      {generating ? 'Đang phân tích...' : 'Tạo Script AI'}
+                    </span>
+                  </Button>
+                ) : existingQuiz ? (
+                  <Button
+                    type="button"
+                    variant={enablePopupQuiz ? 'default' : 'outline'}
+                    onClick={() => {
+                      setEnablePopupQuiz(!enablePopupQuiz);
+                      if (!enablePopupQuiz) toast.success('Đã BẬT tính năng Pop-up Quiz khi xem video!');
+                      else toast.info('Đã TẮT tính năng Pop-up Quiz.');
+                    }}
+                    className={`
+                      ${pillBase}
+                      min-w-[132px]
+                      transition-all duration-200
+                      ${
+                        enablePopupQuiz
+                          ? 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600 shadow-sm'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-200'
+                      }
+                    `}
+                  >
+                    <BrainCircuit
+                      className={`
+                        w-4 h-4 shrink-0
+                        ${enablePopupQuiz ? 'animate-pulse' : ''}
+                      `}
+                    />
+                    <span className="truncate">
+                      {enablePopupQuiz ? 'Pop-up Quiz bật' : 'Bật Quiz'}
+                    </span>
+                  </Button>
+                ) : null}
 
-    <Button
-      type="button"
-      variant="outline"
-      onClick={() => {
-        navigator.clipboard.writeText(window.location.href);
-        toast.success('Đã copy link bài học!');
-      }}
-      className={`
-        ${pillBase}
-        min-w-[92px]
-        bg-white
-        text-slate-600
-        border-slate-200
-        hover:bg-slate-50
-        hover:text-teal-700
-        hover:border-teal-200
-      `}
-    >
-      <Share2 className="w-4 h-4 shrink-0" />
-      <span>Chia sẻ</span>
-    </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    toast.success('Đã copy link bài học!');
+                  }}
+                  className={`
+                    ${pillBase}
+                    min-w-[92px]
+                    bg-white
+                    text-slate-600
+                    border-slate-200
+                    hover:bg-slate-50
+                    hover:text-teal-700
+                    hover:border-teal-200
+                  `}
+                >
+                  <Share2 className="w-4 h-4 shrink-0" />
+                  <span>Chia sẻ</span>
+                </Button>
 
-    {videoId && (
-      <Badge
-        variant="outline"
-        className={`
-          ${pillBase}
-          min-w-[72px]
-          shadow-sm
-          ${JLPT_COLORS[jlptLevel] || JLPT_COLORS['Unknown']}
-        `}
-      >
-        {jlptLevel.startsWith('N') ? jlptLevel : `Level ${jlptLevel}`}
-      </Badge>
-    )}
+                {videoId && (
+                  <Badge
+                    variant="outline"
+                    className={`
+                      ${pillBase}
+                      min-w-[72px]
+                      shadow-sm
+                      ${JLPT_COLORS[jlptLevel] || JLPT_COLORS['Unknown']}
+                    `}
+                  >
+                    {jlptLevel.startsWith('N') ? jlptLevel : `Level ${jlptLevel}`}
+                  </Badge>
+                )}
 
-    <div
-      className={`
-        ${pillBase}
-        min-w-[120px]
-        border border-slate-200
-        bg-slate-50
-        text-slate-600
-      `}
-    >
-      <Eye className="w-4 h-4 shrink-0 text-slate-500" />
-      <span>{viewsCount.toLocaleString()} lượt xem</span>
-    </div>
+                <div
+                  className={`
+                    ${pillBase}
+                    min-w-[120px]
+                    border border-slate-200
+                    bg-slate-50
+                    text-slate-600
+                  `}
+                >
+                  <Eye className="w-4 h-4 shrink-0 text-slate-500" />
+                  <span>{viewsCount.toLocaleString()} lượt xem</span>
+                </div>
 
-    <Button
-      type="button"
-      variant="outline"
-      disabled={!videoId || likeMutation.isPending || unlikeMutation.isPending}
-      onClick={() => (likedByMe ? unlikeMutation.mutate() : likeMutation.mutate())}
-      className={`
-        ${pillBase}
-        min-w-[96px]
-        border-rose-200
-        bg-white
-        text-rose-600
-        hover:bg-rose-50
-        hover:text-rose-700
-        ${likedByMe ? 'opacity-90' : ''}
-      `}
-    >
-      {likeMutation.isPending || unlikeMutation.isPending ? (
-        <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
-      ) : (
-        <Heart
-          className={`
-            w-4 h-4 shrink-0
-            ${likedByMe ? 'fill-rose-600 text-rose-600' : ''}
-          `}
-        />
-      )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!videoId || likeMutation.isPending || unlikeMutation.isPending}
+                  onClick={() => (likedByMe ? unlikeMutation.mutate() : likeMutation.mutate())}
+                  className={`
+                    ${pillBase}
+                    min-w-[96px]
+                    border-rose-200
+                    bg-white
+                    text-rose-600
+                    hover:bg-rose-50
+                    hover:text-rose-700
+                    ${likedByMe ? 'opacity-90' : ''}
+                  `}
+                >
+                  {likeMutation.isPending || unlikeMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+                  ) : (
+                    <Heart
+                      className={`
+                        w-4 h-4 shrink-0
+                        ${likedByMe ? 'fill-rose-600 text-rose-600' : ''}
+                      `}
+                    />
+                  )}
 
-      <span>
-        {likedByMe
-          ? `Bỏ thích (${likesCount.toLocaleString()})`
-          : likesCount.toLocaleString()}
-      </span>
-    </Button>
+                  <span>
+                    {likedByMe
+                      ? `Bỏ thích (${likesCount.toLocaleString()})`
+                      : likesCount.toLocaleString()}
+                  </span>
+                </Button>
 
-    {videoId && (
-      <Badge
-        variant="outline"
-        className={`
-          ${pillBase}
-          min-w-[96px]
-          ${STATUS_OPTIONS[videoStatus].className}
-        `}
-      >
-        {STATUS_OPTIONS[videoStatus].label}
-      </Badge>
-    )}
-  </div>
-</div>
+                {videoId && (
+                  <Badge
+                    variant="outline"
+                    className={`
+                      ${pillBase}
+                      min-w-[96px]
+                      ${STATUS_OPTIONS[videoStatus].className}
+                    `}
+                  >
+                    {STATUS_OPTIONS[videoStatus].label}
+                  </Badge>
+                )}
+              </div>
+            </div>
           </div>
 
           <div
@@ -951,44 +989,109 @@ export default function VideoWorkspace() {
               `}
             />
           </div>
+
+
           <div
-              className="w-full xl:w-[var(--script-panel-width)] flex flex-col bg-white rounded-[1rem] border border-slate-300 shadow-sm overscroll-contain overflow-hidden shrink-0 h-[500px] xl:h-[850px]"
-              style={{ '--script-panel-width': `${scriptPanelWidth}px` } as CSSProperties}
+            className="
+              w-full xl:w-[var(--script-panel-width)]
+              flex flex-col
+              rounded-[1rem]
+              border border-indigo-500/40
+              bg-[#0f172a]
+              shadow-lg shadow-indigo-950/20
+              overscroll-contain overflow-hidden shrink-0
+              h-[500px] xl:h-[850px]
+            "
+            style={{ '--script-panel-width': `${scriptPanelWidth}px` } as CSSProperties}
+          >
+            <div
+              className="
+                px-5 py-2.5
+                border-b border-indigo-500/30
+                bg-[#111827]
+                flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4
+              "
             >
-            <div className="px-5 py-2 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-800 text-lg tracking-tight">Phụ đề</h3>
+                <div className="h-8 w-8 rounded-xl bg-indigo-500/15 text-indigo-300 flex items-center justify-center border border-indigo-400/30">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+
+                <div className="py-1">
+                  <h3 className="font-bold text-slate-100 text-lg tracking-tight">
+                    Phụ đề
+                  </h3>
+                </div>
               </div>
-              
+
               <div className="flex items-center gap-3">
                 {script.length > 0 && (
-                  <Button 
-                    variant="outline" size="sm" className="h-8 rounded-full border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors"
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="
+                      h-8 rounded-full
+                      border-indigo-400/30
+                      bg-indigo-500/10
+                      text-indigo-200
+                      hover:bg-indigo-500/20
+                      hover:text-white
+                      hover:border-indigo-300/50
+                      transition-colors
+                    "
                     onClick={() => setShowVocabList(!showVocabList)}
                   >
-                    {showVocabList ? <><EyeOff className="w-3.5 h-3.5 mr-1.5" /> Ẩn từ vựng</> : <><Eye className="w-3.5 h-3.5 mr-1.5" /> Hiện từ vựng</>}
+                    {showVocabList ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5 mr-1.5" />
+                        Ẩn từ vựng
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 mr-1.5" />
+                        Hiện từ vựng
+                      </>
+                    )}
                   </Button>
                 )}
-                {script.length > 0 && <Badge variant="outline" className="bg-white text-slate-500 border-slate-300 shadow-xs font-semibold">{script.length} câu</Badge>}
+
+                {script.length > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="
+                      bg-amber-400/15
+                      text-amber-200
+                      border-amber-300/30
+                      shadow-xs
+                      font-semibold
+                    "
+                  >
+                    {script.length} câu
+                  </Badge>
+                )}
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white/95">
               {script.length > 0 ? (
-                <ScriptPanel 
-                  script={script} 
-                  currentIndex={currentIndex} 
-                  onLineClick={(index) => jumpToLine(index)} 
-                  onWordSelect={handleWordSelect} 
-                  showVocabList={showVocabList} 
+                <ScriptPanel
+                  script={script}
+                  currentIndex={currentIndex}
+                  currentFurigana={currentFurigana}
+                  onLineClick={(index) => jumpToLine(index)}
+                  onWordSelect={handleWordSelect}
+                  showVocabList={showVocabList}
                   vocabList={vocabList}
                 />
               ) : (
-                <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mb-4">
-                    <Sparkles className="w-8 h-8 text-emerald-300" />
+                <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-white/80">
+                  <div className="w-16 h-16 rounded-2xl bg-indigo-800 border border-indigo-400/30 flex items-center justify-center mb-4">
+                    <Sparkles className="w-8 h-8 text-green-200" />
                   </div>
-                  <p className="text-slate-500 font-medium">Bấm <b>"Tạo Script AI"</b> để hệ thống tự động bóc băng video này thành bài học chi tiết.</p>
+
+                  <p className="text-slate-300 font-medium max-w-xs">
+                    Bấm <b className="border-indigo-400/30">"Tạo Script AI"</b> để hệ thống tự động bóc băng video này thành bài học chi tiết.
+                  </p>
                 </div>
               )}
             </div>
