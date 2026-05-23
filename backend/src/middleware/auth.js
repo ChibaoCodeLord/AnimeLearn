@@ -30,7 +30,7 @@ export const authMiddleware = async (req, res, next) => {
     }
 
     const user = await User.findById(userId)
-      .select('isBanned bannedAt unbannedAt banReason');
+      .select('isBanned bannedAt unbannedAt banReason role');
 
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
@@ -57,7 +57,11 @@ export const authMiddleware = async (req, res, next) => {
       }
     }
 
-    req.user = decoded;
+    req.user = {
+      ...decoded,
+      id: userId,
+      role: user.role || decoded.role || 'user',
+    };
     next();
   } catch (error) {
     console.error('Auth error:', error);

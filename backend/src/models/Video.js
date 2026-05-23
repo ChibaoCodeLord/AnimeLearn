@@ -74,4 +74,9 @@ const VideoSchema = new mongoose.Schema({
   },
 });
 
+// thêm index để 
+VideoSchema.index({ created_date: -1 });
+VideoSchema.index({ status: 1, created_date: -1 });
+VideoSchema.index({ jlpt_level: 1, created_date: -1 });
+
 export default mongoose.model('Video', VideoSchema);

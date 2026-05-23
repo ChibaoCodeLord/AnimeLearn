@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Upload, ArrowRight, Youtube, PlayCircle, BookOpen, TrendingUp } from 'lucide-react';
+import { Upload, ArrowRight, Youtube, PlayCircle, BookOpen, TrendingUp, Shield } from 'lucide-react';
 import animeLogo from '@/assets/demon_slayer.gif';
 
 interface CompactBannerProps {
@@ -11,6 +12,26 @@ interface CompactBannerProps {
   userProgress?: string;
 }
 
+interface CurrentUser {
+  role?: 'user' | 'admin';
+}
+
+const fetchCurrentUser = async (): Promise<CurrentUser> => {
+  const response = await fetch('http://localhost:5000/api/auth/me', {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch current user');
+  }
+
+  return response.json();
+};
+
 export default function CompactBanner({ 
   totalVideos = 0, 
   totalVocab = '45.2K', 
@@ -18,10 +39,17 @@ export default function CompactBanner({
 }: CompactBannerProps) {
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const navigate = useNavigate();
+  const { data: currentUser } = useQuery({
+    queryKey: ['current-user'],
+    queryFn: fetchCurrentUser,
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+  const isAdmin = currentUser?.role === 'admin';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (youtubeUrl.trim()) {
+    if (!isAdmin && youtubeUrl.trim()) {
       navigate(`/VideoWorkspace?url=${encodeURIComponent(youtubeUrl.trim())}`);
     }
   };
@@ -125,6 +153,20 @@ export default function CompactBanner({
         {/* Right: Create Lesson Form */}
         <div className="relative z-10 min-w-0 w-full transition-all duration-300">
           <div className="h-full w-full bg-white/95 backdrop-blur-md p-4 md:p-5 rounded-3xl shadow-xl border border-white/40 flex flex-col justify-center">
+            {isAdmin ? (
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-slate-800 font-bold">Chế độ quản trị</h3>
+                  <p className="text-slate-600 text-sm mt-1">
+                    Admin không được đăng video. Hãy mở video từ Admin Panel để kiểm duyệt.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="mb-4">
               <h3 className="text-slate-800 font-bold">Tạo bài học mới</h3>
               <p className="text-slate-500 text-xs truncate">
@@ -176,6 +218,8 @@ export default function CompactBanner({
                 </Button>
               </div>
             </form>
+              </>
+            )}
           </div>
         </div>
       </div>
