@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import YouTubeOrigin from 'react-youtube';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -19,6 +19,7 @@ import SubtitleOverlay from '../components/video/SubtitleOverlay'; // phụ đ�
 
 import VocabularyPopup from '../components/video/VocabularyPopup'; //popup từ vựng khi click vào từ trong subtitle
 import VideoRagChatWidget from '../components/video/VideoRagChatWidget'; // chat rag
+import { usePlayerStore } from '@/stores/usePlayerStore';
 
 
 //Tabs
@@ -204,6 +205,10 @@ export default function VideoWorkspace() {
   const params = new URLSearchParams(window.location.search);
   const videoId = params.get('id');
   const youtubeUrl = params.get('url');
+  const resumeTimeParam = Number(params.get('t') || 0);
+  const routeResumeTime = Number.isFinite(resumeTimeParam) && resumeTimeParam > 0
+    ? resumeTimeParam
+    : 0;
 
   const [script, setScript] = useState<ScriptLine[]>([]);
   const [vocabList, setVocabList] = useState<any[]>([]); 
@@ -213,6 +218,7 @@ export default function VideoWorkspace() {
   const [generating, setGenerating] = useState(false);
   
   const [showVocabList, setShowVocabList] = useState(true);
+  const [showFurigana, setShowFurigana] = useState(true);
   
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [selectedVocabData, setSelectedVocabData] = useState<any | null>(null);
@@ -241,6 +247,14 @@ export default function VideoWorkspace() {
   const playerRef = useRef<any>(null);
   const hasCountedViewRef = useRef(false);
   const queryClient = useQueryClient();
+  const {
+    isPlaying: globalIsPlaying,
+    currentTime: globalCurrentTime,
+    setCurrentVideo,
+    setIsPlaying: setGlobalIsPlaying,
+    setPlaybackPosition,
+    setProgress: setGlobalProgress,
+  } = usePlayerStore();
 
   const { data: currentUser } = useQuery<CurrentUser>({
     queryKey: ['current-user'],
@@ -401,9 +415,55 @@ export default function VideoWorkspace() {
   //furigana
   const [currentFurigana, setCurrentFurigana] = useState<string>('');
   const furiganaCache = useRef<Record<string, string>>({});
+  const furiganaPending = useRef<Record<string, Promise<string>>>({});
+  const activeFuriganaText = useRef('');
+
+  const fetchFurigana = useCallback((rawText: string) => {
+    const text = rawText.trim();
+
+    if (!text) {
+      return Promise.resolve('');
+    }
+
+    if (furiganaCache.current[text]) {
+      return Promise.resolve(furiganaCache.current[text]);
+    }
+
+    if (!furiganaPending.current[text]) {
+      furiganaPending.current[text] = fetch('http://localhost:5000/api/video/furigana-line', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      })
+        .then(async res => {
+          if (!res.ok) {
+            throw new Error('Khong the lay furigana');
+          }
+
+          const data = await res.json();
+          const html = typeof data.html === 'string' ? data.html : '';
+
+          if (html) {
+            furiganaCache.current[text] = html;
+          }
+
+          return html;
+        })
+        .catch(err => {
+          console.error("Lá»—i láº¥y Furigana:", err);
+          return '';
+        })
+        .finally(() => {
+          delete furiganaPending.current[text];
+        });
+    }
+
+    return furiganaPending.current[text];
+  }, []);
   // Đặt useEffect này bên dưới mấy cái useEffect cũ
   useEffect(() => {
-    const activeLineText = script[currentIndex]?.japanese;
+    const activeLineText = script[currentIndex]?.japanese?.trim() || '';
+    activeFuriganaText.current = activeLineText;
     
     if (!activeLineText) {
       setCurrentFurigana('');
@@ -414,9 +474,18 @@ export default function VideoWorkspace() {
     if (furiganaCache.current[activeLineText]) {
       setCurrentFurigana(furiganaCache.current[activeLineText]);
       return;
+    } else {
+      setCurrentFurigana('');
     }
 
     // Chưa có thì gọi API dịch đúng 1 câu này
+    void fetchFurigana(activeLineText).then(html => {
+      if (activeLineText === activeFuriganaText.current) {
+        setCurrentFurigana(html);
+      }
+    });
+    return;
+
     fetch('http://localhost:5000/api/video/furigana-line', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -424,6 +493,8 @@ export default function VideoWorkspace() {
     })
       .then(res => res.json())
       .then(data => {
+        if (activeLineText !== activeFuriganaText.current) return;
+
         if (data.html) {
           furiganaCache.current[activeLineText] = data.html; // Lưu cache
           setCurrentFurigana(data.html); // Cập nhật state
@@ -434,6 +505,16 @@ export default function VideoWorkspace() {
         setCurrentFurigana('');
       });
   }, [currentIndex, script]); // Chỉ chạy lại khi nhảy sang câu mới
+
+  useEffect(() => {
+    const upcomingTexts = [currentIndex + 1, currentIndex + 2]
+      .map(index => script[index]?.japanese?.trim() || '')
+      .filter(Boolean);
+
+    upcomingTexts.forEach(text => {
+      void fetchFurigana(text);
+    });
+  }, [currentIndex, fetchFurigana, script]);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -495,11 +576,61 @@ export default function VideoWorkspace() {
   const ytId = extractYouTubeId(currentYoutubeUrl);
 
   useEffect(() => {
+    if (!currentYoutubeUrl || !ytId) return;
+
+    const playerVideoId = videoId || ytId;
+    const workspacePath = videoId
+      ? `/VideoWorkspace?id=${videoId}`
+      : `/VideoWorkspace?url=${encodeURIComponent(currentYoutubeUrl)}`;
+
+    setCurrentVideo({
+      id: playerVideoId,
+      title: videoTitle || 'Anime đang phát',
+      youtubeUrl: currentYoutubeUrl,
+      thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+      workspacePath,
+    });
+  }, [currentYoutubeUrl, setCurrentVideo, videoId, videoTitle, ytId]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !ytId || globalIsPlaying === isPlaying) return;
+
+    if (globalIsPlaying) {
+      player.playVideo?.();
+    } else {
+      player.pauseVideo?.();
+    }
+  }, [globalIsPlaying, isPlaying, ytId]);
+
+  useEffect(() => {
+    if (activeTab !== 'shadowing' || !playerRef.current) return;
+
+    window.requestAnimationFrame(async () => {
+      try {
+        const currentTime = await playerRef.current.getCurrentTime?.();
+        if (typeof currentTime === 'number') {
+          playerRef.current.seekTo?.(currentTime, true);
+          setPlaybackPosition(currentTime);
+        }
+
+        if (isPlaying) {
+          playerRef.current.playVideo?.();
+        }
+      } catch {
+        // YouTube iframe sometimes needs a tick to redraw after being offscreen.
+      }
+    });
+  }, [activeTab, isPlaying, setPlaybackPosition]);
+
+  useEffect(() => {
     let interval: number;
-    if (isPlaying && playerRef.current && script.length > 0) {
+    if (isPlaying && playerRef.current) {
       interval = window.setInterval(async () => {
         try {
           const currentTime = await playerRef.current.getCurrentTime();
+          const duration = await playerRef.current.getDuration();
+          setPlaybackPosition(currentTime, duration);
           
           let foundIndex = -1;
           for (let i = 0; i < script.length; i++) {
@@ -523,7 +654,6 @@ export default function VideoWorkspace() {
           }
 
           if (!hasCountedViewRef.current && videoId) {
-            const duration = await playerRef.current.getDuration();
             if (duration > 0 && currentTime / duration >= VIDEO_VIEW_THRESHOLD) {
               hasCountedViewRef.current = true;
               sessionStorage.setItem(`video-view-counted:${videoId}`, '1');
@@ -536,7 +666,7 @@ export default function VideoWorkspace() {
       }, 300); 
     }
     return () => clearInterval(interval);
-  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion, videoId]);
+  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion, videoId, setPlaybackPosition]);
 
   if (videoId && isCheckingAccess) {
     return (
@@ -566,6 +696,8 @@ export default function VideoWorkspace() {
       const timeSec = parseTimestampToSeconds(script[index].timestamp);
       playerRef.current.seekTo(timeSec, true);
       playerRef.current.playVideo();
+      setPlaybackPosition(timeSec);
+      setGlobalIsPlaying(true);
     }
   };
 
@@ -617,6 +749,7 @@ export default function VideoWorkspace() {
   };
 
   const currentLine = script[currentIndex] || null;
+  const visibleFurigana = showFurigana ? currentFurigana : '';
 
   const handleWordSelect = (word: string, pos: PopupAnchorPosition, specificVocabData?: any) => {
     if (specificVocabData) {
@@ -688,7 +821,7 @@ export default function VideoWorkspace() {
           className={
             activeTab === "shadowing"
               ? "flex-1 m-0 p-0 outline-hidden min-h-0"
-              : "!block fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none w-0 h-0 overflow-hidden"
+              : "!block fixed -top-[9999px] -left-[9999px] w-[720px] h-[405px] opacity-0 pointer-events-none overflow-hidden"
           }
         >
           <div
@@ -699,7 +832,6 @@ export default function VideoWorkspace() {
             <div
               className={`
                 bg-white rounded-[1.5rem] border border-slate-200 shadow-sm shrink-0
-                ${activeTab === 'karaoke' ? 'hidden' : 'block'}
               `}
             >
               {/*
@@ -749,10 +881,30 @@ export default function VideoWorkspace() {
                       }}
                       onReady={(event: any) => {
                         playerRef.current = event.target;
+                        const resumeTime = routeResumeTime || globalCurrentTime;
+
+                        if (resumeTime > 0) {
+                          event.target.seekTo?.(resumeTime, true);
+                          setPlaybackPosition(resumeTime);
+                        }
+
+                        if (globalIsPlaying) {
+                          event.target.playVideo?.();
+                        }
                       }}
-                      onPlay={() => setIsPlaying(true)}
-                      onPause={() => setIsPlaying(false)}
-                      onEnd={() => setIsPlaying(false)}
+                      onPlay={() => {
+                        setIsPlaying(true);
+                        setGlobalIsPlaying(true);
+                      }}
+                      onPause={() => {
+                        setIsPlaying(false);
+                        setGlobalIsPlaying(false);
+                      }}
+                      onEnd={() => {
+                        setIsPlaying(false);
+                        setGlobalIsPlaying(false);
+                        setGlobalProgress(100);
+                      }}
                     />
                   ) : (
                     <div
@@ -775,7 +927,7 @@ export default function VideoWorkspace() {
             
             <div className="bg-white rounded-[0.5rem] border border-slate-300 shadow-sm overflow-hidden flex flex-col relative">
               <div className="flex-1 p-0 relative z-10">
-                <SubtitleOverlay currentLine={currentLine} currentFurigana={currentFurigana} onWordSelect={handleWordSelect} />
+                <SubtitleOverlay currentLine={currentLine} currentFurigana={visibleFurigana} onWordSelect={handleWordSelect} />
               </div>
               {/* <div className="bg-slate-50/80 border-t border-slate-100 p-2 relative z-20 backdrop-blur-sm">
                 <PlayerControls
@@ -1071,6 +1223,36 @@ export default function VideoWorkspace() {
                 )}
 
                 {script.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="
+                      h-8 rounded-full
+                      border-cyan-400/30
+                      bg-cyan-500/10
+                      text-cyan-200
+                      hover:bg-cyan-500/20
+                      hover:text-white
+                      hover:border-cyan-300/50
+                      transition-colors
+                    "
+                    onClick={() => setShowFurigana(!showFurigana)}
+                  >
+                    {showFurigana ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5 mr-1.5" />
+                        Ẩn furigana
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 mr-1.5" />
+                        Hiện furigana
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {script.length > 0 && (
                   <Badge
                     variant="outline"
                     className="
@@ -1092,20 +1274,24 @@ export default function VideoWorkspace() {
                 <ScriptPanel
                   script={script}
                   currentIndex={currentIndex}
-                  currentFurigana={currentFurigana}
+                  currentFurigana={visibleFurigana}
                   onLineClick={(index) => jumpToLine(index)}
                   onWordSelect={handleWordSelect}
                   showVocabList={showVocabList}
                   vocabList={vocabList}
                 />
               ) : (
-                <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-white/80">
-                  <div className="w-16 h-16 rounded-2xl bg-indigo-800 border border-indigo-400/30 flex items-center justify-center mb-4">
-                    <Sparkles className="w-8 h-8 text-green-200" />
+                <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-indigo-50 via-sky-50 to-cyan-50">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 border border-cyan-200 flex items-center justify-center mb-4 shadow-sm shadow-cyan-300/40">
+                    <Sparkles className="w-8 h-8 text-white" />
                   </div>
 
-                  <p className="text-slate-300 font-medium max-w-xs">
-                    Bấm <b className="border-indigo-400/30">"Tạo Script AI"</b> để hệ thống tự động bóc băng video này thành bài học chi tiết.
+                  <p className="text-slate-600 font-medium max-w-xs leading-relaxed">
+                    Bấm{' '}
+                    <b className="text-indigo-700 bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                      "Tạo Script AI"
+                    </b>{' '}
+                    để hệ thống tự động bóc băng video này thành bài học chi tiết.
                   </p>
                 </div>
               )}

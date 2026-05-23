@@ -811,6 +811,7 @@ router.get('/public-videos', async (req, res) => {
         // Chỉ select những trường cần thiết cho Card ở trang Home để tiết kiệm băng thông
         .select('_id title thumbnail_url jlpt_level views_count likes_count created_date duration video_theme')
         .sort({ created_date: -1 }) // Mới nhất xếp trước
+        .allowDiskUse(true)
         .skip(skip)
         .limit(limitNum)
         .lean(), // Trả về plain JS object cho nhẹ
