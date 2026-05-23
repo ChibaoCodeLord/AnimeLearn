@@ -1,8 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { MapPin, Flame, Star, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, Save, MoreVertical, Globe } from 'lucide-react';
+import { MapPin, Flame, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, MoreVertical, Globe, Shield, Mail, Phone } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 
@@ -16,6 +15,12 @@ interface UserProfile {
   phone: string;
   location: string;
   role: string;
+}
+
+interface PasswordForm {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
 }
 
 const fetchUserProfile = async (): Promise<UserProfile> => {
@@ -57,6 +62,24 @@ const updateUserProfile = async (data: Partial<UserProfile> | FormData): Promise
   return response.json();
 };
 
+const changePassword = async (data: { currentPassword: string; newPassword: string }) => {
+  const response = await fetch('http://localhost:5000/api/auth/change-password', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || result.message || 'Failed to change password');
+  }
+
+  return result;
+};
+
 const fetchLearningProgress = async (period: string = 'week') => {
   const response = await fetch(`http://localhost:5000/api/auth/learning-progress?period=${period}`, {
     method: 'GET',
@@ -84,22 +107,6 @@ const fetchUserVideos = async (page: number = 1) => {
 
   if (!response.ok) {
     throw new Error('Failed to fetch videos');
-  }
-
-  return response.json();
-};
-
-const fetchAchievements = async () => {
-  const response = await fetch('http://localhost:5000/api/auth/achievements', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch achievements');
   }
 
   return response.json();
@@ -174,29 +181,6 @@ const mockVideos = [
   },
 ];
 
-const renderAchievementIcon = (iconType: string, locked: boolean) => {
-  const iconProps = {
-    className: `w-8 h-8 ${locked ? 'text-gray-400' : 'text-yellow-500'}`,
-  };
-
-  switch (iconType) {
-    case 'sun':
-      return <Award {...iconProps} />;
-    case 'bookOpen':
-      return <BookOpen {...iconProps} />;
-    case 'trophy':
-      return <Star {...iconProps} />;
-    case 'award':
-      return <Award {...iconProps} />;
-    case 'zap':
-      return <Star {...iconProps} />;
-    case 'flame':
-      return <Flame {...iconProps} />;
-    default:
-      return <Award {...iconProps} />;
-  }
-};
-
 export default function Profile() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -211,40 +195,43 @@ export default function Profile() {
   const [editVisibility, setEditVisibility] = useState<'public' | 'private'>('public');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [progressTab, setProgressTab] = useState<'week' | 'month'>('week');
+  const [passwordForm, setPasswordForm] = useState<PasswordForm>({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
 
   const { data: user, isLoading, error } = useQuery<UserProfile>({
     queryKey: ['profile'],
     queryFn: fetchUserProfile,
   });
 
+  const isAdmin = user?.role === 'admin';
+  const isLearnerProfile = Boolean(user && !isAdmin);
+
   const { data: learningProgress } = useQuery({
     queryKey: ['learningProgress', progressTab],
     queryFn: () => fetchLearningProgress(progressTab),
-    enabled: !!user,
+    enabled: isLearnerProfile,
   });
 
   const { data: videosResponse } = useQuery({
     queryKey: ['videos', currentPage],
     queryFn: () => fetchUserVideos(currentPage),
-    enabled: !!user,
-  });
-
-  const { data: achievementsData } = useQuery({
-    queryKey: ['achievements'],
-    queryFn: fetchAchievements,
-    enabled: !!user,
+    enabled: isLearnerProfile,
   });
 
   const { data: profileStats } = useQuery({
     queryKey: ['profileStats'],
     queryFn: fetchProfileStats,
-    enabled: !!user,
+    enabled: isLearnerProfile,
   });
 
   const updateMutation = useMutation({
     mutationFn: updateUserProfile,
     onSuccess: (data) => {
       queryClient.setQueryData(['profile'], data);
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
       setIsEditing(false);
       setAvatarPreview(null);
       setAvatarFile(null);
@@ -282,12 +269,54 @@ export default function Profile() {
     },
   });
 
+  const changePasswordMutation = useMutation({
+    mutationFn: changePassword,
+    onSuccess: () => {
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      toast.success('Đổi mật khẩu thành công');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Đổi mật khẩu thất bại');
+    },
+  });
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
+  };
+
+  const handlePasswordInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setPasswordForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handlePasswordSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error('Mật khẩu mới không khớp');
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      toast.error('Mật khẩu mới phải có ít nhất 6 ký tự');
+      return;
+    }
+
+    changePasswordMutation.mutate({
+      currentPassword: passwordForm.currentPassword,
+      newPassword: passwordForm.newPassword,
+    });
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -305,18 +334,24 @@ export default function Profile() {
   const handleSave = () => {
     if (avatarFile) {
       const uploadData = new FormData();
-      uploadData.append('avatar', avatarFile);
 
-      // Append other form data fields
+      // Append other form data fields FIRST
       if (formData.fullName) uploadData.append('fullName', formData.fullName);
       if (formData.phone) uploadData.append('phone', formData.phone);
       if (formData.location) uploadData.append('location', formData.location);
-      if (formData.jlptLevel) uploadData.append('jlptLevel', formData.jlptLevel);
+      if (!isAdmin && formData.jlptLevel) uploadData.append('jlptLevel', formData.jlptLevel);
       if (formData.bio) uploadData.append('bio', formData.bio);
+      
+      // Append avatar LAST for better compatibility with some multer versions
+      uploadData.append('avatar', avatarFile);
 
       updateMutation.mutate(uploadData as any);
     } else {
-      updateMutation.mutate(formData);
+      const profilePayload = { ...formData };
+      if (isAdmin) {
+        delete profilePayload.jlptLevel;
+      }
+      updateMutation.mutate(profilePayload);
     }
   };
 
@@ -335,11 +370,6 @@ export default function Profile() {
       setIsEditing(true);
     }
   };
-
-  const maxBarHeight = 100;
-  const maxHours = Math.max(
-    ...(learningProgress?.weeklyData?.map((d: any) => d.hours) || [1])
-  );
 
   if (isLoading) {
     return (
@@ -362,7 +392,7 @@ export default function Profile() {
       <div className="max-w-7xl mx-auto">
         {/* Header Profile */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             {/* Left Side - Avatar & Info */}
             <div className="flex gap-6 items-center flex-1">
               <div className="relative flex-shrink-0">
@@ -386,19 +416,32 @@ export default function Profile() {
                   {user?.fullName}
                 </h1>
                 <div className="flex gap-3 flex-wrap items-center">
-                  <span
-                    className="px-3 py-1.5 text-white rounded-full text-sm font-bold"
-                    style={{ backgroundColor: '#005537' }}
-                  >
-                    LEVEL 42
-                  </span>
+                  {isAdmin ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-white rounded-full text-sm font-bold bg-slate-900">
+                      <Shield className="w-4 h-4" />
+                      Quản trị viên
+                    </span>
+                  ) : (
+                    <span
+                      className="px-3 py-1.5 text-white rounded-full text-sm font-bold"
+                      style={{ backgroundColor: '#005537' }}
+                    >
+                      LEVEL 42
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1 bg-gray-200 px-3 py-1.5 rounded text-sm font-medium text-gray-700">
+                    <Mail className="w-4 h-4" />
+                    {user?.email}
+                  </div>
                   <div className="flex items-center gap-1 bg-gray-200 px-3 py-1.5 rounded text-sm font-medium text-gray-700">
                     <MapPin className="w-4 h-4" />
                     {user?.location || 'Tokyo, JP'}
                   </div>
-                  <div className="bg-gray-200 px-3 py-1.5 rounded text-sm font-medium text-gray-700">
-                    ✓ Joined March 2023
-                  </div>
+                  {!isAdmin && (
+                    <div className="bg-gray-200 px-3 py-1.5 rounded text-sm font-medium text-gray-700">
+                      Joined March 2023
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -414,18 +457,20 @@ export default function Profile() {
                 Chỉnh sửa
               </button>
 
-              <div className="text-right">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  Mastery Goal
+              {!isAdmin && (
+                <div className="text-right">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Mastery Goal
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 leading-tight">
+                    JLPT {user?.jlptLevel || 'Beginner'} <br /> Certification
+                  </div>
+                  <div
+                    className="h-1 w-16 mt-3 ml-auto"
+                    style={{ backgroundColor: '#005537' }}
+                  ></div>
                 </div>
-                <div className="text-2xl font-bold text-gray-900 leading-tight">
-                  JLPT {user?.jlptLevel || 'Beginner'} <br /> Certification
-                </div>
-                <div
-                  className="h-1 w-16 mt-3 ml-auto"
-                  style={{ backgroundColor: '#005537' }}
-                ></div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -540,7 +585,7 @@ export default function Profile() {
                     </div>
 
                     {/* Row 2: Location & JLPT Level */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className={`grid gap-3 ${isAdmin ? 'grid-cols-1' : 'grid-cols-2'}`}>
                       <div>
                         <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase">Location</label>
                         <Input
@@ -552,22 +597,24 @@ export default function Profile() {
                           className="bg-gray-100 border-0 text-gray-800 text-sm"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase">JLPT Level</label>
-                        <select
-                          name="jlptLevel"
-                          value={formData.jlptLevel || 'Beginner'}
-                          onChange={handleChange}
-                          className="w-full border-0 rounded px-2 py-1.5 bg-gray-100 text-gray-800 text-sm font-medium"
-                        >
-                          <option value="Beginner">Beginner</option>
-                          <option value="N5">N5</option>
-                          <option value="N4">N4</option>
-                          <option value="N3">N3</option>
-                          <option value="N2">N2 - Pre-Advanced</option>
-                          <option value="N1">N1</option>
-                        </select>
-                      </div>
+                      {!isAdmin && (
+                        <div>
+                          <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase">JLPT Level</label>
+                          <select
+                            name="jlptLevel"
+                            value={formData.jlptLevel || 'Beginner'}
+                            onChange={handleChange}
+                            className="w-full border-0 rounded px-2 py-1.5 bg-gray-100 text-gray-800 text-sm font-medium"
+                          >
+                            <option value="Beginner">Beginner</option>
+                            <option value="N5">N5</option>
+                            <option value="N4">N4</option>
+                            <option value="N3">N3</option>
+                            <option value="N2">N2 - Pre-Advanced</option>
+                            <option value="N1">N1</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
 
                     {/* Bio - Full Width */}
@@ -608,6 +655,111 @@ export default function Profile() {
           </>
         )}
 
+        {isAdmin ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+                  <Shield className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Thông tin quản trị</h2>
+                  <p className="text-sm text-gray-500">Quản lý thông tin cá nhân của tài khoản admin.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-4">
+                  <Mail className="w-5 h-5 text-slate-500" />
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Email</p>
+                    <p className="font-medium text-gray-900">{user?.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-4">
+                  <Phone className="w-5 h-5 text-slate-500" />
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Số điện thoại</p>
+                    <p className="font-medium text-gray-900">{user?.phone || 'Chưa cập nhật'}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-4">
+                  <MapPin className="w-5 h-5 text-slate-500" />
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Địa điểm</p>
+                    <p className="font-medium text-gray-900">{user?.location || 'Chưa cập nhật'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleEditClick}
+                disabled={isEditing}
+                className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+              >
+                <Edit2 className="w-4 h-4" />
+                Chỉnh sửa hồ sơ
+              </button>
+            </div>
+
+            <form onSubmit={handlePasswordSubmit} className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Đổi mật khẩu</h2>
+                  <p className="text-sm text-gray-500">Cập nhật mật khẩu đăng nhập cho tài khoản admin.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase">Mật khẩu hiện tại</label>
+                  <Input
+                    type="password"
+                    name="currentPassword"
+                    value={passwordForm.currentPassword}
+                    onChange={handlePasswordInputChange}
+                    className="bg-gray-100 border-0 text-gray-800"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase">Mật khẩu mới</label>
+                  <Input
+                    type="password"
+                    name="newPassword"
+                    value={passwordForm.newPassword}
+                    onChange={handlePasswordInputChange}
+                    className="bg-gray-100 border-0 text-gray-800"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase">Nhập lại mật khẩu mới</label>
+                  <Input
+                    type="password"
+                    name="confirmPassword"
+                    value={passwordForm.confirmPassword}
+                    onChange={handlePasswordInputChange}
+                    className="bg-gray-100 border-0 text-gray-800"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={changePasswordMutation.isPending}
+                className="mt-6 w-full px-4 py-3 rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 transition font-semibold"
+              >
+                {changePasswordMutation.isPending ? 'Đang đổi mật khẩu...' : 'Đổi mật khẩu'}
+              </button>
+            </form>
+          </div>
+        ) : (
+          <>
         {/* Learning Progress Section */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-4">
           <div className="flex justify-between items-start mb-8">
@@ -889,13 +1041,13 @@ export default function Profile() {
                           <div
                             key={milestone.days}
                             className={`rounded-xl p-4 flex flex-col items-center justify-center transition-all ${unlocked
-                                ? 'bg-white border-2 border-green-200 shadow-sm'
-                                : 'bg-gray-50 border border-gray-200'
+                              ? 'bg-white border-2 border-green-200 shadow-sm'
+                              : 'bg-gray-50 border border-gray-200'
                               }`}
                           >
                             <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 ${unlocked
-                                ? 'bg-gradient-to-br from-orange-100 to-green-100'
-                                : 'bg-gray-100'
+                              ? 'bg-gradient-to-br from-orange-100 to-green-100'
+                              : 'bg-gray-100'
                               }`}>
                               <Flame className={`w-6 h-6 ${unlocked ? 'text-orange-500' : 'text-gray-300'
                                 }`} />
@@ -977,10 +1129,12 @@ export default function Profile() {
             <Trophy className="w-24 h-24 opacity-30" />
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
+      {!isAdmin && deleteConfirm && (
         <div className="fixed inset-0 bg-transparent flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full mx-4">
             <div className="flex flex-col items-center">
@@ -1012,7 +1166,7 @@ export default function Profile() {
       )}
 
       {/* Edit Video Modal */}
-      {editingVideo && (
+      {!isAdmin && editingVideo && (
         <div className="fixed inset-0 bg-transparent flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4">
             <div className="flex justify-between items-center mb-6">

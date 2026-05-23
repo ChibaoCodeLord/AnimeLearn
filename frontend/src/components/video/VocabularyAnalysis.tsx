@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { BookmarkPlus, Loader2 } from 'lucide-react';
+import { BookmarkPlus, Loader2, BookOpen } from 'lucide-react'; // Thêm BookOpen cho icon tiêu đề
 import { toast } from 'sonner';
 
 // Định nghĩa cấu trúc của một từ vựng hiển thị
@@ -17,10 +17,15 @@ interface VocabularyAnalysisProps {
   onWordClick?: (vocab: any) => void; 
 }
 
-// --- Các hàm tiện ích xử lý Cookie ---
+// --- Các hàm tiện ích xử lý Storage ---
 
-const getSavedVocabFromCookie = () => {
-  const match = document.cookie.match(new RegExp('(^| )my_anime_saved_vocab=([^;]+)'));
+const STORAGE_KEY = 'my_anime_saved_vocab';
+
+const getSavedVocabFromStorage = () => {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) return JSON.parse(stored);
+
+  const match = document.cookie.match(new RegExp('(^| )' + STORAGE_KEY + '=([^;]+)'));
   if (match) {
     try {
       return JSON.parse(decodeURIComponent(match[2]));
@@ -31,11 +36,13 @@ const getSavedVocabFromCookie = () => {
   return [];
 };
 
-const saveVocabToCookie = (vocabList: any[]) => {
+const saveVocabToStorage = (vocabList: any[]) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(vocabList));
+
   // Lưu cookie với thời hạn 30 ngày (tính bằng giây)
   const maxAge = 30 * 24 * 60 * 60;
   // Lưu ý: Chuỗi JSON dài có thể vượt quá giới hạn 4KB của Cookie
-  document.cookie = `my_anime_saved_vocab=${encodeURIComponent(JSON.stringify(vocabList))}; path=/; max-age=${maxAge}`;
+  document.cookie = `${STORAGE_KEY}=${encodeURIComponent(JSON.stringify(vocabList))}; path=/; max-age=${maxAge}`;
 };
 
 // --- Component Chính ---
@@ -62,29 +69,72 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
         }, 1000);
       });
 
-      // 2. Chuẩn bị object từ vựng hoàn chỉnh để lưu
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('Bạn cần đăng nhập để lưu từ vựng.');
+        return;
+      }
+
+      const payload = {
+        word: mockResult.word,
+        reading: mockResult.reading,
+        meaning_vi: mockResult.meaning_vi,
+        meaning_en: mockResult.meaning_en,
+        part_of_speech: vocab.pos || '',
+        jlpt_level: mockResult.jlpt_level || 'Unknown',
+        example_sentence: mockResult.example_sentence || '',
+        example_meaning: mockResult.example_meaning || ''
+      };
+
+      const response = await fetch('http://localhost:5000/api/video/save-word', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        credentials: 'omit',
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        if (data.message === 'Từ này đã có trong sổ tay') {
+          toast.info(data.message);
+        } else {
+          toast.error(data.error || 'Lỗi khi lưu từ vựng!');
+        }
+        return;
+      }
+
+      const savedFromServer = data?.vocab || {};
       const newSavedVocab = {
-        ...mockResult,
+        id: savedFromServer._id || savedFromServer.id || payload.word,
+        word: savedFromServer.word || payload.word,
+        reading: savedFromServer.reading || payload.reading,
+        meaning_vi: savedFromServer.meaning_vi || payload.meaning_vi,
+        meaning_en: savedFromServer.meaning_en || payload.meaning_en,
+        part_of_speech: savedFromServer.part_of_speech || payload.part_of_speech,
+        jlpt_level: savedFromServer.jlpt_level || payload.jlpt_level,
+        example_sentence: savedFromServer.example_sentence || payload.example_sentence,
+        example_meaning: savedFromServer.example_meaning || payload.example_meaning,
         next_review_date: new Date().toISOString().split('T')[0],
         review_interval: 1,
         ease_factor: 2.5,
         review_count: 0,
-        saved_at: new Date().toISOString()
+        saved_at: savedFromServer.saved_at || new Date().toISOString()
       };
 
-      // 3. Xử lý lưu vào Cookie
-      const currentSavedList = getSavedVocabFromCookie();
-      
-      // Kiểm tra xem từ này đã được lưu trước đó chưa
-      const isAlreadySaved = currentSavedList.some((item: any) => item.word === newSavedVocab.word);
+      const currentSavedList = getSavedVocabFromStorage();
+      const existingIndex = currentSavedList.findIndex((item: any) => item.word === newSavedVocab.word);
 
-      if (isAlreadySaved) {
-        toast.info(`Từ "${vocab.word}" đã có trong sổ tay!`);
+      if (existingIndex >= 0) {
+        currentSavedList[existingIndex] = { ...currentSavedList[existingIndex], ...newSavedVocab };
       } else {
         currentSavedList.push(newSavedVocab);
-        saveVocabToCookie(currentSavedList);
-        toast.success(`Đã lưu từ "${vocab.word}" vào Cookie`);
       }
+
+      saveVocabToStorage(currentSavedList);
+      toast.success(data.message || `Đã lưu từ "${vocab.word}" vào Database`);
 
     } catch (error) {
       console.error("Lỗi khi lưu từ vựng:", error);
@@ -98,39 +148,86 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
   if (!vocabulary || vocabulary.length === 0) return null;
 
   return (
-    <div className="mt-3 space-y-2">
-      <p className="text-xs text-slate-500 font-medium">Từ vựng trong câu:</p>
-      <div className="space-y-2">
+    <div className="border border-teal-200 pt-3 p-2 bg-to-br from-emerald-50 to-teal-50 rounded-2xl">
+      <p className="text-[11px] font-bold text-teal-700 uppercase tracking-wider mb-3 flex items-center gap-1.5 px-1">
+        <BookOpen className="w-3.5 h-3.5" />
+        Từ vựng trong câu
+      </p>
+      
+      <div className="space-y-2.5">
         {vocabulary.map((v, idx) => (
           <div 
             key={idx} 
-            // THÊM HIỆU ỨNG CLICK VÀ GỌI HÀM onWordClick Ở ĐÂY
             onClick={() => onWordClick && onWordClick(v)}
-            className="flex items-center justify-between gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100/60 transition-colors"
+            className="
+              group
+              relative
+              flex items-center justify-between gap-3
+              p-3 pl-4
+              rounded-xl
+              bg-white
+              border border-slate-300
+              shadow-sm
+              cursor-pointer
+              transition-all duration-200
+              hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/30
+              overflow-hidden
+            "
           >
+            {/* Vạch trang trí bên trái hiện lên khi Hover */}
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+
             <div className="flex-1 min-w-0 pointer-events-none">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-900">{v.word}</span>
-                <span className="text-sm text-emerald-600">{v.reading}</span>
+              <div className="flex items-baseline gap-2.5 mb-1.5">
+                <span className="text-[17px] font-black text-slate-900 tracking-tight">
+                  {v.word}
+                </span>
+                
+                <div className="flex items-center gap-2 min-w-0">
+                  {v.reading && (
+                    <span
+                      title={v.reading}
+                      className="inline-block max-w-[120px] truncate align-middle text-[14px] font-bold text-emerald-700 border border-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-md"
+                    >
+                      {v.reading}
+                    </span>
+                  )}
+                </div>
+                
+                {v.pos && (
+                  <span className="text-[12px] font-bold text-slate-600 uppercase tracking-wider border border-slate-600 px-1.5 py-0.5 rounded">
+                    {v.pos}
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-slate-600 line-clamp-1">{v.meaning}</p>
+              <p className="text-[14px] text-slate-600 font-medium line-clamp-1 pr-2">
+                {v.meaning}
+              </p>
             </div>
+
             <Button
               size="sm"
-              variant="ghost"
+              variant="secondary"
               onClick={(e) => {
-                e.stopPropagation(); // CỰC KỲ QUAN TRỌNG: Ngăn chặn click lan ra ngoài làm mở Modal
+                e.stopPropagation(); // Ngăn chặn click lan ra ngoài làm mở Modal
                 saveWord(v);
               }}
               disabled={saving[v.word]}
-              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-200/50 gap-1 shrink-0"
+              className="
+                shrink-0
+                h-9 px-3
+                bg-slate-100 text-slate-600 
+                hover:bg-emerald-100 hover:text-emerald-700
+                transition-colors border border-transparent hover:border-emerald-200
+                gap-1.5
+              "
             >
               {saving[v.word] ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <BookmarkPlus className="w-3 h-3" />
+                <BookmarkPlus className="w-3.5 h-3.5" />
               )}
-              <span className="text-xs">Lưu</span>
+              <span className="text-[13px] font-semibold">Lưu</span>
             </Button>
           </div>
         ))}

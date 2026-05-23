@@ -18,13 +18,26 @@ const VideoSchema = new mongoose.Schema({
     default: 'Unknown'
   },
   script: {
-    type: Array, // Mảng các câu hội thoại { timestamp, japanese, vietnamese, english, vocabulary }
+    type: Array, // Mảng các câu hội thoại { timestamp, japanese, vietnamese, vocabulary }
     required: true
   },
+  
+  // ==========================================
+  // THÊM MỚI: KHO CHỨA TỪ VỰNG KÈM KANJI ĐÃ XỬ LÝ
+  // ==========================================
+  vocab_list: [{
+    word: String,
+    reading: String,
+    meaning: String,
+    pos: String,
+    kanji_info: { type: Array, default: [] } // Chứa full object thông tin Kanji
+  }],
+  // ==========================================
+
   creator: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true // Gắn ID người tạo để dễ truy vấn sở hữu,
+    required: true // Gắn ID người tạo để dễ truy vấn sở hữu
   },
   views_count: {
     type: Number,
@@ -47,7 +60,18 @@ const VideoSchema = new mongoose.Schema({
   created_date: {
     type: Date,
     default: Date.now
-  }
+  },
+  // 🚀 TRƯỜNG MỚI 1: Thời lượng video (Lưu bằng tổng số giây - ví dụ: 750 giây)
+  duration: {
+    type: Number,
+    default: 0
+  },
+  // 🚀 TRƯỜNG MỚI 2: Chủ đề của video (Ví dụ: Anime, Podcast, Tin tức, Kinh doanh...)
+  video_theme: {
+    type: String,
+    default: 'Khác',
+    trim: true
+  },
 });
 
 export default mongoose.model('Video', VideoSchema);

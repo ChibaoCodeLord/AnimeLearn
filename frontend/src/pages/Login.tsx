@@ -52,6 +52,29 @@ export default function Login() {
         if (data.token) {
           localStorage.setItem('token', data.token);
         }
+        const token = data.token || localStorage.getItem('token') || '';
+        const profileRes = await fetch('http://localhost:5000/api/auth/me', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: 'include',
+        });
+
+        if (profileRes.status === 403) {
+          const banData = await profileRes.json().catch(() => ({}));
+          if (banData?.error === 'User is banned') {
+            try {
+              sessionStorage.setItem('banInfo', JSON.stringify(banData));
+            } catch (e) {
+              console.error('Cannot persist ban info', e);
+            }
+            navigate('/banned');
+            return;
+          }
+        }
+
         await queryClient.invalidateQueries({ queryKey: ['current-user'] });
         navigate('/home');
       } else {

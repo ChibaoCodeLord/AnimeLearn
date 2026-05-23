@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, Heart, Clock, ChevronRight, ChevronDown } from 'lucide-react';
+import { Eye, Clock, ChevronRight, ChevronLeft, Loader2, Play, BookOpen, Layers, Heart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import moment from 'moment';
+import axios from 'axios';
 
+// Định nghĩa lại Type cho đồng bộ
 export interface VideoItem {
   id: string | number;
   thumbnail_url?: string;
@@ -12,155 +15,308 @@ export interface VideoItem {
   views_count?: number;
   likes_count?: number;
   created_date: string | Date;
-}
-
-interface VideosByLevelProps {
-  videos?: VideoItem[];
-  isLoading?: boolean;
+  vocab_count?: number; // Mock data
+  duration?: string;    // Mock data
+  theme?: string;       // Mock data
 }
 
 const jlptColors: Record<string, string> = {
-  N5: 'bg-green-100 text-green-700 border-green-200',
-  N4: 'bg-blue-100 text-blue-700 border-blue-200',
-  N3: 'bg-purple-100 text-purple-700 border-purple-200',
-  N2: 'bg-orange-100 text-orange-700 border-orange-200',
-  N1: 'bg-red-100 text-red-700 border-red-200',
-  Mixed: 'bg-slate-100 text-slate-700 border-slate-200',
+  N5: 'bg-green-100 text-green-700',
+  N4: 'bg-blue-100 text-blue-700',
+  N3: 'bg-purple-100 text-purple-700',
+  N2: 'bg-orange-100 text-orange-700',
+  N1: 'bg-red-100 text-red-700',
+  Mixed: 'bg-slate-100 text-slate-700',
 };
 
-const levelNames: Record<string, string> = {
-  N5: 'Sơ cấp (N5)',
-  N4: 'Sơ - Trung cấp (N4)',
-  N3: 'Trung cấp (N3)',
-  N2: 'Trung - Cao cấp (N2)',
-  N1: 'Cao cấp (N1)',
-  Mixed: 'Học tự do (Nguồn ngoài)',
+const formatDuration = (totalSeconds: number | undefined | null) => {
+  if (!totalSeconds) return '00:00';
+  
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = Math.floor(totalSeconds % 60);
+  
+  // Ép thêm số 0 đằng trước nếu nhỏ hơn 10 (vd: 9 -> 09)
+  const mDisplay = m < 10 && h > 0 ? `0${m}` : m;
+  const sDisplay = s < 10 ? `0${s}` : s;
+  
+  if (h > 0) return `${h}:${mDisplay}:${sDisplay}`; // Hiển thị 1:02:30 nếu trên 1 tiếng
+  return `${mDisplay}:${sDisplay}`; // Hiển thị 12:30 nếu dưới 1 tiếng
 };
 
-function LevelSection({ level, levelVideos }: { level: string; levelVideos: VideoItem[] }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const displayedVideos = isExpanded ? levelVideos : levelVideos.slice(0, 4);
+const FILTERS = ['Tất cả', 'N1', 'N2', 'N3', 'N4', 'N5', 'Mixed'];
+const THEMES = ['Tất cả chủ đề', 'Anime', 'Podcast', 'Tin tức', 'Âm nhạc'];
+const ITEMS_PER_PAGE_OPTIONS = [12, 18, 24, 36];
+
+interface VideosByLevelProps {
+  initialVideos?: VideoItem[];
+  isInitialLoading?: boolean;
+  onTotalUpdate?: (total: number) => void;
+}
+
+export default function VideosByLevel({ initialVideos = [], isInitialLoading = false, onTotalUpdate }: VideosByLevelProps) {
+  const [videos, setVideos] = useState<VideoItem[]>(initialVideos);
+  const [isLoading, setIsLoading] = useState(isInitialLoading);
+  
+  // States Filter & Pagination
+  const [activeJlpt, setActiveJlpt] = useState('Tất cả');
+  const [activeTheme, setActiveTheme] = useState('Tất cả chủ đề');
+  const [page, setPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(18);
+  const [totalVideos, setTotalVideos] = useState(124); // Thay bằng API count thật nếu có
+  const [hasMore, setHasMore] = useState(true);
+
+  const fetchVideos = async (levelFilter: string, currentPage: number, limit: number) => {
+    setIsLoading(true);
+    try {
+      const levelQuery = levelFilter === 'Tất cả' ? '' : `&level=${levelFilter}`;
+      const res = await axios.get(`http://localhost:5000/api/video/public-videos?page=${currentPage}&limit=${limit}${levelQuery}`);
+      
+      const enrichedData = res.data.data.map((v: any) => ({
+        ...v,
+        duration: formatDuration(v.duration) || '00:00', // Nhận số giây từ DB (ví dụ: 750)
+        theme: v.video_theme || 'Anime', // Nhận chủ đề từ DB
+        vocab_count: v.vocab_count || Math.floor(Math.random() * 50) + 10,
+      }));
+
+      setVideos(enrichedData);
+      setHasMore(res.data.hasMore);
+      
+      const fetchedTotal = res.data.total || enrichedData.length * 5;
+      setTotalVideos(fetchedTotal);
+      
+      // 🚀 BẮN DỮ LIỆU LÊN CHO COMPONENT CHA (HOME) BẰNG DÒNG NÀY:
+      if (onTotalUpdate) onTotalUpdate(fetchedTotal);
+      
+    } catch (error) {
+      console.error("Lỗi fetch video", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Effect gọi lại API khi đổi Filter hoặc Page
+  useEffect(() => {
+    // Không gọi nếu đang load lần đầu từ props Home
+    fetchVideos(activeJlpt, page, itemsPerPage);
+  }, [activeJlpt, page, itemsPerPage]);
+
+  // Reset page về 1 khi đổi filter
+  const handleJlptChange = (level: string) => {
+    setActiveJlpt(level);
+    setPage(1);
+  };
+
+  const totalPages = Math.ceil(totalVideos / itemsPerPage) || 1;
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Badge className={`${jlptColors[level]} border text-base px-3 py-1`}>
-            {level}
-          </Badge>
-          <h2 className="text-2xl font-bold text-slate-900">{levelNames[level]}</h2>
+    <div className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
+      
+      {/* --- Filter Bar --- */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {FILTERS.map(filter => (
+            <button
+              key={filter}
+              onClick={() => handleJlptChange(filter)}
+              className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
+                activeJlpt === filter
+                  ? 'bg-teal-100 text-teal-800 border border-teal-400 shadow-sm'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+              }`}
+            >
+              {filter === 'Tất cả' ? filter : `JLPT ${filter}`}
+            </button>
+          ))}
         </div>
         
-        {levelVideos.length > 4 && (
-          <button 
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1 cursor-pointer outline-none transition-colors"
-          >
-            {isExpanded ? 'Thu gọn' : 'Xem tất cả'}
-            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </button>
-        )}
+        {/* Additional Filters (Themes) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
+           {THEMES.map(theme => (
+            <button
+              key={theme}
+              onClick={() => { setActiveTheme(theme); setPage(1); }}
+              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm transition-all ${
+                activeTheme === theme
+                  ? 'bg-slate-800 text-white shadow-sm'
+                  : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {theme}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {displayedVideos.map(video => (
-          <Link key={video.id} to={`/VideoWorkspace?id=${video.id}`}>
-            <div className="group rounded-xl bg-white border border-slate-200 overflow-hidden hover:border-emerald-300 hover:shadow-lg transition-all flex flex-col h-full">
-              <div className="aspect-video bg-slate-100 relative overflow-hidden shrink-0">
-                {video.thumbnail_url ? (
-                  <img 
-                    src={video.thumbnail_url} 
-                    alt={video.title} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-emerald-100 to-teal-100">
-                    <span className="text-4xl">🎬</span>
-                  </div>
-                )}
-              </div>
-              <div className="p-3 flex flex-col flex-1">
-                <h3 
-                  title={video.title}
-                  className="font-semibold text-slate-900 line-clamp-2 group-hover:text-emerald-600 transition-colors text-sm"
-                >
-                  {video.title}
-                </h3>
-                <div className="flex items-center gap-3 mt-auto pt-2 text-xs text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <Eye className="w-3 h-3" />
-                    {video.views_count || 0}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Heart className="w-3 h-3" />
-                    {video.likes_count || 0}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {moment(video.created_date).fromNow()}
-                  </span>
+      {/* --- Overview & Info Bar --- */}
+      <div className="flex items-center justify-between bg-white px-4 py-3 rounded-2xl border border-slate-200 shadow-sm mb-6">
+        <p className="text-sm text-slate-500 font-medium">
+          Hiển thị <span className="text-slate-900 font-bold">{(page - 1) * itemsPerPage + 1} – {Math.min(page * itemsPerPage, totalVideos)}</span> trong số <span className="text-slate-900 font-bold">{totalVideos}</span> video
+        </p>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-500 hidden sm:inline">Số lượng:</span>
+          <select 
+            value={itemsPerPage}
+            onChange={(e) => { setItemsPerPage(Number(e.target.value)); setPage(1); }}
+            className="text-sm border-slate-200 rounded-lg bg-slate-50 text-slate-700 py-1.5 px-3 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+          >
+            {ITEMS_PER_PAGE_OPTIONS.map(num => (
+              <option key={num} value={num}>{num} / trang</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* --- Video Grid (6 Cột) --- */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
+          {Array.from({ length: itemsPerPage }).map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-pulse">
+              <div className="aspect-video bg-slate-100" />
+              <div className="p-4 space-y-3">
+                <div className="h-4 bg-slate-200 rounded w-full" />
+                <div className="h-4 bg-slate-200 rounded w-2/3" />
+                <div className="pt-4 flex gap-2">
+                  <div className="h-3 bg-slate-100 rounded w-12" />
+                  <div className="h-3 bg-slate-100 rounded w-12" />
                 </div>
               </div>
             </div>
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export default function VideosByLevel({ videos = [], isLoading }: VideosByLevelProps) {
-  if (isLoading) {
-    return (
-      <div className="py-12 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse space-y-12">
-            {[1, 2, 3].map(i => (
-              <div key={i}>
-                <div className="h-8 bg-emerald-100 rounded w-32 mb-6" />
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[1, 2, 3, 4].map(j => (
-                    <div key={j} className="rounded-xl bg-white border border-slate-200 overflow-hidden">
-                      <div className="aspect-video bg-slate-100" />
-                      <div className="p-3 space-y-2">
-                        <div className="h-4 bg-slate-100 rounded w-3/4" />
-                        <div className="h-3 bg-slate-100 rounded w-1/2" />
-                      </div>
+          ))}
+        </div>
+      ) : videos.length === 0 ? (
+        <div className="py-20 text-center flex flex-col items-center">
+          <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+            <Play className="w-8 h-8 text-slate-300" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-900 mb-1">Không tìm thấy video</h3>
+          <p className="text-slate-500">Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm nhé.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
+          {videos.map(video => (
+            <Link key={video.id} to={`/VideoWorkspace?id=${video.id}`} className="group">
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md  hover:border-teal-300 transition-all duration-300 flex flex-col h-full">
+                
+                {/* Thumbnail Section */}
+                <div className="aspect-video relative overflow-hidden bg-slate-100 shrink-0">
+                  {video.thumbnail_url ? (
+                    <img 
+                      src={video.thumbnail_url} 
+                      alt={video.title} 
+                      className="w-full h-full object-cover transition-transform duration-500" 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                      <Play className="w-10 h-10 text-slate-300" />
                     </div>
-                  ))}
+                  )}
+                  {/* Badges on Thumbnail */}
+                  <div className="absolute top-2 left-2">
+                    <Badge className={`${jlptColors[video.jlpt_level || 'Mixed']} border-0 px-2 py-0.5 text-[10px] font-bold uppercase shadow-sm`}>
+                      {video.jlpt_level || 'Mixed'}
+                    </Badge>
+                  </div>
+                  <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white text-[10px] font-semibold px-2 py-1 rounded-lg shadow-sm">
+                    <Clock className="w-3 h-3 text-white/90" />
+                    <span className="leading-none">{video.duration}</span>
+                  </div>
                 </div>
+
+                {/* Content Section */}
+                <div className="p-2 flex flex-col flex-1">
+                  <h3 
+                    title={video.title}
+                    className="font-bold text-slate-900 text-sm leading-snug line-clamp-2 group-hover:text-teal-600 transition-colors mb-1.5"
+                  >
+                    {video.title}
+                  </h3>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-400 font-medium">
+                    <span className="flex items-center gap-1" title="Lượt xem">
+                      <Eye className="w-3.5 h-3.5 text-green-400" />
+                      {video.views_count?.toLocaleString() || 0}
+                    </span>
+                    {/* Thêm lại Lượt thích ở đây */}
+                    <span className="flex items-center gap-1" title="Lượt thích">
+                      <Heart className="w-3.5 h-3.5 text-red-400" />
+                      {video.likes_count?.toLocaleString() || 0}
+                    </span>
+                    <span className="flex items-center gap-1" title="Chủ đề">
+                      <Layers className="w-3.5 h-3.5" />
+                      {video.theme}
+                    </span>
+                  </div>
+
+                  {/* Bottom Action CTA */}
+                  <div className="border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {moment(video.created_date).fromNow()}
+                    </span>
+                    {/* <span className="text-teal-600 text-xs font-bold flex items-center opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all">
+                      Bắt đầu <ChevronRight className="w-3 h-3 ml-0.5" />
+                    </span> */}
+                  </div>
+                </div>
+
               </div>
-            ))}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* --- Pagination --- */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center mt-10">
+          <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setPage(p => Math.max(1, p - 1))} 
+              disabled={page === 1}
+              className="w-9 h-9 rounded-lg text-slate-500 hover:text-teal-600"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              // Logic hiển thị 5 trang gần nhất
+              let p = page;
+              if (page <= 3) p = i + 1;
+              else if (page >= totalPages - 2) p = totalPages - 4 + i;
+              else p = page - 2 + i;
+              
+              if (p < 1 || p > totalPages) return null;
+
+              return (
+                <Button 
+                  key={p} 
+                  variant={p === page ? "default" : "ghost"}
+                  onClick={() => setPage(p)}
+                  className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all ${
+                    p === page 
+                      ? 'bg-teal-500 text-white shadow-md hover:bg-teal-600' 
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {p}
+                </Button>
+              );
+            })}
+
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))} 
+              disabled={page === totalPages}
+              className="w-9 h-9 rounded-lg text-slate-500 hover:text-teal-600"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
           </div>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  const videosByLevel: Record<string, VideoItem[]> = {
-    N5: videos.filter(v => v.jlpt_level === 'N5'),
-    N4: videos.filter(v => v.jlpt_level === 'N4'),
-    N3: videos.filter(v => v.jlpt_level === 'N3'),
-    N2: videos.filter(v => v.jlpt_level === 'N2'),
-    N1: videos.filter(v => v.jlpt_level === 'N1'),
-    Mixed: videos.filter(v => !['N1', 'N2', 'N3', 'N4', 'N5'].includes(v.jlpt_level || '')),
-  };
-
-  return (
-    <div className="py-12 px-4">
-      <div className="max-w-7xl mx-auto space-y-12">
-        {Object.entries(videosByLevel).map(([level, levelVideos]) => {
-          if (levelVideos.length === 0) return null;
-          
-          return (
-            <LevelSection 
-              key={level} 
-              level={level} 
-              levelVideos={levelVideos} 
-            />
-          );
-        })}
-      </div>
     </div>
   );
 }

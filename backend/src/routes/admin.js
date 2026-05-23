@@ -3,6 +3,7 @@ import { authMiddleware, restrictTo } from '../middleware/auth.js';
 import Video from '../models/Video.js';
 import User from '../models/User.js';
 import { sendVideoRejectedEmail } from '../services/emailService.js';
+import { banUser, unbanUser } from '../controllers/adminController.js';
 
 const router = express.Router();
 
@@ -33,26 +34,41 @@ router.get('/videos', async (req, res) => {
     const total = await Video.countDocuments(filter);
 
     const videos = await Video.find(filter)
+      .select('-vocab_list -script.vocabulary -script.text') 
       .sort({ created_date: -1 })
       .skip(skip)
       .limit(limit)
-      .populate('creator', 'fullName email');
+      .populate('creator', 'fullName email')
+      .lean();
 
-    const mappedVideos = videos.map(v => ({
-      id: v._id,
-      title: v.title,
-      youtube_url: v.youtube_url,
-      thumbnail_url: v.thumbnail_url,
-      jlpt_level: v.jlpt_level,
-      status: v.status || 'pending',
-      views_count: v.views_count,
-      likes_count: v.likes_count,
-      created_date: v.created_date,
-      script_length: v.script?.length || 0,
-      creator: v.creator
-        ? { id: v.creator._id, fullName: v.creator.fullName, email: v.creator.email }
-        : { id: null, fullName: 'Đã xóa', email: '' }
-    }));
+    // 🚀 BỌC GIÁP PHÒNG THỦ CHỐNG CRASH VÒNG LẶP .MAP()
+    const mappedVideos = videos.map(v => {
+      let creatorInfo = { id: null, fullName: 'Đã xóa hoặc Lỗi', email: '' };
+      
+      if (v.creator && typeof v.creator === 'object') {
+        creatorInfo = {
+          id: v.creator._id || v.creator.id || null,
+          fullName: v.creator.fullName || 'Không có tên',
+          email: v.creator.email || ''
+        };
+      } else if (v.creator) {
+        creatorInfo = { id: String(v.creator), fullName: 'Lỗi Populate ID', email: '' };
+      }
+
+      return {
+        id: v._id,
+        title: v.title || 'Video không tiêu đề',
+        youtube_url: v.youtube_url || '',
+        thumbnail_url: v.thumbnail_url || '',
+        jlpt_level: v.jlpt_level || 'Unknown',
+        status: v.status || 'pending',
+        views_count: v.views_count || 0,
+        likes_count: v.likes_count || 0,
+        created_date: v.created_date,
+        script_length: Array.isArray(v.script) ? v.script.length : 0, 
+        creator: creatorInfo
+      };
+    });
 
     res.json({
       videos: mappedVideos,
@@ -89,7 +105,11 @@ router.patch('/videos/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Trạng thái không hợp lệ' });
     }
 
-    const existingVideo = await Video.findById(req.params.id).populate('creator', 'fullName email');
+    // Vẫn áp dụng .select để khi update xong không bị dính cục data nặng
+    const existingVideo = await Video.findById(req.params.id)
+      .select('-vocab_list')
+      .populate('creator', 'fullName email');
+      
     if (!existingVideo) {
       return res.status(404).json({ error: 'Video không tồn tại' });
     }
@@ -98,7 +118,9 @@ router.patch('/videos/:id/status', async (req, res) => {
       req.params.id, 
       { status }, 
       { new: true }
-    ).populate('creator', 'fullName email');
+    )
+    .select('-vocab_list')
+    .populate('creator', 'fullName email');
 
     if (!video) {
       return res.status(404).json({ error: 'Video không tồn tại' });
@@ -141,7 +163,7 @@ router.get('/users', async (req, res) => {
       ];
     }
 
-    const users = await User.find(filter).sort({ createdAt: -1 });
+    const users = await User.find(filter).sort({ createdAt: -1 }).lean();
     const mappedUsers = users.map(u => ({
       id: u._id,
       fullName: u.fullName,
@@ -149,7 +171,11 @@ router.get('/users', async (req, res) => {
       role: u.role,
       jlptLevel: u.jlptLevel,
       createdAt: u.createdAt,
-      isVerified: u.isVerified
+      isVerified: u.isVerified,
+      isBanned: u.isBanned,
+      bannedAt: u.bannedAt,
+      unbannedAt: u.unbannedAt,
+      banReason: u.banReason
     }));
 
     res.json(mappedUsers);
@@ -166,7 +192,7 @@ router.patch('/users/:id/role', async (req, res) => {
     if (!['user', 'admin'].includes(role)) {
       return res.status(400).json({ error: 'Role không hợp lệ' });
     }
-    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true });
+    const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).lean();
     if (!user) return res.status(404).json({ error: 'User không tồn tại' });
     res.json({ message: 'Cập nhật quyền thành công', user: { id: user._id, role: user.role } });
   } catch (error) {
@@ -175,7 +201,42 @@ router.patch('/users/:id/role', async (req, res) => {
   }
 });
 
+router.patch('/users/:id/ban', banUser);
+
 // --- STATS ---
+
+// GET /api/admin/users/:id - Lấy thông tin chi tiết user kèm trạng thái ban
+router.get('/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User không tồn tại' });
+    }
+
+    res.json({
+      id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      jlptLevel: user.jlptLevel,
+      createdAt: user.createdAt,
+      isVerified: user.isVerified,
+      isBanned: user.isBanned,
+      bannedAt: user.bannedAt,
+      unbannedAt: user.unbannedAt,
+      banReason: user.banReason,
+      totalLearningHours: user.totalLearningHours,
+      dayStreak: user.dayStreak,
+      xpPoints: user.xpPoints
+    });
+  } catch (error) {
+    console.error('[Admin] Error fetching user:', error);
+    res.status(500).json({ error: 'Lỗi lấy thông tin user' });
+  }
+});
+
+// PATCH /api/admin/users/:id/unban - Gỡ ban user
+router.patch('/users/:id/unban', unbanUser);
 
 // GET /api/admin/stats - Thống kê tổng quan
 router.get('/stats', async (req, res) => {

@@ -1,5 +1,5 @@
 import React, { useState, useLayoutEffect, useRef, useEffect } from 'react';
-import { Star, BookOpen, Loader2, Volume2, Info, X, Sparkles } from 'lucide-react';
+import { Star, BookOpen, Loader2, Volume2, X, Sparkles, Quote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -15,15 +15,28 @@ export interface LookupData {
   example_meaning?: string;
   related_words?: string[];
   part_of_speech?: string;
+  kanji_info?: any[];
 }
 
 interface VocabularyPopupProps {
   word: string | null;
-  position: { x: number; y: number } | null;
+  position: PopupAnchorPosition | null;
   vocabData?: any;
+  sentenceContext?: string;
   onClose: () => void;
   onSave?: () => void;
+  onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
+  onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
 }
+
+type PopupAnchorPosition = {
+  x: number;
+  y: number;
+  anchorTop?: number;
+  anchorBottom?: number;
+  anchorLeft?: number;
+  anchorRight?: number;
+};
 
 // Bảng màu JLPT
 const jlptBadgeColors: Record<string, string> = {
@@ -32,132 +45,231 @@ const jlptBadgeColors: Record<string, string> = {
   N3: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   N2: 'bg-orange-100 text-orange-700 border-orange-200',
   N1: 'bg-rose-100 text-rose-700 border-rose-200',
+  Unknown: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
 // --- Component Chính ---
-export default function VocabularyPopup({ word, position, onClose, onSave, vocabData }: VocabularyPopupProps) {
+export default function VocabularyPopup({
+  word,
+  position,
+  onClose,
+  onSave,
+  vocabData,
+  sentenceContext,
+  onMouseEnter,
+  onMouseLeave,
+}: VocabularyPopupProps) {
   const [saving, setSaving] = useState(false);
   const [lookupData, setLookupData] = useState<LookupData | null>(null);
   const [loading, setLoading] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
-  
-  // Trạng thái vị trí (bỏ opacity và animation)
+
   const [adjustedPos, setAdjustedPos] = useState({ x: -9999, y: -9999 });
 
-  // 1. Lắng nghe sự kiện Scroll để tự động đóng Popup
+  
+  // Click ra ngoài hoặc nhấn Esc thì tự đóng popup
   useEffect(() => {
-    const handleScroll = (e: Event) => {
-      // Nếu lăn chuột "bên trong" khung nội dung của popup thì bỏ qua (không đóng)
-      if (popupRef.current && popupRef.current.contains(e.target as Node)) {
-        return;
-      }
-      // Nếu cuộn trang ở bên ngoài thì đóng popup
+    const handleClickOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+
+      if (!popupRef.current) return;
+
+      if (popupRef.current.contains(target)) return;
+
       onClose();
     };
 
-    // Dùng capture phase (true) để tóm được mọi sự kiện scroll trên trang
-    window.addEventListener('scroll', handleScroll, true);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('pointerdown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+
     return () => {
-      window.removeEventListener('scroll', handleScroll, true);
+      document.removeEventListener('pointerdown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
     };
   }, [onClose]);
 
-  // 2. Tính toán Tọa độ (Không tràn viền)
   useLayoutEffect(() => {
     if (popupRef.current && position) {
       const rect = popupRef.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
-      // Căn giữa popup theo trục X của con trỏ chuột
-      let newX = position.x - (rect.width / 2);
-      let newY = position.y + 25; // Hiện bên dưới chữ 25px
+      const PADDING = 12;
+      const GAP = 8;
 
-      // Ép vào viền màn hình nếu tràn
-      if (newX < 20) newX = 20;
-      if (newX + rect.width > viewportWidth - 20) newX = viewportWidth - rect.width - 20;
+      const anchorX = position.x;
+      const anchorTop = position.anchorTop ?? position.y;
+      const anchorBottom = position.anchorBottom ?? position.y;
 
-      // Nếu tràn viền dưới, lật popup lên TRÊN chữ
-      if (newY + rect.height > viewportHeight - 20) {
-        newY = position.y - rect.height - 15;
+      // X: canh giữa popup theo từ được click, nhưng không cho tràn màn hình
+      let newX = anchorX - rect.width / 2;
+
+      if (newX < PADDING) {
+        newX = PADDING;
+      } else if (newX + rect.width > viewportWidth - PADDING) {
+        newX = viewportWidth - rect.width - PADDING;
+      }
+
+      // Y: ưu tiên mở dưới từ, nếu chạm đáy thì mở lên trên
+      const spaceBelow = viewportHeight - anchorBottom - PADDING;
+      const spaceAbove = anchorTop - PADDING;
+
+      const canOpenBelow = spaceBelow >= rect.height + GAP;
+      const canOpenAbove = spaceAbove >= rect.height + GAP;
+
+      let newY: number;
+
+      if (canOpenBelow) {
+        // Mở ngay dưới cạnh dưới của từ
+        newY = anchorBottom + GAP;
+      } else if (canOpenAbove) {
+        // Mở ngay trên cạnh trên của từ
+        newY = anchorTop - rect.height - GAP;
+      } else {
+        // Nếu cả trên và dưới đều không đủ, đặt popup vào vùng còn lại nhiều hơn
+        if (spaceBelow >= spaceAbove) {
+          newY = anchorBottom + GAP;
+        } else {
+          newY = anchorTop - rect.height - GAP;
+        }
+
+        // Clamp để không tràn khỏi màn hình
+        newY = Math.max(PADDING, Math.min(newY, viewportHeight - rect.height - PADDING));
       }
 
       setAdjustedPos({ x: newX, y: newY });
     }
-  }, [position, lookupData]);
+  }, [position, lookupData, loading]);
 
-  // 3. Logic Tra Từ (Giữ nguyên)
+  // 3. Logic Tra Từ & Cứu hộ Kanji lẻ
   useEffect(() => {
+    const fetchExtraKanji = async (charArray: string[]) => {
+      try {
+        const res = await fetch('http://localhost:5000/api/kanji/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ characters: charArray }),
+        });
+
+        const data = await res.json();
+
+        if (data.success && data.data.length > 0) {
+          setLookupData((prev) => {
+            if (!prev) return null;
+
+            const currentMeaning = prev.meaning_vi?.trim();
+            const isMissingMeaning =
+              !currentMeaning ||
+              currentMeaning === 'N/A' ||
+              currentMeaning === 'Không rõ nghĩa';
+
+            return {
+              ...prev,
+              kanji_info: data.data,
+              meaning_vi: isMissingMeaning ? data.data[0].mean : prev.meaning_vi,
+            };
+          });
+        }
+      } catch (e) {
+        console.error('Lỗi tra Kanji lẻ:', e);
+      }
+    };
+
     if (vocabData && (vocabData.meaning || vocabData.reading || vocabData.pos)) {
       setLookupData({
         word: vocabData.word || word || '',
         reading: vocabData.reading || '',
         meaning_vi: vocabData.meaning || vocabData.meaning_vi || '',
-        part_of_speech: vocabData.pos || vocabData.part_of_speech || ''
+        part_of_speech: vocabData.pos || vocabData.part_of_speech || '',
+        jlpt_level: vocabData.jlpt_level || 'Unknown',
+        kanji_info: vocabData.kanji_info || [],
       });
+
+      if (!vocabData.kanji_info || vocabData.kanji_info.length === 0) {
+        const kanjis = (vocabData.word || word || '')
+          .split('')
+          .filter((c: string) => c.match(/[\u4e00-\u9faf]/));
+
+        if (kanjis.length > 0) fetchExtraKanji(kanjis);
+      }
+
       setLoading(false);
     } else if (word) {
       lookupWord(word);
+
+      const kanjis = word
+        .split('')
+        .filter((c: string) => c.match(/[\u4e00-\u9faf]/));
+
+      if (kanjis.length > 0) fetchExtraKanji(kanjis);
     }
   }, [word, vocabData]);
 
   const lookupWord = async (w: string) => {
     setLoading(true);
+
     try {
       const res = await fetch('http://localhost:5000/api/video/translate-word', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: w })
+        body: JSON.stringify({ word: w }),
       });
+
       if (!res.ok) throw new Error();
+
       const data = await res.json();
-      
+
       setLookupData({
         word: data.word || w,
         reading: data.reading || 'chưa rõ',
         meaning_vi: data.meaning_vi || 'Không rõ nghĩa',
-        part_of_speech: data.part_of_speech || 'N/A'
+        part_of_speech: data.part_of_speech || 'N/A',
       });
-    } catch(e) {
+    } catch (e) {
       setLookupData({
         word: w,
         reading: 'chưa rõ',
-        meaning_vi: `Chưa có dữ liệu từ điển cho từ này. Vui lòng tạo lại Script AI để bóc tách.`,
+        meaning_vi: 'N/A',
       });
     }
+
     setLoading(false);
   };
 
   const handleSave = async () => {
     if (!lookupData) return;
-    setSaving(true);
-    try {
-      const newSavedVocab = {
-        word: lookupData.word || word,
-        reading: lookupData.reading || '',
-        meaning_vi: lookupData.meaning_vi || '',
-        meaning_en: lookupData.meaning_en || '',
-        jlpt_level: lookupData.jlpt_level || 'Unknown',
-        example_sentence: lookupData.example_sentence || '',
-        example_meaning: lookupData.example_meaning || '',
-        part_of_speech: lookupData.part_of_speech || ''
-      };
 
+    setSaving(true);
+
+    try {
       const token = localStorage.getItem('token') || '';
+
       const res = await fetch('http://localhost:5000/api/video/save-word', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        credentials: 'omit',
-        body: JSON.stringify(newSavedVocab)
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...lookupData,
+          jlpt_level: lookupData.jlpt_level || 'Unknown',
+        }),
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        if (data.message === 'Từ này đã có trong sổ tay') toast.info(data.message);
-        else toast.error(data.error || 'Lỗi khi lưu từ vựng!');
+
+      if (res.ok) {
+        toast.success(data.message || 'Đã lưu từ vựng!');
       } else {
-        toast.success(data.message || 'Đã lưu từ vựng vào Database!');
+        toast.info(data.message || 'Lỗi khi lưu!');
       }
+
       if (onSave) onSave();
     } catch (error) {
       toast.error('Lỗi kết nối khi lưu!');
@@ -168,22 +280,31 @@ export default function VocabularyPopup({ word, position, onClose, onSave, vocab
 
   const playAudio = () => {
     if (!lookupData?.word && !word) return;
+
     const utterance = new SpeechSynthesisUtterance(lookupData?.word || word!);
     utterance.lang = 'ja-JP';
-    utterance.rate = 0.9; 
+    utterance.rate = 0.9;
     window.speechSynthesis.speak(utterance);
   };
 
   if (!word) return null;
 
-  // 4. Bóc tách Hán Việt (Giữ nguyên)
-  let hanViet = '';
+  // 4. Bóc tách Hán Việt Header
+  let hanVietHeader = '';
   let meaningLines: string[] = [];
 
   if (lookupData?.meaning_vi) {
-    const lines = lookupData.meaning_vi.split('\n').map((l: string) => l.trim()).filter(Boolean);
-    if (lines.length > 0 && lines[0] === lines[0].toUpperCase() && !lines[0].match(/^[0-9]/)) {
-      hanViet = lines[0];
+    const lines = lookupData.meaning_vi
+      .split('\n')
+      .map((l: string) => l.trim())
+      .filter(Boolean);
+
+    if (
+      lines.length > 0 &&
+      lines[0] === lines[0].toUpperCase() &&
+      !lines[0].match(/^[0-9]/)
+    ) {
+      hanVietHeader = lines[0];
       meaningLines = lines.slice(1);
     } else {
       meaningLines = lines;
@@ -192,139 +313,246 @@ export default function VocabularyPopup({ word, position, onClose, onSave, vocab
 
   return (
     <>
-      {/* Nền trong suốt bắt sự kiện đóng khi click ra ngoài */}
-      <div className="fixed inset-0 z-40 bg-transparent" onClick={onClose} />
-      
       <div
         ref={popupRef}
-        // Loại bỏ hoàn toàn animation (transition, scale, transformOrigin)
-        className="fixed z-50 shadow-2xl rounded-3xl overflow-hidden flex flex-col w-[320px] max-h-[420px] border border-pink-100"
-        style={{ 
-          left: adjustedPos.x, 
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        className="
+          fixed z-9999
+          flex flex-col
+          w-[290px] md:w-[315px]
+          max-h-[62vh] md:max-h-[50vh]
+          overflow-hidden overscroll-contain
+          rounded-2xl
+          border border-pink-100
+          bg-white
+          shadow-xl 
+        "
+        style={{
+          left: adjustedPos.x,
           top: adjustedPos.y,
-          // Ẩn tạm thời trong mili-giây đầu tiên lúc React đang tính toán tọa độ để tránh giật
-          visibility: adjustedPos.x === -9999 ? 'hidden' : 'visible' 
+          visibility: adjustedPos.x === -9999 ? 'hidden' : 'visible',
         }}
       >
-        
-        {/* NÚT TẮT */}
-        <button 
-          onClick={onClose} 
-          className="absolute top-4 right-4 p-1.5 text-pink-300 hover:text-pink-600 hover:bg-pink-100/50 rounded-full z-10"
+        <button
+          onClick={onClose}
+          className="
+            absolute top-2.5 right-2.5 z-10
+            p-1.5
+            rounded-full
+            text-pink-300
+            hover:text-pink-600
+            hover:bg-pink-100/60
+            transition-colors 
+          "
+          aria-label="Đóng popup từ vựng"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
 
         {loading ? (
-          <div className="p-12 flex flex-col items-center justify-center gap-4 bg-[#fdf8fa] h-full">
-            <Loader2 className="w-8 h-8 text-pink-400 animate-spin" />
-            <p className="text-sm font-medium text-pink-400">Đang tra từ điển...</p>
+          <div className="h-32 bg-[#fdf8fa] p-8 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-6 h-6 text-pink-400 animate-spin" />
+            <p className="text-xs font-medium text-pink-400">
+              Đang tra từ điển...
+            </p>
           </div>
         ) : lookupData ? (
           <>
-            {/* HEADER: Tone màu Pastel Tím/Hồng nhạt nguyên khối */}
-            <div className="p-5 bg-[#fbf3f8] relative shrink-0 border-b border-pink-100/60">
-              <div className="flex flex-col mb-1 pr-6">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-pink-500 font-bold text-sm tracking-widest">{lookupData.reading}</p>
-                  <button onClick={playAudio} className="text-violet-400 hover:text-violet-600 hover:bg-violet-100 p-1 rounded-full active:scale-95">
-                    <Volume2 className="w-4 h-4" />
+            {/* Header compact */}
+            <div className="relative shrink-0 border-b border-pink-100/60 bg-[#fbf3f8] px-4 py-3.5">
+              <div className="pr-8">
+                <div className="mb-1 flex items-center gap-2">
+                  <p className="truncate text-xs font-bold tracking-widest text-pink-500">
+                    {lookupData.reading}
+                  </p>
+
+                  <button
+                    onClick={playAudio}
+                    className="
+                      p-1
+                      rounded-full
+                      text-violet-400
+                      hover:text-violet-600
+                      hover:bg-violet-100
+                      active:scale-95
+                      transition-colors
+                    "
+                    aria-label="Phát âm"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <h3 className="text-3xl font-black text-slate-800 tracking-tight">{lookupData.word || word}</h3>
+
+                <h3 className="text-2xl font-black tracking-tight leading-tight text-slate-800 break-words">
+                  {lookupData.word}
+                </h3>
               </div>
 
-              <div className="flex flex-wrap gap-2 mt-3">
-                {hanViet && (
-                  <Badge className="bg-pink-100 hover:bg-pink-200 text-pink-600 border-none font-bold tracking-widest px-2.5 py-0.5 shadow-xs">
-                    {hanViet}
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {hanVietHeader && (
+                  <Badge className="bg-pink-100 text-pink-600 border-none font-bold tracking-widest px-2 py-0.5 text-[10px] shadow-xs">
+                    {hanVietHeader}
                   </Badge>
                 )}
+
                 {lookupData.part_of_speech && (
-                  <Badge variant="outline" className="bg-white text-violet-600 border-violet-100 px-2.5 py-0.5 font-medium">
+                  <Badge
+                    variant="outline"
+                    className="bg-white text-violet-600 border-violet-100 px-2 py-0.5 text-[10px] font-medium shadow-xs"
+                  >
                     {lookupData.part_of_speech}
                   </Badge>
                 )}
+
                 {lookupData.jlpt_level && lookupData.jlpt_level !== 'Unknown' && (
-                  <Badge className={`${jlptBadgeColors[lookupData.jlpt_level] || 'bg-slate-100 text-slate-600 border-slate-200'} border px-2.5 py-0.5 font-bold shadow-xs`}>
+                  <Badge
+                    className={`
+                      ${jlptBadgeColors[lookupData.jlpt_level] || 'bg-slate-100 text-slate-600 border-slate-200'}
+                      border px-2 py-0.5 text-[10px] font-bold shadow-xs
+                    `}
+                  >
                     {lookupData.jlpt_level}
                   </Badge>
                 )}
               </div>
             </div>
 
-            {/* BODY: Định nghĩa (Màu nền sáng hơn xíu để dễ đọc chữ) */}
-            <div className="p-5 overflow-y-auto custom-scrollbar flex-1 bg-[#fffbfd]">
-              {meaningLines.length > 0 ? (
-                <ul className="space-y-3">
-                  {meaningLines.map((line, idx) => {
-                    const match = line.match(/^([0-9]+\.)(.*)/);
-                    if (match) {
-                      return (
-                        <li key={idx} className="text-slate-700 text-[14.5px] leading-relaxed flex gap-2">
-                          <span className="font-black text-pink-400 shrink-0 select-none">{match[1]}</span>
-                          <span className="font-medium">{match[2]}</span>
-                        </li>
-                      );
-                    }
-                    return (
-                      <li key={idx} className="text-slate-700 text-[14.5px] leading-relaxed relative pl-4 before:absolute before:left-0 before:top-2 before:w-1.5 before:h-1.5 before:bg-violet-300 before:rounded-full font-medium">
-                        {line}
+            {/* Body scroll compact */}
+            <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar bg-[#fffbfd]">
+              <div className="px-4 py-3">
+                {meaningLines.length > 0 && meaningLines[0] !== 'N/A' ? (
+                  <ul className="space-y-2">
+                    {meaningLines.map((line, idx) => (
+                      <li
+                        key={idx}
+                        className="flex gap-2 text-[13px] leading-relaxed text-slate-700"
+                      >
+                        <span className="shrink-0 select-none font-black text-pink-400">
+                          {idx + 1}.
+                        </span>
+                        <span className="font-medium">
+                          {line.replace(/^[0-9]+\./, '')}
+                        </span>
                       </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-2 text-slate-400 py-4 italic">
-                  <Sparkles className="w-5 h-5 text-pink-300" />
-                  <span className="text-sm">Chưa có định nghĩa chi tiết.</span>
-                </div>
-              )}
-              
-              {lookupData.meaning_en && (
-                <p className="text-slate-500 text-sm mt-4 pt-3 border-t border-pink-50 font-medium italic">
-                  {lookupData.meaning_en}
-                </p>
-              )}
-            </div>
-
-            {/* MỞ RỘNG & NÚT LƯU */}
-            <div className="shrink-0 bg-[#fffbfd]">
-              {lookupData.example_sentence && (
-                <div className="px-5 py-3 border-t border-pink-100 bg-[#fbf3f8]/50">
-                  <p className="text-xs font-bold text-violet-500 mb-1.5 flex items-center gap-1.5 uppercase tracking-wider">
-                    <BookOpen className="w-3 h-3" /> Ví dụ
-                  </p>
-                  <p className="text-[14px] font-bold text-slate-700 leading-snug">{lookupData.example_sentence}</p>
-                  <p className="text-sm text-slate-500 mt-1">{lookupData.example_meaning}</p>
-                </div>
-              )}
-
-              {lookupData.related_words && lookupData.related_words.length > 0 && (
-                <div className="px-5 py-3 border-t border-pink-100">
-                  <p className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Từ liên quan</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {lookupData.related_words.slice(0, 5).map((rw, i) => (
-                      <Badge key={i} variant="secondary" className="bg-white text-slate-500 border border-slate-100 shadow-xs">
-                        {rw}
-                      </Badge>
                     ))}
+                  </ul>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 py-3 text-slate-400 italic">
+                    <Sparkles className="w-4 h-4 text-pink-300" />
+                    <span className="text-xs">
+                      Nghĩa đang được cập nhật qua Kanji...
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {sentenceContext && (
+                <div className="border-t border-pink-100 bg-violet-50/30 px-4 py-2.5">
+                  <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-violet-500">
+                    <Quote className="w-3 h-3" />
+                    Ngữ cảnh trong video
+                  </p>
+                  <p className="text-[12.5px] font-semibold leading-snug text-slate-700">
+                    {sentenceContext}
+                  </p>
+                </div>
+              )}
+
+              {lookupData.kanji_info && lookupData.kanji_info.length > 0 && (
+                <div className="border-t border-dashed border-pink-200 bg-white px-4 py-3">
+                  <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-pink-400">
+                    <BookOpen className="w-3 h-3" />
+                    Phân tích Hán Tự
+                  </p>
+
+                  <div className="space-y-2">
+                    {lookupData.kanji_info.map((kanji: any, idx: number) => {
+                      const shortDetail = kanji.detail
+                        ?.split(/[,;]/)
+                        .slice(0, 3)
+                        .join(', ')
+                        .trim();
+
+                      return (
+                        <div
+                          key={idx}
+                          className="
+                            flex items-start
+                            rounded-xl
+                            border border-pink-50
+                            bg-[#fdf8fa]
+                            p-2.5
+                            shadow-sm
+                          "
+                        >
+                          <div className="mr-3 w-9 flex-shrink-0 text-center text-2xl font-black text-rose-500">
+                            {kanji.kanji}
+                          </div>
+
+                          <div className="min-w-0 flex-1 text-xs">
+                            <p className="mb-1 text-[12px] font-bold text-slate-800">
+                              {kanji.mean}
+                              <span className="ml-1 text-[9.5px] font-normal text-slate-400">
+                                (N{kanji.level})
+                              </span>
+                            </p>
+
+                            {shortDetail && (
+                              <p className="mb-1.5 line-clamp-2 border-l-2 border-pink-100 pl-2 text-[11px] leading-relaxed text-slate-500 italic">
+                                {shortDetail}...
+                              </p>
+                            )}
+
+                            <div className="mt-1 grid grid-cols-[32px_1fr] gap-x-1 gap-y-0.5 border-t border-pink-50/50 pt-1 text-[10px]">
+                              <span className="font-semibold uppercase text-pink-400">
+                                Kun
+                              </span>
+                              <span className="break-words text-slate-600">
+                                {kanji.kun || '-'}
+                              </span>
+
+                              <span className="font-semibold uppercase text-pink-400">
+                                On
+                              </span>
+                              <span className="break-words text-slate-600">
+                                {kanji.on || '-'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
+            </div>
 
-              {/* FOOTER */}
-              <div className="p-4 border-t border-pink-100 bg-[#fffbfd]">
-                <Button
-                  onClick={handleSave}
-                  disabled={saving}
-                  // Màu nút trơn mượt mà (Violet Solid)
-                  className="w-full h-11 rounded-xl bg-violet-500 hover:bg-violet-600 text-white font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2"
-                >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4 fill-white/20" />}
-                  Lưu vào Sổ tay
-                </Button>
-              </div>
+            {/* Footer compact */}
+            <div className="shrink-0 border-t border-pink-100 bg-[#fffbfd] p-3">
+              <Button
+                onClick={handleSave}
+                disabled={saving}
+                className="
+                  w-full h-9
+                  rounded-xl
+                  bg-violet-500
+                  hover:bg-violet-600
+                  text-white
+                  text-xs
+                  font-bold
+                  shadow-sm
+                  transition-colors
+                  flex items-center justify-center gap-2
+                "
+              >
+                {saving ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Star className="w-3.5 h-3.5 fill-white/20" />
+                )}
+                Lưu vào Sổ tay
+              </Button>
             </div>
           </>
         ) : null}

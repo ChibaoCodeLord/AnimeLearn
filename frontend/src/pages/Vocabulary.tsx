@@ -1,29 +1,42 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Loader2, BookOpen, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Loader2, BookOpen, Sparkles, CheckCircle2, Download, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import FlashCard, { type FlashcardWord } from '../components/vocabulary/Flashcard';
 import VocabList, { type VocabItem } from '../components/vocabulary/VocalList';
 
-// --- Các hàm tiện ích xử lý Storage (Mock Database) ---
+// --- Các hàm tiện ích xử lý API ---
 
-const STORAGE_KEY = 'my_anime_saved_vocab';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
-const getVocabFromStorage = (): VocabItem[] => {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) return JSON.parse(stored);
-  
-  const match = document.cookie.match(new RegExp('(^| )' + STORAGE_KEY + '=([^;]+)'));
-  if (match) return JSON.parse(decodeURIComponent(match[2]));
-  
-  return [];
+const getExportDateStamp = () => new Date().toISOString().slice(0, 10);
+
+const downloadTextFile = (content: string, filename: string, mimeType: string) => {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 };
 
-const saveVocabToStorage = (list: VocabItem[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  document.cookie = `${STORAGE_KEY}=${encodeURIComponent(JSON.stringify(list))}; path=/; max-age=2592000`;
+const escapeCsvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+const escapeAnkiField = (value: string) => value.replace(/\t/g, ' ').replace(/\r?\n/g, '<br>');
+
+const fetchVocabulary = async () => {
+  const token = localStorage.getItem('token') || '';
+  const res = await fetch(`${API_BASE_URL}/api/vocabulary`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Không lấy được từ vựng');
+  return data.map((v: any) => ({ ...v, id: v._id || v.id }));
 };
 
 // --- Component Chính ---
@@ -35,41 +48,52 @@ export default function Vocabulary() {
   // 1. Query lấy danh sách từ vựng
   const { data: vocabulary = [], isLoading } = useQuery<VocabItem[]>({
     queryKey: ['vocabulary'],
-    queryFn: async () => {
-      await new Promise(r => setTimeout(r, 600)); // Giả lập delay cho mượt
-      return getVocabFromStorage();
-    },
+    queryFn: fetchVocabulary,
     initialData: [],
   });
 
   // 2. Mutation xóa từ vựng
   const deleteMutation = useMutation({
     mutationFn: async (id: string | number) => {
-      await new Promise(r => setTimeout(r, 300));
-      const current = getVocabFromStorage();
-      const filtered = current.filter(v => v.id !== id);
-      saveVocabToStorage(filtered);
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(`${API_BASE_URL}/api/vocabulary/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Xóa từ vựng thất bại');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vocabulary'] });
       toast.success('Đã xóa từ vựng khỏi sổ tay');
     },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Xóa từ vựng thất bại');
+    }
   });
 
   // 3. Mutation cập nhật (sau khi review Flashcard)
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string | number; data: any }) => {
-      await new Promise(r => setTimeout(r, 200));
-      const current = getVocabFromStorage();
-      const index = current.findIndex(v => v.id === id);
-      if (index !== -1) {
-        current[index] = { ...current[index], ...data };
-        saveVocabToStorage(current);
-      }
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(`${API_BASE_URL}/api/vocabulary/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Cập nhật thất bại');
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vocabulary'] });
     },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Cập nhật thất bại');
+    }
   });
 
   // Lọc các từ đến hạn ôn tập (next_review_date <= hôm nay)
@@ -77,6 +101,55 @@ export default function Vocabulary() {
     if (!v.next_review_date) return true;
     return new Date(v.next_review_date) <= new Date();
   });
+
+
+  const exportToAnki = () => {
+    if (vocabulary.length === 0) {
+      toast.error('Không có dữ liệu để xuất');
+      return;
+    }
+
+    const ankiData = vocabulary
+      .map((v: VocabItem) => {
+        const front = escapeAnkiField([v.word, v.reading].filter(Boolean).join(' · '));
+        const back = escapeAnkiField(
+          [v.meaning_vi, v.meaning_en, v.example_sentence, v.example_meaning]
+            .filter(Boolean)
+            .join('<br><br>')
+        );
+        return `${front}\t${back}`;
+      })
+      .join('\n');
+
+    downloadTextFile(ankiData, `vocabulary_anki_${getExportDateStamp()}.tsv`, 'text/tab-separated-values;charset=utf-8');
+    toast.success('Đã xuất file Anki!');
+  };
+
+  const exportToCSV = () => {
+    if (vocabulary.length === 0) {
+      toast.error('Không có dữ liệu để xuất');
+      return;
+    }
+
+    const headers = ['Từ', 'Đọc', 'Nghĩa (VI)', 'Nghĩa (EN)', 'JLPT', 'Ví dụ', 'Nghĩa ví dụ'];
+    const rows = vocabulary.map((v: VocabItem) => [
+      v.word || '',
+      v.reading || '',
+      v.meaning_vi || '',
+      v.meaning_en || '',
+      v.jlpt_level || '',
+      v.example_sentence || '',
+      v.example_meaning || '',
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map(escapeCsvCell).join(','))
+      .join('\n');
+
+    downloadTextFile(`\uFEFF${csvContent}`, `vocabulary_${getExportDateStamp()}.csv`, 'text/csv;charset=utf-8');
+    toast.success('Đã xuất file CSV!');
+  };
+  
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 md:py-12">
@@ -162,6 +235,35 @@ export default function Vocabulary() {
         {/* Tab Danh sách quản lý */}
         <TabsContent value="list" className="focus-visible:outline-hidden mt-0">
           <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xs p-2 sm:p-6 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-2 sm:px-0">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Danh sách từ vựng</h3>
+                <p className="text-sm text-slate-500"></p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 shrink-0"
+                  onClick={exportToAnki}
+                  disabled={isLoading || vocabulary.length === 0}
+                >
+                  <Download className="w-4 h-4" />
+                  Anki (TSV)
+                </Button>
+                <Button
+                  type="button"
+                  className="gap-2 bg-linear-to-r from-emerald-500 to-teal-600 text-white hover:opacity-90 shrink-0"
+                  onClick={exportToCSV}
+                  disabled={isLoading || vocabulary.length === 0}
+                >
+                  <FileText className="w-4 h-4" />
+                  Xuất CSV
+                </Button>
+              </div>
+            </div>
+
             <VocabList
               vocabulary={vocabulary}
               isLoading={isLoading}

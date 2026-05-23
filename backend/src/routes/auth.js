@@ -75,7 +75,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role},
+      { id: user._id, email: user.email, role: user.role },
       process.env.JWT_SECRET, // bắt buộc phải có env
       { expiresIn: '7d' }
     );
@@ -157,7 +157,8 @@ router.put('/update-profile', authMiddleware, handleAvatarUpload, async (req, re
     let profilePicture = req.body.profilePicture; // Fallback in case of string
 
     if (req.file) {
-      profilePicture = req.file.path; // Cloudinary URL
+      // Use path if available, fallback to secure_url or url
+      profilePicture = req.file.path || req.file.secure_url || req.file.url;
     }
 
     // Validate input
@@ -180,7 +181,7 @@ router.put('/update-profile', authMiddleware, handleAvatarUpload, async (req, re
         fullName: fullName || undefined,
         jlptLevel: jlptLevel || undefined,
         bio: bio !== undefined ? bio : undefined,
-        profilePicture: profilePicture || undefined,
+        profilePicture: profilePicture !== undefined ? profilePicture : undefined,
         phone: phone || undefined,
         location: location || undefined,
       },
@@ -312,7 +313,6 @@ router.get('/learning-progress', authMiddleware, async (req, res) => {
   }
 });
 
-// Get user's courses with progress
 // Get user's achievements
 router.get('/achievements', authMiddleware, async (req, res) => {
   try {
@@ -366,16 +366,16 @@ router.get('/profile-stats', authMiddleware, async (req, res) => {
     // Check if streak is lost
     const todayDate = new Date();
     todayDate.setHours(0, 0, 0, 0);
-    
+
     let currentStreak = user.dayStreak || 0;
-    
+
     if (user.lastActiveDate) {
       const lastActive = new Date(user.lastActiveDate);
       lastActive.setHours(0, 0, 0, 0);
-      
+
       const timeDiff = todayDate.getTime() - lastActive.getTime();
       const daysDiff = Math.round(timeDiff / (1000 * 60 * 60 * 24));
-      
+
       // If more than 1 day has passed, streak is broken
       if (daysDiff > 1 && currentStreak > 0) {
         currentStreak = 0;
@@ -579,12 +579,11 @@ router.post('/track-session', authMiddleware, async (req, res) => {
 
     await activity.save();
 
+
     // Get the user to check if they need a streak update
     const currentUser = await User.findById(req.user.id);
-    // Normalize to calendar days
-    const now = new Date();
-  
-    const todayDate = new Date(now);
+
+    const todayDate = new Date(Date.now());
     todayDate.setHours(0, 0, 0, 0);
 
     let streakUpdate = {};
@@ -614,7 +613,7 @@ router.post('/track-session', authMiddleware, async (req, res) => {
       req.user.id,
       {
         $inc: { totalLearningHours: durationHours },
-        lastActiveDate: now,
+        lastActiveDate: Date.now(),
         ...streakUpdate
       },
       { new: true }
