@@ -2,15 +2,14 @@ import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
-  Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, 
-  Menu, GraduationCap, ChevronRight, Search // ✨ Đã import thêm icon Search
+  Home, Brain, BarChart3, Shield, MessageCircle, 
+  Menu, ChevronRight, Search 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
 import UserBannedError from '@/components/UserBannedError';
 import MiniVinylPlayer from '@/components/player/MiniVinylPlayer';
 
-// ✨ Đã thêm path '/Dictionary' vào danh sách menu
 const navItems = [
   { path: '/home', label: 'Trang chủ', icon: Home },
   { path: '/Dictionary', label: 'Từ điển', icon: Search },
@@ -135,7 +134,7 @@ export default function Layout() {
 
   return (
     <div className="flex flex-col min-h-screen w-full bg-linear-to-br from-emerald-50 via-teal-50 to-green-50 overflow-x-hidden">
-      <header className={`fixed top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-lg border-b  border-emerald-400 z-40 flex items-center justify-between gap-4 px-4 transition-all duration-300 sm:px-6 ${sidebarOpen ? 'lg:left-64' : 'lg:left-20'}`}>
+      <header className={`fixed top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-lg border-b border-emerald-400 z-40 flex items-center justify-between gap-4 px-4 transition-all duration-300 sm:px-6 ${sidebarOpen ? 'lg:left-64' : 'lg:left-20'}`}>
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex items-center lg:hidden">
             <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="text-slate-600">
@@ -275,50 +274,6 @@ export default function Layout() {
       <main className={`flex-1 min-w-0 flex flex-col w-full h-full relative pt-16 transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
         <Outlet />
       </main>
-
-      <footer className="w-full bg-white border-t border-emerald-100 mt-auto shrink-0 z-10 relative">
-        <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
-          <div className="max-w-7xl mx-auto px-6 py-8">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
-                    <GraduationCap className="w-4 h-4 text-white" />
-                  </div>
-                  <span className="font-bold text-slate-900">My Anime</span>
-                </div>
-                <p className="text-sm text-slate-600 max-w-xs">Nền tảng Học tiếng Nhật qua Anime với AI.</p>
-              </div>
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-3">Tính năng</h4>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="hover:text-emerald-600 cursor-pointer">Script AI tự động</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">Phụ đề song ngữ</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">Flashcard thông minh</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-3">Hỗ trợ</h4>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="hover:text-emerald-600 cursor-pointer">Hướng dẫn sử dụng</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">FAQ</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">Liên hệ</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-3">Theo dõi</h4>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="hover:text-emerald-600 cursor-pointer">Facebook</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">Twitter</li>
-                </ul>
-              </div>
-            </div>
-            <div className="mt-8 pt-6 border-t border-emerald-100 text-center text-sm text-slate-500">
-              © 2026 My Anime. All rights reserved.
-            </div>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
