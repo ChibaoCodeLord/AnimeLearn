@@ -74,4 +74,9 @@ const VideoSchema = new mongoose.Schema({
   },
 });
 
+VideoSchema.index({ status: 1, visibility: 1, created_date: -1 });
+VideoSchema.index({ status: 1, visibility: 1, jlpt_level: 1, created_date: -1 });
+VideoSchema.index({ status: 1, created_date: -1 });
+VideoSchema.index({ creator: 1, created_date: -1 });
+
 export default mongoose.model('Video', VideoSchema);
