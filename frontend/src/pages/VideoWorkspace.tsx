@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
-  Loader2, Sparkles, Share2, Youtube, FileText, Mic, Brain, Eye, 
+  Loader2, Sparkles, Share2, Youtube, Mic, Brain, Eye, 
   EyeOff, Heart, AlertTriangle, BrainCircuit, PlayCircle, X, BookOpen , Mic2
 } from 'lucide-react'; 
 import { toast } from 'sonner';
@@ -16,8 +16,6 @@ import { toast } from 'sonner';
 import ScriptPanel, { type ScriptLine } from '../components/video/ScriptPanel'; // box hiển thị script bên phải
 
 import SubtitleOverlay from '../components/video/SubtitleOverlay'; // phụ đề
-
-import PlayerControls from '../components/video/PlayerControls'; // thanh điều khiển video, bây giờ k dùng nx
 
 import VocabularyPopup from '../components/video/VocabularyPopup'; //popup từ vựng khi click vào từ trong subtitle
 import VideoRagChatWidget from '../components/video/VideoRagChatWidget'; // chat rag
@@ -217,8 +215,6 @@ export default function VideoWorkspace() {
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLooping, setIsLooping] = useState(false);
-  const [loopCount] = useState(3);
   const [generating, setGenerating] = useState(false);
   
   const [showVocabList, setShowVocabList] = useState(true);
@@ -706,6 +702,7 @@ export default function VideoWorkspace() {
   };
 
   const generateScript = async () => {
+    if (isAdmin) return toast.error('Admin không được đăng video');
     if (!currentYoutubeUrl) return toast.error('Vui lòng nhập link YouTube hợp lệ');
     setGenerating(true);
     toast.info('Hệ thống đang tải và phân tích audio, quá trình này có thể mất vài phút...');
@@ -719,7 +716,10 @@ export default function VideoWorkspace() {
         credentials: 'omit'
       });
 
-      if (!response.ok) throw new Error('Đã có lỗi xảy ra từ máy chủ khi phân tích video.');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || 'Đã có lỗi xảy ra từ máy chủ khi phân tích video.');
+      }
       const result = await response.json();
       
       const saveRes = await fetch('http://localhost:5000/api/video/save', {
@@ -916,7 +916,7 @@ export default function VideoWorkspace() {
                     >
                       <Youtube className="w-16 h-16 text-slate-300 mb-4" />
                       <p className="text-slate-500 font-medium">
-                        Chưa có video. Vui lòng dán link YouTube.
+                        {isAdmin ? 'Admin chỉ có thể mở video đã có để kiểm duyệt.' : 'Chưa có video. Vui lòng dán link YouTube.'}
                       </p>
                     </div>
                   )}
@@ -969,6 +969,20 @@ export default function VideoWorkspace() {
               {/* Actions + Metadata */}
               <div className="flex flex-wrap items-center gap-2">
                 {script.length === 0 ? (
+                  isAdmin ? (
+                    <div
+                      className={`
+                        ${pillBase}
+                        min-w-[204px]
+                        border border-amber-200
+                        bg-amber-50
+                        text-amber-700
+                      `}
+                    >
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span className="truncate">Admin không được đăng video</span>
+                    </div>
+                  ) : (
                   <Button
                     onClick={generateScript}
                     disabled={generating || !ytId}
@@ -991,6 +1005,7 @@ export default function VideoWorkspace() {
                       {generating ? 'Đang phân tích...' : 'Tạo Script AI'}
                     </span>
                   </Button>
+                  )
                 ) : existingQuiz ? (
                   <Button
                     type="button"
