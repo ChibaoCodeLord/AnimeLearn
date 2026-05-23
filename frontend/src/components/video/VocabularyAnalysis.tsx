@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { BookmarkPlus, Loader2 } from 'lucide-react';
+import { BookmarkPlus, Loader2, BookOpen } from 'lucide-react'; // Thêm BookOpen cho icon tiêu đề
 import { toast } from 'sonner';
 
 // Định nghĩa cấu trúc của một từ vựng hiển thị
@@ -148,39 +148,86 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
   if (!vocabulary || vocabulary.length === 0) return null;
 
   return (
-    <div className="mt-3 space-y-2">
-      <p className="text-xs text-slate-500 font-medium">Từ vựng trong câu:</p>
-      <div className="space-y-2">
+    <div className="border border-teal-200 pt-3 p-2 bg-to-br from-emerald-50 to-teal-50 rounded-2xl">
+      <p className="text-[11px] font-bold text-teal-700 uppercase tracking-wider mb-3 flex items-center gap-1.5 px-1">
+        <BookOpen className="w-3.5 h-3.5" />
+        Từ vựng trong câu
+      </p>
+      
+      <div className="space-y-2.5">
         {vocabulary.map((v, idx) => (
           <div 
             key={idx} 
-            // THÊM HIỆU ỨNG CLICK VÀ GỌI HÀM onWordClick Ở ĐÂY
             onClick={() => onWordClick && onWordClick(v)}
-            className="flex items-center justify-between gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100/60 transition-colors"
+            className="
+              group
+              relative
+              flex items-center justify-between gap-3
+              p-3 pl-4
+              rounded-xl
+              bg-white
+              border border-slate-300
+              shadow-sm
+              cursor-pointer
+              transition-all duration-200
+              hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/30
+              overflow-hidden
+            "
           >
+            {/* Vạch trang trí bên trái hiện lên khi Hover */}
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+
             <div className="flex-1 min-w-0 pointer-events-none">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-900">{v.word}</span>
-                <span className="text-sm text-emerald-600">{v.reading}</span>
+              <div className="flex items-baseline gap-2.5 mb-1.5">
+                <span className="text-[17px] font-black text-slate-900 tracking-tight">
+                  {v.word}
+                </span>
+                
+                <div className="flex items-center gap-2 min-w-0">
+                  {v.reading && (
+                    <span
+                      title={v.reading}
+                      className="inline-block max-w-[120px] truncate align-middle text-[14px] font-bold text-emerald-700 border border-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-md"
+                    >
+                      {v.reading}
+                    </span>
+                  )}
+                </div>
+                
+                {v.pos && (
+                  <span className="text-[12px] font-bold text-slate-600 uppercase tracking-wider border border-slate-600 px-1.5 py-0.5 rounded">
+                    {v.pos}
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-slate-600 line-clamp-1">{v.meaning}</p>
+              <p className="text-[14px] text-slate-600 font-medium line-clamp-1 pr-2">
+                {v.meaning}
+              </p>
             </div>
+
             <Button
               size="sm"
-              variant="ghost"
+              variant="secondary"
               onClick={(e) => {
-                e.stopPropagation(); // CỰC KỲ QUAN TRỌNG: Ngăn chặn click lan ra ngoài làm mở Modal
+                e.stopPropagation(); // Ngăn chặn click lan ra ngoài làm mở Modal
                 saveWord(v);
               }}
               disabled={saving[v.word]}
-              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-200/50 gap-1 shrink-0"
+              className="
+                shrink-0
+                h-9 px-3
+                bg-slate-100 text-slate-600 
+                hover:bg-emerald-100 hover:text-emerald-700
+                transition-colors border border-transparent hover:border-emerald-200
+                gap-1.5
+              "
             >
               {saving[v.word] ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <BookmarkPlus className="w-3 h-3" />
+                <BookmarkPlus className="w-3.5 h-3.5" />
               )}
-              <span className="text-xs">Lưu</span>
+              <span className="text-[13px] font-semibold">Lưu</span>
             </Button>
           </div>
         ))}

@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
 import UserBannedError from '@/components/UserBannedError';
+import MiniVinylPlayer from '@/components/player/MiniVinylPlayer';
 
 // ✨ Đã thêm path '/Dictionary' vào danh sách menu
 const navItems = [
@@ -134,14 +135,18 @@ export default function Layout() {
 
   return (
     <div className="flex flex-col min-h-screen w-full bg-linear-to-br from-emerald-50 via-teal-50 to-green-50 overflow-x-hidden">
-      <header className="fixed top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-lg border-b border-emerald-100 z-40 flex items-center justify-between px-6">
-        <div className="flex items-center lg:hidden">
-          <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="text-slate-600">
-            <Menu className="w-6 h-6" />
-          </Button>
+      <header className={`fixed top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-lg border-b  border-emerald-400 z-40 flex items-center justify-between gap-4 px-4 transition-all duration-300 sm:px-6 ${sidebarOpen ? 'lg:left-64' : 'lg:left-20'}`}>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex items-center lg:hidden">
+            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="text-slate-600">
+              <Menu className="w-6 h-6" />
+            </Button>
+          </div>
+
+          <MiniVinylPlayer className="w-full max-w-[460px]" />
         </div>
         
-        <div className="flex items-center gap-3 ml-auto">
+        <div className="flex shrink-0 items-center gap-3">
           {isLoading ? (
             <div className="text-sm text-slate-500">Đang tải...</div>
           ) : error || !user ? (
@@ -200,7 +205,7 @@ export default function Layout() {
         </div>
       </header>
 
-      <aside className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-emerald-100 transition-all duration-300 flex flex-col shrink-0 ${sidebarOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-full lg:translate-x-0'}`}>
+      <aside className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-emerald-400 transition-all duration-300 flex flex-col shrink-0 ${sidebarOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-full lg:translate-x-0'}`}>
         <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 shrink-0">
           <Link to="/home" className={`flex items-center gap-2 overflow-hidden transition-all ${sidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'}`}>
             <img 

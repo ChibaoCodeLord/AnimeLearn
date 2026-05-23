@@ -11,10 +11,34 @@ import { indexVideoScript } from '../services/ragChatService.js';
 import Quiz from '../models/Quiz.js';
 import Kanji from '../models/Kanji.js';
 import { generateQuizFromScript } from '../services/quizAIService.js';
+import axios from 'axios';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import KuroshiroModule from "kuroshiro";
+import KuromojiAnalyzerModule from "kuroshiro-analyzer-kuromoji";
+
+const Kuroshiro = KuroshiroModule.default || KuroshiroModule;
+const KuromojiAnalyzer =
+  KuromojiAnalyzerModule.default || KuromojiAnalyzerModule;
+
+const kuroshiro = new Kuroshiro();
+
+let isKuroshiroInit = false;
+let kuroshiroInitPromise = null;
+
+async function initKuroshiro() {
+  if (isKuroshiroInit) return;
+
+  if (!kuroshiroInitPromise) {
+    kuroshiroInitPromise = kuroshiro.init(new KuromojiAnalyzer());
+  }
+
+  await kuroshiroInitPromise;
+  isKuroshiroInit = true;
+}
 const scriptPath = path.join(__dirname, '../scripts/transcribe.py');
 const AI_SERVICE = process.env.AI_SERVICE; 
 
@@ -74,6 +98,43 @@ function parsePythonJsonOutput(rawOutput) {
   throw new Error('Không tìm thấy JSON hợp lệ trong output của Python');
 }
 
+// Hàm dịch thời gian YouTube (PT12M30S) sang giây (750)
+function parseYouTubeDuration(durationStr) {
+  const match = durationStr.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+  if (!match) return 0;
+  
+  const hours = (parseInt(match[1]) || 0);
+  const minutes = (parseInt(match[2]) || 0);
+  const seconds = (parseInt(match[3]) || 0);
+  
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+// Hàm lấy trọn gói thông tin Video từ YouTube API v3
+async function fetchYouTubeVideoDetails(videoId) {
+  try {
+    const API_KEY = process.env.YOUTUBE_API_KEY; 
+    const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet,contentDetails&key=${API_KEY}`;
+    
+    const response = await axios.get(url);
+    const items = response.data.items;
+    
+    if (items && items.length > 0) {
+      const videoData = items[0];
+      const title = videoData.snippet.title; 
+      const isoDuration = videoData.contentDetails.duration; 
+      const durationSeconds = parseYouTubeDuration(isoDuration); 
+      
+      return { title, duration: durationSeconds };
+    }
+    
+    return { title: 'Video tự động bóc băng', duration: 0 };
+  } catch (error) {
+    console.error("Lỗi lấy thông tin từ YouTube API:", error.message);
+    return { title: 'Video tự động bóc băng', duration: 0 };
+  }
+}
+
 function normalizeUtf8Value(value) {
   if (typeof value === 'string') {
     return value.normalize('NFC');
@@ -98,6 +159,10 @@ router.post('/analyze', authMiddleware, async (req, res) =>  {
   const { url } = req.body;
   const endpoint = 'transcribe';
   console.log(`[analyze Log]: đã gọi analyze}`);
+
+  if (req.user?.role === 'admin') {
+    return res.status(403).json({ error: 'Admin khong duoc dang video' });
+  }
 
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
@@ -247,13 +312,26 @@ router.post('/save-word', authMiddleware, async (req, res) => {
 
 router.post('/save', authMiddleware, async (req, res) => {
   try {
-    const { title, youtube_url, script } = req.body;
+    if (req.user?.role === 'admin') {
+      return res.status(403).json({ error: 'Admin khong duoc dang video' });
+    }
+
+    const { youtube_url, script } = req.body;
     const userId = req.user.id || req.user.userId;
 
     // 1. Xử lý ID YouTube và Thumbnail
     const ytMatch = youtube_url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?\s]+)/);
     const ytId = ytMatch ? ytMatch[1] : null;
     const thumbnail_url = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : '';
+
+    // Khởi tạo biến lưu thông tin tự động
+    let autoTitle = 'Youtube auto transcription';
+    let realDurationSeconds = 0;
+    if (ytId) {
+       const ytDetails = await fetchYouTubeVideoDetails(ytId);
+       autoTitle = ytDetails.title;             // Tiêu đề thật từ YouTube
+       realDurationSeconds = ytDetails.duration; // Thời lượng thật từ YouTube
+    }
 
     // ==============================================================
     // 2. GOM TỪ VỰNG & TRA KANJI NGAY TẠI THỜI ĐIỂM TẠO VIDEO
@@ -308,13 +386,15 @@ router.post('/save', authMiddleware, async (req, res) => {
 
     // 3. Lưu Video với tất cả dữ liệu
     const newVideo = new Video({
-      title,
+      title: autoTitle, // 🎯 Đã tự động điền tiêu đề xịn, không lo bị trống!
       youtube_url,
       thumbnail_url,
       script,
-      vocab_list: enrichedVocabList, // LƯU VÀO DATABASE TẠI ĐÂY
+      vocab_list: enrichedVocabList,
       creator: userId,
-      jlpt_level: 'Unknown'
+      jlpt_level: 'Unknown',
+      duration: realDurationSeconds || 0, // Lưu thời lượng thật
+      video_theme: 'Anime'          // Có thể mặc định hoặc cho user chọn sau
     });
 
     // 4. TỰ ĐỘNG GỌI AI ĐỂ TẠO QUIZ
@@ -538,7 +618,7 @@ router.get('/user/my-videos', authMiddleware, async (req, res) => {
     const total = await Video.countDocuments({ creator: currentUserId });
     
     const videos = await Video.find({ creator: currentUserId })
-      .select('_id title thumbnail_url jlpt_level views_count status visibility created_date')
+      .select('_id title thumbnail_url jlpt_level views_count status visibility created_date duration video_theme')
       .sort({ created_date: -1 })
       .skip(skip)
       .limit(limit);
@@ -729,8 +809,9 @@ router.get('/public-videos', async (req, res) => {
     const [videos, totalCount] = await Promise.all([
       Video.find(query)
         // Chỉ select những trường cần thiết cho Card ở trang Home để tiết kiệm băng thông
-        .select('_id title thumbnail_url jlpt_level views_count likes_count created_date')
+        .select('_id title thumbnail_url jlpt_level views_count likes_count created_date duration video_theme')
         .sort({ created_date: -1 }) // Mới nhất xếp trước
+        .allowDiskUse(true)
         .skip(skip)
         .limit(limitNum)
         .lean(), // Trả về plain JS object cho nhẹ
@@ -745,7 +826,9 @@ router.get('/public-videos', async (req, res) => {
       jlpt_level: v.jlpt_level,
       views_count: v.views_count,
       likes_count: v.likes_count,
-      created_date: v.created_date
+      created_date: v.created_date,
+      duration: v.duration || 0,
+      video_theme: v.video_theme || ''
     }));
 
     // 5. Trả về kết quả
@@ -761,5 +844,36 @@ router.get('/public-videos', async (req, res) => {
     res.status(500).json({ success: false, error: 'Lỗi server khi tải danh sách video' });
   }
 });
+
+
+// API xử lý Furigana On-the-fly cho duy nhất 1 câu
+router.post("/furigana-line", async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    if (!text || !String(text).trim()) {
+      return res.json({ html: "" });
+    }
+
+    await initKuroshiro();
+
+    const htmlResult = await kuroshiro.convert(String(text), {
+      mode: "furigana",
+      to: "hiragana",
+    });
+
+    return res.json({
+      html: htmlResult,
+    });
+  } catch (error) {
+    console.error("Lỗi convert Furigana:", error);
+
+    return res.status(500).json({
+      html: "",
+      error: "Không thể xử lý Furigana",
+    });
+  }
+});
+
 
 export default router;

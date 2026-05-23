@@ -60,7 +60,25 @@ const VideoSchema = new mongoose.Schema({
   created_date: {
     type: Date,
     default: Date.now
-  }
+  },
+  // 🚀 TRƯỜNG MỚI 1: Thời lượng video (Lưu bằng tổng số giây - ví dụ: 750 giây)
+  duration: {
+    type: Number,
+    default: 0
+  },
+  // 🚀 TRƯỜNG MỚI 2: Chủ đề của video (Ví dụ: Anime, Podcast, Tin tức, Kinh doanh...)
+  video_theme: {
+    type: String,
+    default: 'Khác',
+    trim: true
+  },
 });
+
+VideoSchema.index({ status: 1, visibility: 1, created_date: -1 });
+VideoSchema.index({ status: 1, visibility: 1, jlpt_level: 1, created_date: -1 });
+VideoSchema.index({ status: 1, created_date: -1 });
+VideoSchema.index({ creator: 1, created_date: -1 });
+VideoSchema.index({ created_date: -1 });
+VideoSchema.index({ jlpt_level: 1, created_date: -1 });
 
 export default mongoose.model('Video', VideoSchema);

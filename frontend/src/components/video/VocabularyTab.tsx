@@ -147,7 +147,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
           onClick={closeModal}
         >
           <div 
-            className="w-full max-w-5xl bg-white shadow-2xl rounded-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-[85vh] md:h-[70vh]"
+            className="w-full max-w-5xl bg-white shadow-2xl rounded-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-[85vh] md:h-[70vh] overscroll-contain"
             onClick={(e) => e.stopPropagation()} 
           >
             
@@ -172,7 +172,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                       <div className="pb-2">
                         <h2 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">{selectedKanji.mean}</h2>
                         <div className="flex gap-2">
-                          <Badge className="bg-rose-100 text-rose-700 border-none font-bold">N{selectedKanji.level}</Badge>
+                          <Badge className="bg-rose-100 text-rose-700 border-none font-bold">{selectedKanji.level ? `N${selectedKanji.level}` : 'JLPT Level Unknown'}</Badge>
                           <Badge variant="outline" className="bg-white text-slate-600 border-slate-200 font-bold">{selectedKanji.stroke_count} nét</Badge>
                         </div>
                       </div>
@@ -217,7 +217,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
 
               ) : (
                 // VIEW 1: CHI TIẾT TỪ VỰNG
-                <div className="flex-1 flex flex-col h-full overflow-hidden animate-in slide-in-from-left-4 duration-300">
+                <div className="flex-1 flex flex-col h-full overflow-hidden animate-in slide-in-from-left-4 duration-300 overscroll-contain">
                   <div className="p-8 bg-violet-50/50 border-b border-violet-100 shrink-0">
                     <p className="text-violet-500 font-bold tracking-widest mb-2 flex items-center gap-2">
                       {selectedVocab.reading || '---'}
@@ -297,7 +297,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                       <div>
                         <p className="font-bold text-lg">{kanji.mean}</p>
                         <p className={`text-xs mt-1 ${selectedKanji?.kanji === kanji.kanji ? 'text-rose-100' : 'text-slate-500'}`}>
-                          N{kanji.level} • {kanji.stroke_count} nét
+                          {kanji.level ? `N${kanji.level}` : 'JLPT Level Unknown'} • {kanji.stroke_count} nét
                         </p>
                       </div>
                     </div>
