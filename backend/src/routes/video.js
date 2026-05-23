@@ -160,6 +160,10 @@ router.post('/analyze', authMiddleware, async (req, res) =>  {
   const endpoint = 'transcribe';
   console.log(`[analyze Log]: đã gọi analyze}`);
 
+  if (req.user?.role === 'admin') {
+    return res.status(403).json({ error: 'Admin khong duoc dang video' });
+  }
+
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
   }
@@ -308,6 +312,10 @@ router.post('/save-word', authMiddleware, async (req, res) => {
 
 router.post('/save', authMiddleware, async (req, res) => {
   try {
+    if (req.user?.role === 'admin') {
+      return res.status(403).json({ error: 'Admin khong duoc dang video' });
+    }
+
     const { youtube_url, script } = req.body;
     const userId = req.user.id || req.user.userId;
 
