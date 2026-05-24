@@ -187,7 +187,7 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
                   {v.reading && (
                     <span
                       title={v.reading}
-                      className="inline-block max-w-[120px] truncate align-middle text-[14px] font-bold text-emerald-700 border border-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-md"
+                      className="inline-block max-w-[120px] truncate align-middle text-[14px] font-bold text-emerald-900 border border-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-md"
                     >
                       {v.reading}
                     </span>

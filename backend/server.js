@@ -63,14 +63,21 @@ mongoose.connect(process.env.MONGO_URI)
     console.log('✅ Connected to MongoDB successfully');
 
     void sweepExpiredBans();
+
     setInterval(() => {
       void sweepExpiredBans();
     }, BAN_SWEEP_INTERVAL_MS);
 
     // Start the server only after connecting to the database
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`🚀 Server is running on http://localhost:${PORT}`);
     });
+
+    // Cho phép các request nặng như /api/video/analyze chạy lâu hơn
+    server.requestTimeout = 1000 * 60 * 35; // 35 phút
+    server.headersTimeout = 1000 * 60 * 36; // phải lớn hơn requestTimeout
+    server.timeout = 1000 * 60 * 35;
+    server.keepAliveTimeout = 1000 * 60 * 5;
   })
   .catch((error) => {
     console.error('❌ Error connecting to MongoDB:', error.message);

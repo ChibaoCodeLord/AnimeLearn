@@ -118,19 +118,19 @@ const STATUS_CONFIG: Record<VideoStatus, {
   approved: {
     label: 'Đã duyệt',
     icon: <CheckCircle2 className="w-3 h-3" />,
-    badgeCls: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    badgeCls: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:border-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-200',
     barCls: 'bg-emerald-500',
   },
   pending: {
     label: 'Chờ duyệt',
     icon: <Clock className="w-3 h-3" />,
-    badgeCls: 'bg-amber-100 text-amber-700 border-amber-200',
+    badgeCls: 'bg-amber-100 text-amber-700 border-amber-200 dark:border-amber-800 dark:bg-amber-950/45 dark:text-amber-200',
     barCls: 'bg-amber-400',
   },
   rejected: {
     label: 'Từ chối',
     icon: <XCircle className="w-3 h-3" />,
-    badgeCls: 'bg-rose-100 text-rose-700 border-rose-200',
+    badgeCls: 'bg-rose-100 text-rose-700 border-rose-200 dark:border-rose-800 dark:bg-rose-950/45 dark:text-rose-200',
     barCls: 'bg-rose-500',
   },
 };
@@ -151,7 +151,7 @@ function VideoThumbnail({ url, title, status }: { url: string; title: string; st
   const [err, setErr] = useState(false);
   const cfg = STATUS_CONFIG[status];
   return (
-    <div className="relative w-20 h-12 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200">
+    <div className="relative w-20 h-12 rounded-lg bg-slate-100 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 dark:bg-slate-900">
       {!err && url ? (
         <img src={url} alt={title} className="w-full h-full object-cover" onError={() => setErr(true)} />
       ) : (
@@ -169,7 +169,7 @@ function StatCard({
   colorClass: string; bgClass: string; isLoading?: boolean;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group dark:border-slate-700 dark:bg-slate-950">
       <div className={`absolute top-0 left-0 right-0 h-1 ${bgClass} opacity-50 group-hover:opacity-100 transition-opacity`} />
       <div className="flex justify-between items-start mb-4">
         <div className={`w-12 h-12 rounded-xl ${bgClass} flex items-center justify-center`}>
@@ -177,7 +177,7 @@ function StatCard({
         </div>
       </div>
       {isLoading ? (
-        <Skeleton className="h-8 w-20 bg-slate-100 mb-1" />
+        <Skeleton className="h-8 w-20 bg-slate-100 mb-1 dark:bg-slate-800" />
       ) : (
         <p className="text-3xl font-bold text-slate-900">{value}</p>
       )}
@@ -689,11 +689,11 @@ export default function AdminPanel() {
             <div className="border-b border-slate-200 px-6 py-3 bg-slate-50/50">
               <TabsList className="bg-slate-200/50 p-1">
                 <TabsTrigger value="videos"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2 text-sm">
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2 text-sm dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-50">
                   <Video className="w-4 h-4" /> Quản lý Video
                 </TabsTrigger>
                 <TabsTrigger value="users"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2 text-sm">
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2 text-sm dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-50">
                   <Users className="w-4 h-4" /> Người dùng
                 </TabsTrigger>
               </TabsList>

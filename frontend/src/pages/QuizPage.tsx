@@ -194,8 +194,8 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
   if (!existingQuiz && !isTakingQuiz && !generateQuizMutation.isPending) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 w-full animate-in fade-in duration-500">
-        <div className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-8 md:p-12 text-center">
-          <div className="w-20 h-20 bg-violet-100 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-inner">
+        <div className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-8 md:p-12 text-center dark:border-slate-700 dark:bg-slate-950">
+          <div className="w-20 h-20 bg-violet-100 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-inner dark:bg-violet-950/50">
             <BrainCircuit className="w-10 h-10 text-violet-600" />
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-3">Tạo Quiz AI từ Kịch Bản</h2>
@@ -221,7 +221,7 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
   if (generateQuizMutation.isPending) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 w-full animate-in fade-in duration-500">
-        <div className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-16 flex flex-col items-center justify-center">
+        <div className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-16 flex flex-col items-center justify-center dark:border-slate-700 dark:bg-slate-950">
           <div className="relative mb-6">
             <div className="absolute inset-0 bg-violet-400 blur-xl opacity-20 rounded-full animate-pulse"></div>
             <Loader2 className="w-16 h-16 text-violet-500 animate-spin relative z-10" />
@@ -237,8 +237,8 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
   if (existingQuiz && !isTakingQuiz && !quizDone) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 w-full animate-in fade-in duration-500">
-        <div className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-8 md:p-12 text-center">
-          <div className="w-20 h-20 bg-emerald-100 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-inner">
+        <div className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-8 md:p-12 text-center dark:border-slate-700 dark:bg-slate-950">
+          <div className="w-20 h-20 bg-emerald-100 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-inner dark:bg-emerald-950/50">
             <CheckCircle2 className="w-10 h-10 text-emerald-600" />
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-3">Quiz Đã Sẵn Sàng!</h2>
@@ -263,11 +263,11 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-10 text-center"
+          className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-10 text-center dark:border-slate-700 dark:bg-slate-950"
         >
           <div className="text-7xl mb-6">{percent >= 70 ? '🎉' : '💪'}</div>
           <h2 className="text-3xl font-extrabold text-slate-900 mb-4">Kết quả của bạn</h2>
-          <div className="inline-block px-8 py-4 bg-violet-50 rounded-3xl mb-6 border border-violet-100">
+          <div className="inline-block px-8 py-4 bg-violet-50 rounded-3xl mb-6 border border-violet-100 dark:border-violet-800 dark:bg-violet-950/35">
             <p className="text-6xl font-black bg-linear-to-r from-violet-600 to-fuchsia-600 bg-clip-text text-transparent">
               {score} <span className="text-3xl text-slate-400">/ {existingQuiz.questions.length}</span>
             </p>
@@ -288,7 +288,7 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
     return (
       <div className="max-w-4xl mx-auto px-4 py-8 md:py-12 w-full">
         {/* Progress Bar */}
-        <div className="flex items-center gap-4 mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-4 mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm dark:border-slate-700 dark:bg-slate-950">
           <span className="text-sm font-bold text-slate-500 whitespace-nowrap">Câu {currentQ + 1} / {existingQuiz.questions.length}</span>
           <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
             <div
@@ -307,7 +307,7 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
             initial={{ x: 30, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -30, opacity: 0 }}
-            className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-6 md:p-8 flex flex-col"
+            className="rounded-[2rem] bg-white border border-slate-200 shadow-sm p-6 md:p-8 flex flex-col dark:border-slate-700 dark:bg-slate-950"
           >
             {/* Header: Type Badge & Context Video Layout */}
             <div className="flex flex-col md:flex-row gap-6 mb-8">
@@ -333,7 +333,7 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
               {/* Phần câu hỏi */}
               <div className="flex-1 flex flex-col justify-center">
                 <div className="flex flex-wrap items-center gap-2 mb-4">
-                  <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 font-semibold tracking-wide uppercase text-[10px]">
+                  <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 font-semibold tracking-wide uppercase text-[10px] dark:border-violet-800 dark:bg-violet-950/35 dark:text-violet-200">
                     {getQuestionTypeLabel(q.type)}
                   </Badge>
                   <Badge className="bg-slate-100 text-slate-500 border-0 font-mono text-[10px] tracking-wider flex items-center">
@@ -361,18 +361,18 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
                     className={`w-full text-left p-4 md:p-5 rounded-2xl border-2 transition-all duration-200 outline-hidden focus-visible:ring-4 focus-visible:ring-violet-500/20 ${
                       showResult
                         ? isCorrect
-                          ? 'border-emerald-500 bg-emerald-50/50 text-emerald-800 shadow-sm'
+                          ? 'border-emerald-500 bg-emerald-50/50 text-emerald-800 shadow-sm dark:bg-emerald-950/35 dark:text-emerald-100'
                           : isSelected
-                            ? 'border-rose-400 bg-rose-50/50 text-rose-800'
-                            : 'border-slate-100 bg-slate-50 opacity-60 text-slate-500'
-                        : 'border-slate-200 hover:border-violet-400 hover:bg-violet-50/30 text-slate-700 hover:shadow-sm'
+                            ? 'border-rose-400 bg-rose-50/50 text-rose-800 dark:bg-rose-950/35 dark:text-rose-100'
+                            : 'border-slate-100 bg-slate-50 opacity-60 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500'
+                        : 'border-slate-200 hover:border-violet-400 hover:bg-violet-50/30 text-slate-700 hover:shadow-sm dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-violet-500 dark:hover:bg-violet-950/30'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 transition-colors ${
                          showResult && isCorrect ? 'bg-emerald-500 text-white' : 
                          showResult && isSelected ? 'bg-rose-500 text-white' : 
-                         'bg-slate-100 text-slate-500'
+                         'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
                       }`}>
                         {String.fromCharCode(65 + i)}
                       </span>
@@ -391,7 +391,7 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
               <motion.div
                 initial={{ height: 0, opacity: 0, y: 10 }}
                 animate={{ height: 'auto', opacity: 1, y: 0 }}
-                className="mt-6 p-5 rounded-2xl bg-violet-50/80 border border-violet-100 shadow-inner"
+                className="mt-6 p-5 rounded-2xl bg-violet-50/80 border border-violet-100 shadow-inner dark:border-violet-800 dark:bg-violet-950/35"
               >
                 <p className="text-slate-700 leading-relaxed text-sm md:text-base">
                   <span className="text-violet-700 font-bold flex items-center gap-2 mb-1">
