@@ -83,7 +83,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
   };
 
   return (
-    <div className="bg-slate-50/50 rounded-[2rem] border border-slate-200 shadow-sm h-full p-4 md:p-6 overflow-y-auto custom-scrollbar min-h-[500px]">
+    <div className="bg-slate-50/50 rounded-[2rem] border border-slate-200 shadow-sm h-full p-4 md:p-6 overflow-y-auto custom-scrollbar min-h-[500px] dark:border-slate-700 dark:bg-slate-950/70">
       
       {/* ======================================================== */}
       {/* 1. DANH SÁCH CARD TỪ VỰNG */}
@@ -99,7 +99,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
             <div 
               key={index} 
               onClick={() => setSelectedVocab(vocab)}
-              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg hover:border-violet-300 hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between"
+              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg hover:border-violet-300 hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between dark:border-slate-700 dark:bg-slate-900 dark:hover:border-violet-500"
             >
               <div>
                 <div className="flex justify-between items-start mb-3 border-b border-slate-100 pb-3">
@@ -147,7 +147,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
           onClick={closeModal}
         >
           <div 
-            className="w-full max-w-5xl bg-white shadow-2xl rounded-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-[85vh] md:h-[70vh] overscroll-contain"
+            className="w-full max-w-5xl bg-white shadow-2xl rounded-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-[85vh] md:h-[70vh] overscroll-contain dark:bg-slate-950"
             onClick={(e) => e.stopPropagation()} 
           >
             
@@ -182,11 +182,11 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8">
                     {/* Kun/On */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         <p className="text-xs font-bold text-pink-400 uppercase tracking-widest mb-3 flex items-center"><Volume2 className="w-3.5 h-3.5 mr-1.5"/> Âm KUN (Âm Nhật)</p>
                         <p className="text-lg font-medium text-slate-700">{selectedKanji.kun || 'Không có'}</p>
                       </div>
-                      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         <p className="text-xs font-bold text-pink-400 uppercase tracking-widest mb-3 flex items-center"><Volume2 className="w-3.5 h-3.5 mr-1.5"/> Âm ON (Âm Hán)</p>
                         <p className="text-lg font-medium text-slate-700">{selectedKanji.on || 'Không có'}</p>
                       </div>
@@ -197,7 +197,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                       <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center">
                         <SpellCheck2 className="w-4 h-4 mr-2"/> Ý nghĩa chi tiết
                       </p>
-                      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+                      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         {formatKanjiDetail(selectedKanji.detail).length > 0 ? (
                           <ul className="space-y-4">
                             {formatKanjiDetail(selectedKanji.detail).map((meaning, idx) => (
@@ -258,7 +258,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                     )}
                   </div>
                   
-                  <div className="p-6 border-t border-slate-100 bg-white shrink-0">
+                  <div className="p-6 border-t border-slate-100 bg-white shrink-0 dark:border-slate-800 dark:bg-slate-950">
                     <Button onClick={(e) => handleSave(selectedVocab, e)} disabled={savingMap[selectedVocab.word]} className="w-full h-12 text-base font-bold rounded-xl bg-violet-600 hover:bg-violet-700 text-white">
                       {savingMap[selectedVocab.word] ? <Loader2 className="w-5 h-5 animate-spin mr-2"/> : <BookmarkPlus className="w-5 h-5 mr-2" />}
                       Lưu từ vựng này
@@ -269,8 +269,8 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
             </div>
 
             {/* --- CỘT PHẢI: SIDEBAR KANJI --- */}
-            <div className="w-full md:w-80 bg-slate-50 border-l border-slate-200 flex flex-col shrink-0">
-              <div className="p-4 border-b border-slate-200 bg-white flex justify-between items-center shrink-0">
+            <div className="w-full md:w-80 bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 dark:border-slate-800 dark:bg-slate-900">
+              <div className="p-4 border-b border-slate-200 bg-white flex justify-between items-center shrink-0 dark:border-slate-800 dark:bg-slate-950">
                 <h3 className="font-bold text-slate-700 uppercase tracking-wider text-xs flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-rose-400"/> Thành phần Hán tự
                 </h3>
@@ -288,7 +288,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                       className={`p-4 rounded-2xl border cursor-pointer transition-all duration-200 flex gap-4 items-center ${
                         selectedKanji?.kanji === kanji.kanji 
                           ? 'bg-rose-500 border-rose-600 text-white shadow-md scale-[1.02]' 
-                          : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-md text-slate-700'
+                          : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-md text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-rose-500'
                       }`}
                     >
                       <div className={`text-4xl font-black shrink-0 ${selectedKanji?.kanji === kanji.kanji ? 'text-white' : 'text-rose-500'}`}>

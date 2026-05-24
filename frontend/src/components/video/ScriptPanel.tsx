@@ -95,6 +95,9 @@ export default function ScriptPanel({
     hover:bg-amber-100
     hover:text-amber-700
     hover:decoration-amber-400
+    dark:hover:bg-amber-400/15
+    dark:hover:text-amber-200
+    dark:hover:decoration-amber-300
   `;
 
   const rubyWordClassName = `
@@ -112,6 +115,9 @@ export default function ScriptPanel({
     hover:bg-amber-100
     hover:text-amber-700
     hover:decoration-amber-400
+    dark:hover:bg-amber-400/15
+    dark:hover:text-amber-200
+    dark:hover:decoration-amber-300
 
     [&_ruby]:mx-[1px]
     [&_rt]:text-[0.65em]
@@ -247,8 +253,8 @@ export default function ScriptPanel({
 
   if (!script || script.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-white via-emerald-50 to-sky-50 text-center px-6">
-        <div className="w-16 h-16 rounded-2xl bg-white border border-teal-100 shadow-sm flex items-center justify-center">
+      <div className="h-full flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-white via-emerald-50 to-sky-50 text-center px-6 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950">
+        <div className="w-16 h-16 rounded-2xl bg-white border border-teal-100 shadow-sm flex items-center justify-center dark:border-teal-800 dark:bg-slate-900">
           <Sparkles className="w-8 h-8 text-teal-400" />
         </div>
         <p className="text-sm font-medium text-slate-500">
@@ -291,8 +297,8 @@ export default function ScriptPanel({
                   duration-200
                   ${
                     isActive
-                      ? 'border-teal-400 bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50 shadow-md shadow-teal-100/70'
-                      : 'border-slate-400 bg-white/90 hover:border-slate-800 hover:bg-slate-100/80 hover:shadow-sm transition-colors duration-200 hover:shadow-sm'
+                      ? 'border-teal-400 bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50 shadow-md shadow-teal-100/70 dark:border-teal-500/70 dark:from-slate-900 dark:via-teal-950 dark:to-slate-900 dark:shadow-teal-950/40'
+                      : 'border-slate-400 bg-white/90 hover:border-slate-800 hover:bg-slate-100/80 hover:shadow-sm transition-colors duration-200 hover:shadow-sm dark:border-slate-700 dark:bg-slate-900/80 dark:hover:border-teal-600 dark:hover:bg-slate-800/90'
                   }
                 `}
               >
@@ -306,8 +312,8 @@ export default function ScriptPanel({
                       inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1
                       ${
                         isActive
-                          ? 'border-teal-200 bg-white/90 text-teal-700 shadow-xs'
-                          : 'border-slate-200 bg-slate-50 text-slate-500'
+                          ? 'border-teal-200 bg-white/90 text-teal-700 shadow-xs dark:border-teal-700 dark:bg-teal-950/45 dark:text-teal-200'
+                          : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                       }
                     `}
                   >
@@ -339,8 +345,8 @@ export default function ScriptPanel({
                     wrap-anywhere
                     ${
                       isActive
-                        ? 'text-slate-900'
-                        : 'text-slate-800'
+                        ? 'text-slate-900 dark:text-slate-50'
+                        : 'text-slate-800 dark:text-slate-200'
                     }
                   `}
                 >
@@ -356,8 +362,8 @@ export default function ScriptPanel({
                     wrap-anywhere
                     ${
                       isActive
-                        ? 'text-slate-700'
-                        : 'text-slate-500'
+                        ? 'text-slate-700 dark:text-slate-300'
+                        : 'text-slate-500 dark:text-slate-400'
                     }
                   `}
                 >
@@ -391,6 +397,10 @@ export default function ScriptPanel({
                           rounded-2xl
                           border border-teal-100/70
                           bg-gradient-to-br from-white via-emerald-50/40 to-amber-50/30
+                          dark:border-teal-800/70
+                          dark:from-slate-900
+                          dark:via-emerald-950/50
+                          dark:to-slate-900
                           transition-all
                           duration-300
                           ease-out
@@ -433,6 +443,8 @@ export default function ScriptPanel({
               rounded-3xl
               border border-teal-100
               bg-white
+              dark:border-teal-800
+              dark:bg-slate-950
               shadow-2xl
               animate-in zoom-in-95 duration-200
               overscroll-contain
@@ -448,6 +460,9 @@ export default function ScriptPanel({
                 text-slate-400
                 bg-white/80
                 border border-slate-200
+                dark:bg-slate-900/90
+                dark:border-slate-700
+                dark:text-slate-300
                 shadow-sm
                 transition-colors
                 hover:text-rose-500
@@ -465,6 +480,10 @@ export default function ScriptPanel({
                 shrink-0
                 border-b border-teal-100
                 bg-gradient-to-br from-emerald-50 via-teal-50 to-sky-50
+                dark:border-teal-800
+                dark:from-slate-900
+                dark:via-teal-950
+                dark:to-slate-900
                 p-7
               "
             >
@@ -483,6 +502,9 @@ export default function ScriptPanel({
                       bg-white
                       border border-teal-100
                       text-teal-600
+                      dark:bg-slate-900
+                      dark:border-teal-800
+                      dark:text-teal-300
                       shadow-sm
                       transition-colors
                       hover:bg-teal-100
@@ -518,7 +540,7 @@ export default function ScriptPanel({
               </div>
             </div>
 
-            <div className="max-h-[55vh] overflow-y-auto overscroll-contain custom-scrollbar bg-white">
+            <div className="max-h-[55vh] overflow-y-auto overscroll-contain custom-scrollbar bg-white dark:bg-slate-950">
               <div className="p-7 pb-6">
                 {meaningLines.length > 0 ? (
                   <ul className="space-y-3.5">
@@ -534,6 +556,9 @@ export default function ScriptPanel({
                               rounded-2xl
                               bg-gradient-to-r from-slate-50 to-teal-50/40
                               border border-teal-100/70
+                              dark:from-slate-900
+                              dark:to-teal-950/40
+                              dark:border-teal-800/70
                               px-4 py-3
                               text-slate-700
                               text-base
@@ -556,6 +581,9 @@ export default function ScriptPanel({
                             rounded-2xl
                             bg-gradient-to-r from-slate-50 to-emerald-50/40
                             border border-teal-100/70
+                            dark:from-slate-900
+                            dark:to-emerald-950/40
+                            dark:border-teal-800/70
                             px-4 py-3 pl-7
                             text-slate-700
                             text-base
@@ -584,7 +612,7 @@ export default function ScriptPanel({
               </div>
 
               {centeredVocab.kanji_info && centeredVocab.kanji_info.length > 0 && (
-                <div className="px-7 py-6 border-t border-dashed border-teal-200 bg-gradient-to-br from-slate-50 to-emerald-50/50">
+                <div className="px-7 py-6 border-t border-dashed border-teal-200 bg-gradient-to-br from-slate-50 to-emerald-50/50 dark:border-teal-800 dark:from-slate-900 dark:to-emerald-950/45">
                   <p className="text-[12px] font-bold text-teal-700 mb-4 uppercase tracking-widest flex items-center gap-1.5">
                     <BookOpen className="w-4 h-4" />
                     Phân tích Hán Tự
@@ -606,6 +634,8 @@ export default function ScriptPanel({
                             rounded-2xl
                             border border-teal-100
                             bg-white
+                            dark:border-teal-800
+                            dark:bg-slate-900
                             p-4
                             shadow-sm
                           "

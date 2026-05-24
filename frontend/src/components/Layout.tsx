@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { 
-  Home, BookOpen, Brain, BarChart3, Shield, MessageCircle, 
-  Menu, GraduationCap, ChevronRight, Search // ✨ Đã import thêm icon Search
+import {
+  Home, Brain, BarChart3, Shield, MessageCircle,
+  Menu, GraduationCap, ChevronRight, Search, Sun, Moon, ChevronDown // ✨ Đã import thêm icon Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
 import UserBannedError from '@/components/UserBannedError';
 import MiniVinylPlayer from '@/components/player/MiniVinylPlayer';
+import { useTheme } from '@/hooks/useTheme';
 
 // ✨ Đã thêm path '/Dictionary' vào danh sách menu
 const navItems = [
@@ -66,6 +67,7 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const { isDark, toggleTheme } = useTheme();
 
   const { data: user, isLoading, error } = useQuery<User>({
     queryKey: ['current-user'],
@@ -134,11 +136,11 @@ export default function Layout() {
   const isAdmin = user?.role === 'admin';
 
   return (
-    <div className="flex flex-col min-h-screen w-full bg-linear-to-br from-emerald-50 via-teal-50 to-green-50 overflow-x-hidden">
-      <header className={`fixed top-0 right-0 left-0 h-16 bg-white/80 backdrop-blur-lg border-b  border-emerald-400 z-40 flex items-center justify-between gap-4 px-4 transition-all duration-300 sm:px-6 ${sidebarOpen ? 'lg:left-64' : 'lg:left-20'}`}>
+    <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-linear-to-br from-emerald-50 via-teal-50 to-green-50 transition-colors duration-300 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950">
+      <header className={`fixed top-0 right-0 left-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-emerald-400 bg-white/80 px-4 backdrop-blur-lg transition-all duration-300 dark:border-emerald-900/70 dark:bg-slate-950/85 sm:px-6 ${sidebarOpen ? 'lg:left-64' : 'lg:left-20'}`}>
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="flex items-center lg:hidden">
-            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="text-slate-600">
+            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="text-slate-600 dark:text-slate-300">
               <Menu className="w-6 h-6" />
             </Button>
           </div>
@@ -148,7 +150,7 @@ export default function Layout() {
         
         <div className="flex shrink-0 items-center gap-3">
           {isLoading ? (
-            <div className="text-sm text-slate-500">Đang tải...</div>
+            <div className="text-sm text-slate-500 dark:text-slate-400">Đang tải...</div>
           ) : error || !user ? (
             <Button 
               onClick={handleLoginClick} 
@@ -160,7 +162,7 @@ export default function Layout() {
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen(open => !open)}
-                className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 cursor-pointer hover:bg-emerald-100 transition-colors"
+                className="flex cursor-pointer items-center gap-3 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-slate-800"
                 aria-expanded={menuOpen}
                 aria-haspopup="menu"
               >
@@ -171,12 +173,29 @@ export default function Layout() {
                     user.fullName?.[0]?.toUpperCase()
                   )}
                 </div>
-                <span className="text-sm font-medium text-slate-700 hidden sm:block">{user.fullName}</span>
+                <span className="hidden text-sm font-medium text-slate-700 dark:text-slate-200 sm:block">{user.fullName}</span>
+                <ChevronDown className={`hidden h-4 w-4 text-slate-500 transition-transform dark:text-slate-400 sm:block ${menuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 mt-2 w-44 bg-white border border-slate-200 rounded-md shadow-lg z-50">
-                  <Link to="/profile" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Trang cá nhân</Link>
+                <div className="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                  <Link to="/Profile" onClick={() => setMenuOpen(false)} className="block px-4 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800">Trang cá nhân</Link>
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                    aria-label={isDark ? 'Chuyển sang chế độ sáng' : 'Chuyển sang chế độ tối'}
+                    aria-pressed={isDark}
+                  >
+                    <span className="flex items-center gap-2">
+                      {isDark ?  <Moon className="h-4 w-4 text-slate-500" />  : <Sun className="h-4 w-4 text-amber-400" /> }
+                      {isDark ?  'Chế độ tối' : 'Chế độ sáng'}
+                    </span>
+                    <span className={`relative h-5 w-9 rounded-full transition-colors ${isDark ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                      <span className={`theme-toggle-thumb absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${isDark ? '' : '-translate-x-4'}`} />
+                    </span>
+                  </button>
+                  <div className="border-t border-slate-100 dark:border-slate-800" />
                   <button
                     onClick={async () => {
                       try {
@@ -194,7 +213,7 @@ export default function Layout() {
                         navigate('/login');
                       }
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-rose-600 hover:bg-slate-50"
+                    className="w-full px-4 py-2 text-left text-sm text-rose-600 transition-colors hover:bg-slate-50 dark:text-rose-400 dark:hover:bg-slate-800"
                   >
                     Đăng xuất
                   </button>
@@ -205,8 +224,8 @@ export default function Layout() {
         </div>
       </header>
 
-      <aside className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-emerald-400 transition-all duration-300 flex flex-col shrink-0 ${sidebarOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-full lg:translate-x-0'}`}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200 shrink-0">
+      <aside className={`fixed left-0 top-0 z-50 flex h-screen shrink-0 flex-col border-r border-emerald-400 bg-white transition-all duration-300 dark:border-emerald-900/70 dark:bg-slate-950 ${sidebarOpen ? 'w-64 translate-x-0' : 'w-20 -translate-x-full lg:translate-x-0'}`}>
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800">
           <Link to="/home" className={`flex items-center gap-2 overflow-hidden transition-all ${sidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'}`}>
             <img 
               src={animeLogo} 
@@ -221,7 +240,7 @@ export default function Layout() {
             variant="ghost"
             size="icon"
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={`hidden lg:flex text-slate-400 hover:text-emerald-600 ${!sidebarOpen && 'mx-auto'}`}
+            className={`hidden text-slate-400 hover:text-emerald-600 dark:text-slate-500 dark:hover:text-emerald-400 lg:flex ${!sidebarOpen && 'mx-auto'}`}
           >
             <ChevronRight className={`w-5 h-5 transition-transform ${sidebarOpen ? 'rotate-180' : ''}`} />
           </Button>
@@ -233,10 +252,10 @@ export default function Layout() {
             const active = location.pathname.toLowerCase().includes(item.path.toLowerCase());
             return (
               <Link key={item.path} to={item.path}>
-                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group
+                <div className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all
                   ${active 
                     ? 'bg-linear-to-r from-emerald-500 to-teal-600 text-white shadow-md' 
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-emerald-50'
+                    : 'text-slate-600 hover:bg-emerald-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
                   } ${!sidebarOpen && 'justify-center'}`}>
                   <Icon className="w-5 h-5 shrink-0 group-hover:scale-110 transition-transform" />
                   {sidebarOpen && <span className="text-sm font-medium whitespace-nowrap">{item.label}</span>}
@@ -247,14 +266,14 @@ export default function Layout() {
           
           {isAdmin && (
             <>
-              <div className={`mt-4 mb-2 px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider ${!sidebarOpen && 'text-center'}`}>
+              <div className={`mb-2 mt-4 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 ${!sidebarOpen && 'text-center'}`}>
                 {sidebarOpen ? 'Quản trị' : '•••'}
               </div>
               <Link to="/AdminPanel">
-                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group
+                <div className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all
                   ${location.pathname === '/AdminPanel'
                     ? 'bg-rose-500 text-white shadow-md'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-emerald-50'
+                    : 'text-slate-600 hover:bg-emerald-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
                   } ${!sidebarOpen && 'justify-center'}`}>
                   <Shield className="w-5 h-5 shrink-0 group-hover:scale-110 transition-transform" />
                   {sidebarOpen && <span className="text-sm font-medium whitespace-nowrap">Admin Panel</span>}
@@ -272,11 +291,11 @@ export default function Layout() {
         />
       )}
 
-      <main className={`flex-1 min-w-0 flex flex-col w-full h-full relative pt-16 transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
+      <main className={`relative flex h-full min-w-0 flex-1 flex-col pt-16 transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
         <Outlet />
       </main>
 
-      <footer className="w-full bg-white border-t border-emerald-100 mt-auto shrink-0 z-10 relative">
+      <footer className="relative z-10 mt-auto w-full shrink-0 border-t border-emerald-100 bg-white dark:border-slate-800 dark:bg-slate-950">
         <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
           <div className="max-w-7xl mx-auto px-6 py-8">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">

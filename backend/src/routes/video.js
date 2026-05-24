@@ -12,6 +12,7 @@ import Quiz from '../models/Quiz.js';
 import Kanji from '../models/Kanji.js';
 import { generateQuizFromScript } from '../services/quizAIService.js';
 import axios from 'axios';
+import { Agent } from 'undici';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -153,56 +154,115 @@ function normalizeUtf8Value(value) {
   return value;
 }
 
-//Router dịch script
-//chỉ có user đã đăng nhập mới được tạo script
-router.post('/analyze', authMiddleware, async (req, res) =>  {
+
+const AI_FETCH_TIMEOUT_MS = 1000 * 60 * 30; // 30 phút
+
+const aiFetchDispatcher = new Agent({
+  headersTimeout: AI_FETCH_TIMEOUT_MS,
+  bodyTimeout: AI_FETCH_TIMEOUT_MS,
+  connect: {
+    timeout: 1000 * 30,
+  },
+});
+
+async function readResponseSafely(response) {
+  const text = await response.text();
+
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { raw: text };
+  }
+}
+
+// Router dịch script
+// Chỉ có user đã đăng nhập mới được tạo script
+router.post('/analyze', authMiddleware, async (req, res) => {
   const { url } = req.body;
   const endpoint = 'transcribe';
-  console.log(`[analyze Log]: đã gọi analyze}`);
+
+  console.log('[analyze Log]: đã gọi analyze');
 
   if (req.user?.role === 'admin') {
-    return res.status(403).json({ error: 'Admin khong duoc dang video' });
+    return res.status(403).json({
+      error: 'Admin khong duoc dang video',
+    });
   }
 
   if (!url) {
-    return res.status(400).json({ error: 'URL is required' });
+    return res.status(400).json({
+      error: 'URL is required',
+    });
   }
 
   try {
+    console.log(`[analyze Log]: gọi AI service ${AI_SERVICE}/${endpoint}`);
+
     const response = await fetch(`${AI_SERVICE}/${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-KEY': process.env.AI_KEY
+        'X-API-KEY': process.env.AI_KEY || '',
       },
-      body:JSON.stringify({
+      body: JSON.stringify({
         media_path: url,
-        use_gpu: true
-      })
+        use_gpu: true,
+      }),
+
+      // Quan trọng: fix UND_ERR_HEADERS_TIMEOUT
+      dispatcher: aiFetchDispatcher,
     });
 
+    const responseData = await readResponseSafely(response);
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Script Service error: ${response.status}`);
+      console.error('[SCRIPT_API_ERROR_RESPONSE]', {
+        status: response.status,
+        statusText: response.statusText,
+        data: responseData,
+      });
+
+      throw new Error(
+        responseData.detail ||
+          responseData.error ||
+          responseData.raw ||
+          `Script Service error: ${response.status}`
+      );
     }
 
-    const responseData = await response.json().catch(() => ({}));
     const script = Array.isArray(responseData.segments)
       ? normalizeUtf8Value(responseData.segments)
-      : (Array.isArray(responseData.script) ? normalizeUtf8Value(responseData.script) : []);
+      : Array.isArray(responseData.script)
+        ? normalizeUtf8Value(responseData.script)
+        : [];
 
-    
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
     return res.json({
-        title: typeof responseData.title === 'string' ? responseData.title.normalize('NFC') : 'Youtube Video (Auto-Transcription)',
-        jlpt_level: typeof responseData.jlpt_level === 'string' ? responseData.jlpt_level.normalize('NFC') : (responseData.jlpt_level || 'Unknown'),
-        script
-      });
+      title:
+        typeof responseData.title === 'string'
+          ? responseData.title.normalize('NFC')
+          : 'Youtube Video (Auto-Transcription)',
+
+      jlpt_level:
+        typeof responseData.jlpt_level === 'string'
+          ? responseData.jlpt_level.normalize('NFC')
+          : responseData.jlpt_level || 'Unknown',
+
+      script,
+    });
   } catch (error) {
-    console.error(`[SCRIPT_API_ERROR] ${endpoint}:`, error.message);
+    console.error(`[SCRIPT_API_ERROR] ${endpoint}:`, {
+      name: error?.name,
+      message: error?.message,
+      cause: error?.cause,
+      stack: error?.stack,
+    });
+
     return res.status(500).json({
       error: 'Failed to analyze video',
-      details: error.message
+      details: error?.message || 'Unknown error',
+      cause: error?.cause?.code || null,
     });
   }
 });
