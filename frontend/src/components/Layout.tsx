@@ -11,7 +11,6 @@ import UserBannedError from '@/components/UserBannedError';
 import MiniVinylPlayer from '@/components/player/MiniVinylPlayer';
 import { useTheme } from '@/hooks/useTheme';
 
-// ✨ Đã thêm path '/Dictionary' vào danh sách menu
 const navItems = [
   { path: '/home', label: 'Trang chủ', icon: Home },
   { path: '/Dictionary', label: 'Từ điển', icon: Search },
