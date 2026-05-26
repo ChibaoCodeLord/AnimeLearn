@@ -3,6 +3,9 @@ import { Star, BookOpen, Loader2, Volume2, X, Sparkles, Quote } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { ApiError } from '@/api/client';
+import { kanjiApi } from '@/api/kanji.api';
+import { videoApi } from '@/api/video.api';
 
 // 1. Khai báo các Interface
 export interface LookupData {
@@ -151,13 +154,7 @@ export default function VocabularyPopup({
   useEffect(() => {
     const fetchExtraKanji = async (charArray: string[]) => {
       try {
-        const res = await fetch('http://localhost:5000/api/kanji/lookup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ characters: charArray }),
-        });
-
-        const data = await res.json();
+        const data = await kanjiApi.lookupKanji<{ success?: boolean; data: any[] }>(charArray);
 
         if (data.success && data.data.length > 0) {
           setLookupData((prev) => {
@@ -215,15 +212,7 @@ export default function VocabularyPopup({
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/video/translate-word', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: w }),
-      });
-
-      if (!res.ok) throw new Error();
-
-      const data = await res.json();
+      const data = await videoApi.translateWord<any>(w);
 
       setLookupData({
         word: data.word || w,
@@ -248,31 +237,20 @@ export default function VocabularyPopup({
     setSaving(true);
 
     try {
-      const token = localStorage.getItem('token') || '';
-
-      const res = await fetch('http://localhost:5000/api/video/save-word', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ...lookupData,
-          jlpt_level: lookupData.jlpt_level || 'Unknown',
-        }),
+      const data = await videoApi.saveWord<{ message?: string }>({
+        ...lookupData,
+        jlpt_level: lookupData.jlpt_level || 'Unknown',
       });
 
-      const data = await res.json();
-
-      if (res.ok) {
-        toast.success(data.message || 'Đã lưu từ vựng!');
-      } else {
-        toast.info(data.message || 'Lỗi khi lưu!');
-      }
+      toast.success(data.message || 'Đã lưu từ vựng!');
 
       if (onSave) onSave();
     } catch (error) {
-      toast.error('Lỗi kết nối khi lưu!');
+      if (error instanceof ApiError) {
+        toast.info(error.message || 'Lỗi khi lưu!');
+      } else {
+        toast.error('Lỗi kết nối khi lưu!');
+      }
     } finally {
       setSaving(false);
     }

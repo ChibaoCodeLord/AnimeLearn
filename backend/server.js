@@ -29,6 +29,10 @@ Video.syncIndexes()
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
 const BAN_SWEEP_INTERVAL_MS = 5 * 60 * 1000; // cứ cách 5p kiểm tra để tự động gở ban
 
 const sweepExpiredBans = async () => {
@@ -49,7 +53,7 @@ const sweepExpiredBans = async () => {
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'], // Allow Vite & CRA default ports
+  origin: CLIENT_ORIGINS, // Allow configured frontend origins
   credentials: true
 }));
 app.use(cookieParser()); // Add this to parse cookies

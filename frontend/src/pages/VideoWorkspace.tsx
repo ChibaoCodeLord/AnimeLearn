@@ -26,6 +26,11 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import QuizPage from './QuizPage';
 import KaraokeMode from '../components/video/KaraokeMode';
 import VocabularyTab from '../components/video/VocabularyTab';
+import { ApiError } from '@/api/client';
+import { adminApi } from '@/api/admin.api';
+import { authApi } from '@/api/auth.api';
+import { quizApi } from '@/api/quiz.api';
+import { videoApi } from '@/api/video.api';
 
 // 1. Định nghĩa Interfaces
 type VideoStatus = 'approved' | 'rejected' | 'pending';
@@ -61,7 +66,6 @@ type PopupAnchorPosition = {
   anchorRight?: number;
 };
 
-const API_BASE = 'http://localhost:5000/api';
 const VIDEO_VIEW_THRESHOLD = 0.1;
 const pillBase =
   "h-9 inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-0 text-sm font-semibold leading-none whitespace-nowrap";
@@ -196,9 +200,7 @@ function parseTimestampToSeconds(timestamp: string): number {
 }
 
 async function fetchCurrentUser(): Promise<CurrentUser> {
-  const response = await fetch(`${API_BASE}/auth/me`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
-  if (!response.ok) throw new Error('Không thể tải thông tin người dùng');
-  return response.json();
+  return authApi.getMe<CurrentUser>();
 }
 
 export default function VideoWorkspace() {
@@ -270,12 +272,7 @@ export default function VideoWorkspace() {
     queryKey: ['video-quiz', videoId],
     queryFn: async () => {
       if (!videoId) return null;
-      const res = await fetch(`${API_BASE}/quiz/${videoId}`, {
-        headers: { ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) }
-      });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error('Lỗi tải quiz');
-      return res.json();
+      return quizApi.getQuizByVideoId<QuizData>(videoId);
     },
     enabled: !!videoId,
   });
@@ -283,16 +280,7 @@ export default function VideoWorkspace() {
   const updateStatusMutation = useMutation({
     mutationFn: ({ status, reason }: { status: VideoStatus; reason?: string }) => {
       if (!videoId) throw new Error('Thiếu mã video');
-      return fetch(`${API_BASE}/admin/videos/${videoId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status, reason }),
-      }).then(async response => {
-        const data = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(data?.error || 'Không thể cập nhật trạng thái');
-        return data;
-      });
+      return adminApi.updateVideoStatus(videoId, { status, reason });
     },
     onSuccess: (_data, variables) => {
       const { status } = variables;
@@ -313,14 +301,7 @@ export default function VideoWorkspace() {
   const likeMutation = useMutation({
     mutationFn: async () => {
       if (!videoId) throw new Error('Thiếu mã video');
-      const response = await fetch(`${API_BASE}/video/like/${videoId}`, {
-        method: 'POST',
-        headers: { ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) },
-        credentials: 'include',
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error || data?.message || 'Không thể thích video');
-      return data as { likes_count?: number; alreadyLiked?: boolean };
+      return videoApi.likeVideo<{ likes_count?: number; alreadyLiked?: boolean }>(videoId);
     },
     onMutate: async () => {
       const previousLikes = likesCount; const previousLikedByMe = likedByMe;
@@ -342,14 +323,7 @@ export default function VideoWorkspace() {
   const unlikeMutation = useMutation({
     mutationFn: async () => {
       if (!videoId) throw new Error('Thiếu mã video');
-      const response = await fetch(`${API_BASE}/video/unlike/${videoId}`, {
-        method: 'POST',
-        headers: { ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) },
-        credentials: 'include',
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error || data?.message || 'Không thể bỏ thích video');
-      return data as { likes_count?: number; alreadyUnliked?: boolean };
+      return videoApi.unlikeVideo<{ likes_count?: number; alreadyUnliked?: boolean }>(videoId);
     },
     onMutate: async () => {
       const previousLikes = likesCount; const previousLikedByMe = likedByMe;
@@ -382,13 +356,8 @@ export default function VideoWorkspace() {
     if (videoId) {
       setIsCheckingAccess(true);
       hasCountedViewRef.current = sessionStorage.getItem(`video-view-counted:${videoId}`) === '1';
-      fetch(`http://localhost:5000/api/video/detail/${videoId}`, { credentials: 'include' })
-        .then(async res => {
-          const video = await res.json().catch(() => null);
-          if (!res.ok) {
-            const statusMessage = res.status === 401 ? 'Bạn cần đăng nhập để xem video này' : res.status === 403 ? 'Video chưa được duyệt nên chỉ admin hoặc người tạo mới được xem' : video?.error || 'Không thể tải video này';
-            throw new Error(statusMessage);
-          }
+      videoApi.getVideoDetail<any>(videoId)
+        .then(video => {
           if (video && !video.error) {
             setScript(video.script || []);
             setVocabList(video.vocab_list || []); 
@@ -404,7 +373,15 @@ export default function VideoWorkspace() {
         })
         .catch(err => {
           console.error(err);
-          setLoadError(err instanceof Error ? err.message : 'Lỗi khi tải kịch bản từ máy chủ');
+          const statusMessage =
+            err instanceof ApiError && err.status === 401
+              ? 'Bạn cần đăng nhập để xem video này'
+              : err instanceof ApiError && err.status === 403
+                ? 'Video chưa được duyệt nên chỉ admin hoặc người tạo mới được xem'
+                : err instanceof Error
+                  ? err.message
+                  : 'Lỗi khi tải kịch bản từ máy chủ';
+          setLoadError(statusMessage);
         })
         .finally(() => setIsCheckingAccess(false));
     }
@@ -430,17 +407,8 @@ export default function VideoWorkspace() {
     }
 
     if (!furiganaPending.current[text]) {
-      furiganaPending.current[text] = fetch('http://localhost:5000/api/video/furigana-line', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-      })
-        .then(async res => {
-          if (!res.ok) {
-            throw new Error('Khong the lay furigana');
-          }
-
-          const data = await res.json();
+      furiganaPending.current[text] = videoApi.createFuriganaLine<{ html?: string }>(text)
+        .then(data => {
           const html = typeof data.html === 'string' ? data.html : '';
 
           if (html) {
@@ -484,27 +452,7 @@ export default function VideoWorkspace() {
         setCurrentFurigana(html);
       }
     });
-    return;
-
-    fetch('http://localhost:5000/api/video/furigana-line', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: activeLineText })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (activeLineText !== activeFuriganaText.current) return;
-
-        if (data.html) {
-          furiganaCache.current[activeLineText] = data.html; // Lưu cache
-          setCurrentFurigana(data.html); // Cập nhật state
-        }
-      })
-      .catch(err => {
-        console.error("Lỗi lấy Furigana:", err);
-        setCurrentFurigana('');
-      });
-  }, [currentIndex, script]); // Chỉ chạy lại khi nhảy sang câu mới
+  }, [currentIndex, fetchFurigana, script]); // Chỉ chạy lại khi nhảy sang câu mới
 
   useEffect(() => {
     const upcomingTexts = [currentIndex + 1, currentIndex + 2]
@@ -657,7 +605,7 @@ export default function VideoWorkspace() {
             if (duration > 0 && currentTime / duration >= VIDEO_VIEW_THRESHOLD) {
               hasCountedViewRef.current = true;
               sessionStorage.setItem(`video-view-counted:${videoId}`, '1');
-              fetch(`http://localhost:5000/api/video/view/${videoId}`, { method: 'POST' }).then(res => res.json()).then(data => {
+              videoApi.countView<{ views_count?: number }>(videoId).then(data => {
                 if (typeof data?.views_count === 'number') setViewsCount(data.views_count);
               }).catch(() => {});
             }
@@ -708,29 +656,20 @@ export default function VideoWorkspace() {
     toast.info('Hệ thống đang tải và phân tích audio, quá trình này có thể mất vài phút...');
 
     try {
-      const token = localStorage.getItem('token') || '';
-      const response = await fetch('http://localhost:5000/api/video/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ url: currentYoutubeUrl }),
-        credentials: 'omit'
+      const result = await videoApi.analyzeVideo<{ title: string; script: ScriptLine[] }>({
+        url: currentYoutubeUrl,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.message || 'Đã có lỗi xảy ra từ máy chủ khi phân tích video.');
-      }
-      const result = await response.json();
       
-      const saveRes = await fetch('http://localhost:5000/api/video/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        credentials: 'omit',
-        body: JSON.stringify({ title: result.title, youtube_url: currentYoutubeUrl, script: result.script })
-      });
+      const saveData = await videoApi.saveVideo<{
+        videoId?: string;
+        script: ScriptLine[];
+        vocab_list?: any[];
+        jlptLevel?: string;
+        error?: string;
+        message?: string;
+      }>({ title: result.title, youtube_url: currentYoutubeUrl, script: result.script });
 
-      const saveData = await saveRes.json();
-      if (saveRes.ok && saveData.videoId) {
+      if (saveData.videoId) {
         setScript(saveData.script);
         setVocabList(saveData.vocab_list || []); 
         setVideoTitle(result.title);

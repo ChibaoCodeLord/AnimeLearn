@@ -4,6 +4,8 @@ import { LogOut } from 'lucide-react';
 import MiniVinylPlayer from '@/components/player/MiniVinylPlayer';
 import { Button } from '@/components/ui/button';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { authApi } from '@/api/auth.api';
+import { homeApi } from '@/api/home.api';
 
 interface UserProfile {
   id: string;
@@ -13,19 +15,7 @@ interface UserProfile {
 }
 
 const fetchUserProfile = async (): Promise<UserProfile> => {
-  const response = await fetch('http://localhost:5000/api/home/user-profile', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch user profile');
-  }
-
-  return response.json();
+  return homeApi.getUserProfile<UserProfile>();
 };
 
 export default function Navbar() {
@@ -39,17 +29,10 @@ export default function Navbar() {
 
   const handleLogout = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/auth/logout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-
-      if (res.ok) {
-        clearPlayer();
-        localStorage.removeItem('token');
-        navigate('/login');
-      }
+      await authApi.logout();
+      clearPlayer();
+      localStorage.removeItem('token');
+      navigate('/login');
     } catch (logoutError) {
       console.error('Logout failed:', logoutError);
     }

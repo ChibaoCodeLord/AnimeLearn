@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, Clock, ChevronRight, ChevronLeft, Loader2, Play, BookOpen, Layers, Heart } from 'lucide-react';
+import { Eye, Clock, ChevronRight, ChevronLeft, Play, Layers, Heart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import moment from 'moment';
-import axios from 'axios';
+import { videoApi } from '@/api/video.api';
 
 // Định nghĩa lại Type cho đồng bộ
 export interface VideoItem {
@@ -64,15 +64,17 @@ export default function VideosByLevel({ initialVideos = [], isInitialLoading = f
   const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(18);
   const [totalVideos, setTotalVideos] = useState(124); // Thay bằng API count thật nếu có
-  const [hasMore, setHasMore] = useState(true);
 
   const fetchVideos = async (levelFilter: string, currentPage: number, limit: number) => {
     setIsLoading(true);
     try {
-      const levelQuery = levelFilter === 'Tất cả' ? '' : `&level=${levelFilter}`;
-      const res = await axios.get(`http://localhost:5000/api/video/public-videos?page=${currentPage}&limit=${limit}${levelQuery}`);
+      const res = await videoApi.getPublicVideos<{ data: any[]; hasMore: boolean; total?: number }>({
+        page: currentPage,
+        limit,
+        level: levelFilter === 'Tất cả' ? undefined : levelFilter,
+      });
       
-      const enrichedData = res.data.data.map((v: any) => ({
+      const enrichedData = res.data.map((v: any) => ({
         ...v,
         duration: formatDuration(v.duration) || '00:00', // Nhận số giây từ DB (ví dụ: 750)
         theme: v.video_theme || 'Anime', // Nhận chủ đề từ DB
@@ -80,9 +82,7 @@ export default function VideosByLevel({ initialVideos = [], isInitialLoading = f
       }));
 
       setVideos(enrichedData);
-      setHasMore(res.data.hasMore);
-      
-      const fetchedTotal = res.data.total || enrichedData.length * 5;
+      const fetchedTotal = res.total || enrichedData.length * 5;
       setTotalVideos(fetchedTotal);
       
       // 🚀 BẮN DỮ LIỆU LÊN CHO COMPONENT CHA (HOME) BẰNG DÒNG NÀY:

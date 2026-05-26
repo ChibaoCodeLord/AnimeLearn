@@ -10,6 +10,7 @@ import animeLogo from '@/assets/animegirl.jpg';
 import UserBannedError from '@/components/UserBannedError';
 import MiniVinylPlayer from '@/components/player/MiniVinylPlayer';
 import { useTheme } from '@/hooks/useTheme';
+import { authApi } from '@/api/auth.api';
 
 const navItems = [
   { path: '/home', label: 'Trang chủ', icon: Home },
@@ -35,28 +36,7 @@ interface AuthError {
 }
 
 const fetchUserProfile = async (): Promise<User> => {
-  const token = localStorage.getItem('token');
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch('http://localhost:5000/api/auth/me', {
-    method: 'GET',
-    headers,
-    credentials: 'include',
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const err: AuthError & Error = new Error(data?.error || 'Khong the lay thong tin nguoi dung');
-    err.status = response.status;
-    err.data = data;
-    throw err;
-  }
-
-  return data;
+  return authApi.getMe<User>();
 };
 
 export default function Layout() {
@@ -86,11 +66,7 @@ export default function Layout() {
 
     const logout = async () => {
       try {
-        await fetch('http://localhost:5000/api/auth/logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-        });
+        await authApi.logout();
       } catch (e) {
         console.error('Logout failed', e);
       } finally {
@@ -198,11 +174,7 @@ export default function Layout() {
                   <button
                     onClick={async () => {
                       try {
-                        await fetch('http://localhost:5000/api/auth/logout', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          credentials: 'include',
-                        });
+                        await authApi.logout();
                       } catch (e) {
                         console.error('Logout failed', e);
                       } finally {
