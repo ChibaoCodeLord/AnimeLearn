@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Mail, Lock, User, CheckCircle, Eye, EyeOff, Loader, ArrowLeft } from 'lucide-react';
+import { authApi } from '@/api/auth.api';
+import { ApiError } from '@/api/client';
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -84,32 +86,21 @@ export default function Signup() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName: formData.fullName,
-          email: formData.email,
-          password: formData.password,
-        }),
+      const data = await authApi.signup<{ token?: string }>({
+        fullName: formData.fullName,
+        email: formData.email,
+        password: formData.password,
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      if (data.token) {
         localStorage.setItem('token', data.token);
-        await queryClient.invalidateQueries({ queryKey: ['current-user'] });
-        navigate('/home');
-      } else {
-        const errorData = await response.json();
-        setErrors(prev => ({
-          ...prev,
-          email: errorData.message || 'Error registering user',
-        }));
       }
+      await queryClient.invalidateQueries({ queryKey: ['current-user'] });
+      navigate('/home');
     } catch (error) {
       setErrors(prev => ({
         ...prev,
-        email: 'Connection error. Please try again.',
+        email: error instanceof ApiError ? error.message || 'Error registering user' : 'Connection error. Please try again.',
       }));
       console.error(error);
     } finally {

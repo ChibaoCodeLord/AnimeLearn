@@ -1,0 +1,73 @@
+import type { ApiId } from './types';
+
+export const ENDPOINTS = {
+  auth: {
+    me: '/auth/me',
+    login: '/auth/login',
+    register: '/auth/signup',
+    signup: '/auth/signup',
+    logout: '/auth/logout',
+    updateProfile: '/auth/update-profile',
+    changePassword: '/auth/change-password',
+    learningProgress: '/auth/learning-progress',
+    achievements: '/auth/achievements',
+    profileStats: '/auth/profile-stats',
+    updateLearningActivity: '/auth/update-learning-activity',
+    unlockAchievement: '/auth/unlock-achievement',
+    trackSession: '/auth/track-session',
+  },
+  home: {
+    userProfile: '/home/user-profile',
+    videos: '/home/videos',
+  },
+  video: {
+    analyze: '/video/analyze',
+    translateWord: '/video/translate-word',
+    saveWord: '/video/save-word',
+    save: '/video/save',
+    detail: (id: ApiId) => `/video/detail/${id}`,
+    view: (id: ApiId) => `/video/view/${id}`,
+    like: (id: ApiId) => `/video/like/${id}`,
+    unlike: (id: ApiId) => `/video/unlike/${id}`,
+    userVideos: '/video/user/my-videos',
+    update: (id: ApiId) => `/video/update/${id}`,
+    delete: (id: ApiId) => `/video/delete/${id}`,
+    vocabulary: (id: ApiId) => `/video/vocabulary/${id}`,
+    publicVideos: '/video/public-videos',
+    furiganaLine: '/video/furigana-line',
+  },
+  admin: {
+    stats: '/admin/stats',
+    videos: '/admin/videos',
+    video: (id: ApiId) => `/admin/videos/${id}`,
+    videoStatus: (id: ApiId) => `/admin/videos/${id}/status`,
+    users: '/admin/users',
+    user: (id: ApiId) => `/admin/users/${id}`,
+    userRole: (id: ApiId) => `/admin/users/${id}/role`,
+    banUser: (id: ApiId) => `/admin/users/${id}/ban`,
+    unbanUser: (id: ApiId) => `/admin/users/${id}/unban`,
+  },
+  chat: {
+    indexVideo: (videoId: ApiId) => `/chat/video/${videoId}/index`,
+    askVideo: (videoId: ApiId) => `/chat/video/${videoId}/ask`,
+    history: (videoId: ApiId) => `/chat/video/${videoId}/history`,
+  },
+  dictionary: {
+    lookup: '/dictionary/lookup',
+    search: '/dictionary/search',
+    saveWordForUser: (userId: ApiId, wordId: ApiId) =>
+      `/saved-words/user/${userId}/word/${wordId}`,
+  },
+  quiz: {
+    getByVideoId: (videoId: ApiId) => `/quiz/${videoId}`,
+    generate: (videoId: ApiId) => `/quiz/${videoId}/generate`,
+  },
+  vocabulary: {
+    list: '/vocabulary',
+    item: (id: ApiId) => `/vocabulary/${id}`,
+  },
+  kanji: {
+    lookup: '/kanji/lookup',
+    detail: (character: string) => `/kanji/detail/${encodeURIComponent(character)}`,
+  },
+} as const;

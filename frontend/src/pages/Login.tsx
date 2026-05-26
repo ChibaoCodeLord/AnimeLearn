@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Mail, Lock, Eye, EyeOff, Loader, ArrowLeft } from 'lucide-react';
+import { authApi } from '@/api/auth.api';
+import { ApiError } from '@/api/client';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -40,30 +42,16 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      });
+      const data = await authApi.login<{ token?: string }>({ email, password });
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+      }
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.token) {
-          localStorage.setItem('token', data.token);
-        }
-        const token = data.token || localStorage.getItem('token') || '';
-        const profileRes = await fetch('http://localhost:5000/api/auth/me', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          credentials: 'include',
-        });
-
-        if (profileRes.status === 403) {
-          const banData = await profileRes.json().catch(() => ({}));
+      try {
+        await authApi.getMe();
+      } catch (profileError) {
+        if (profileError instanceof ApiError && profileError.status === 403) {
+          const banData = profileError.data as { error?: string } | undefined;
           if (banData?.error === 'User is banned') {
             try {
               sessionStorage.setItem('banInfo', JSON.stringify(banData));
@@ -74,15 +62,17 @@ export default function Login() {
             return;
           }
         }
-
-        await queryClient.invalidateQueries({ queryKey: ['current-user'] });
-        navigate('/home');
-      } else {
-        const errorData = await response.json();
-        setErrors({ email: errorData.error || 'Invalid email or password', password: '' });
+        throw profileError;
       }
+
+      await queryClient.invalidateQueries({ queryKey: ['current-user'] });
+      navigate('/home');
     } catch (error) {
-      setErrors({ email: 'Connection error. Please try again.', password: '' });
+      if (error instanceof ApiError) {
+        setErrors({ email: error.message || 'Invalid email or password', password: '' });
+      } else {
+        setErrors({ email: 'Connection error. Please try again.', password: '' });
+      }
       console.error(error);
     } finally {
       setIsLoading(false);

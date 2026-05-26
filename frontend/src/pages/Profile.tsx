@@ -5,6 +5,8 @@ import { MapPin, Flame, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, E
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
 import { useTheme } from '@/hooks/useTheme';
+import { authApi } from '@/api/auth.api';
+import { videoApi } from '@/api/video.api';
 
 interface UserProfile {
   id: string;
@@ -24,142 +26,63 @@ interface PasswordForm {
   confirmPassword: string;
 }
 
+interface LearningProgressResponse {
+  weeklyData?: Array<{ day: string; hours: number; date?: string }>;
+  monthlyData?: Array<{ month: string; hours: number }>;
+}
+
+interface UserVideosResponse {
+  videos: any[];
+  pagination: {
+    currentPage: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+}
+
+interface ProfileStats {
+  totalLearningHours?: number;
+  dayStreak?: number;
+  xpPoints?: number;
+  userRank?: number;
+  ranking?: string;
+  todayHours?: number;
+  weekHours?: number;
+}
+
 const fetchUserProfile = async (): Promise<UserProfile> => {
-  const response = await fetch('http://localhost:5000/api/auth/me', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch user profile');
-  }
-
-  return response.json();
+  return authApi.getMe<UserProfile>();
 };
 
 const updateUserProfile = async (data: Partial<UserProfile> | FormData): Promise<UserProfile> => {
-  const isFormData = data instanceof FormData;
-  const headers: Record<string, string> = {};
-
-  if (!isFormData) {
-    headers['Content-Type'] = 'application/json';
-  }
-
-  const response = await fetch('http://localhost:5000/api/auth/update-profile', {
-    method: 'PUT',
-    headers,
-    credentials: 'include',
-    body: isFormData ? (data as FormData) : JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update profile');
-  }
-
-  return response.json();
+  return authApi.updateProfile<UserProfile>(data);
 };
 
 const changePassword = async (data: { currentPassword: string; newPassword: string }) => {
-  const response = await fetch('http://localhost:5000/api/auth/change-password', {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify(data),
-  });
-
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(result.error || result.message || 'Failed to change password');
-  }
-
-  return result;
+  return authApi.changePassword(data);
 };
 
 const fetchLearningProgress = async (period: string = 'week') => {
-  const response = await fetch(`http://localhost:5000/api/auth/learning-progress?period=${period}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch learning progress');
-  }
-
-  return response.json();
+  return authApi.getLearningProgress<LearningProgressResponse>(period);
 };
 
 const fetchUserVideos = async (page: number = 1) => {
-  const response = await fetch(`http://localhost:5000/api/video/user/my-videos?page=${page}&limit=5`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch videos');
-  }
-
-  return response.json();
+  return videoApi.getUserVideos<UserVideosResponse>({ page, limit: 5 });
 };
 
 const fetchProfileStats = async () => {
-  const response = await fetch('http://localhost:5000/api/auth/profile-stats', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch profile stats');
-  }
-
-  return response.json();
+  return authApi.getProfileStats<ProfileStats>();
 };
 
 const deleteVideo = async (videoId: string) => {
-  const response = await fetch(`http://localhost:5000/api/video/delete/${videoId}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to delete video');
-  }
-
-  return response.json();
+  return videoApi.deleteVideo(videoId);
 };
 
 const updateVideo = async (videoId: string, data: { title: string; visibility?: 'public' | 'private' }) => {
-  const response = await fetch(`http://localhost:5000/api/video/update/${videoId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to update video');
-  }
-
-  return response.json();
+  return videoApi.updateVideo(videoId, data);
 };
 
 // Mock data fallback for videos display

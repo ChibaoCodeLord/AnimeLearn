@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Sparkles, CheckCircle2, XCircle, ArrowRight, RotateCcw, BrainCircuit, PlayCircle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
+import { quizApi } from '@/api/quiz.api';
 
 const YouTube = (YouTubeOrigin as any).default || YouTubeOrigin;
 
@@ -46,8 +47,6 @@ interface QuizPageProps {
   onJumpToTime?: (index: number) => void;
 }
 
-const API_BASE = 'http://localhost:5000/api';
-
 // --- COMPONENT CHÍNH ---
 export default function QuizPage({ videoId = null, script = [], ytId }: QuizPageProps) {
   const queryClient = useQueryClient();
@@ -65,14 +64,7 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
     queryKey: ['video-quiz', videoId],
     queryFn: async () => {
       if (!videoId) return null;
-      const res = await fetch(`${API_BASE}/quiz/${videoId}`, {
-        headers: {
-          ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}),
-        }
-      });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error('Lỗi tải quiz');
-      return res.json();
+      return quizApi.getQuizByVideoId<QuizData>(videoId);
     },
     enabled: !!videoId,
   });
@@ -83,20 +75,8 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
       if (!videoId) throw new Error('Thiếu mã video');
       if (!script || script.length === 0) throw new Error('Video chưa có kịch bản (script) để tạo quiz.');
 
-      const res = await fetch(`${API_BASE}/quiz/${videoId}/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}),
-        },
-        body: JSON.stringify({ script })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi khi AI tạo quiz');
-      
       // Backend lúc này sẽ trả về object: { message, quiz, jlptLevel }
-      return data; 
+      return quizApi.generateQuiz<{ message?: string; quiz: QuizData; jlptLevel?: string }>(videoId, { script }); 
     },
     onSuccess: (data) => {
       // Hiển thị luôn Level AI vừa chấm được lên Toast
@@ -110,7 +90,7 @@ export default function QuizPage({ videoId = null, script = [], ytId }: QuizPage
       queryClient.invalidateQueries({ queryKey: ['video-detail', videoId] });
 
       /* 💡 MẸO NHỎ: 
-         Vì trong file VideoWorkspace.tsx bạn đang dùng useEffect() gọi fetch() thuần 
+         Vì trước đây VideoWorkspace tự gọi API trong useEffect 
          để lấy thông tin Video (chứ không dùng useQuery), nên invalidateQueries ở trên 
          có thể không tự động cập nhật cái chữ "Unknown" trên Badge.
          

@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Upload, ArrowRight, Youtube, PlayCircle, BookOpen, TrendingUp, Shield } from 'lucide-react';
 import animeLogo from '@/assets/demon_slayer.gif';
+import { authApi } from '@/api/auth.api';
 
 interface CompactBannerProps {
   totalVideos?: number;
@@ -17,19 +18,7 @@ interface CurrentUser {
 }
 
 const fetchCurrentUser = async (): Promise<CurrentUser> => {
-  const response = await fetch('http://localhost:5000/api/auth/me', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch current user');
-  }
-
-  return response.json();
+  return authApi.getMe<CurrentUser>();
 };
 
 export default function CompactBanner({ 

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { homeApi } from '@/api/home.api';
 
 export interface VideoItem {
   id: string | number;
@@ -11,19 +12,7 @@ export interface VideoItem {
 }
 
 const fetchVideos = async (): Promise<VideoItem[]> => {
-  const response = await fetch('http://localhost:5000/api/home/videos', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch videos');
-  }
-
-  return response.json();
+  return homeApi.getHomeVideos<VideoItem[]>();
 };
 
 export const useHomeData = () => {

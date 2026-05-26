@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { Volume2, Bookmark, BookmarkCheck, AlertCircle, CheckCircle2, ChevronRight, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import axios from 'axios';
 import ExampleSentence from './ExampleSentence';
 import type { WordData, KanjiInfo } from './types';
+import { ApiError } from '@/api/client';
+import { dictionaryApi } from '@/api/dictionary.api';
+import { kanjiApi } from '@/api/kanji.api';
 
 interface WordDetailProps {
   word: WordData;
@@ -36,12 +38,7 @@ export default function WordDetail({ word, playPronunciation, onSaveWord, onOpen
 
       setLoadingKanji(true);
       try {
-        const res = await fetch('http://localhost:5000/api/kanji/lookup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ characters: uniqueKanjis })
-        });
-        const data = await res.json();
+        const data = await kanjiApi.lookupKanji<{ success?: boolean; data: KanjiInfo[] }>(uniqueKanjis);
         if (data.success) {
           setKanjiDetails(data.data);
         }
@@ -65,19 +62,19 @@ export default function WordDetail({ word, playPronunciation, onSaveWord, onOpen
 
     try {
       const wordId = word.id || word._id;
-      const response = await axios.post(`/api/saved-words/user/${userId}/word/${wordId}`, {});
-      if (response.data.success) {
+      const response = await dictionaryApi.saveWordForUser<{ success?: boolean; message?: string }>(userId, wordId || '');
+      if (response.success) {
         onSaveWord(word);
         setMessage({ type: 'success', text: 'Đã lưu từ vựng!' });
       } else {
-        setMessage({ type: 'error', text: response.data.message || 'Đã có trong sổ tay' });
+        setMessage({ type: 'error', text: response.message || 'Đã có trong sổ tay' });
       }
     } catch (error: any) {
-      if (error.response?.status === 500 && retry) {
+      if (error instanceof ApiError && error.status === 500 && retry) {
         setMessage({ type: 'error', text: 'Đang thử lại...' });
         setTimeout(() => handleSaveWord(false), 1000);
       } else {
-        setMessage({ type: 'error', text: error.response?.data?.message || 'Lưu thất bại.' });
+        setMessage({ type: 'error', text: error instanceof ApiError ? error.message : 'Lưu thất bại.' });
       }
     }
     setTimeout(() => setMessage(null), 3000);

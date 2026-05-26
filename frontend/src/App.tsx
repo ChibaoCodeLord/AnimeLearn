@@ -22,6 +22,7 @@ import Signup from './pages/Signup';
 import Layout from './components/Layout';
 import DictionaryPage from './pages/DictionaryPage';
 import UserBannedError from './components/UserBannedError';
+import { authApi } from '@/api/auth.api';
 
 // Authentication check function
 const isAuthenticated = (): boolean => {
@@ -73,49 +74,24 @@ const AuthenticatedApp = () => {
     // Initialize session start time inside useEffect to avoid impure function call during render
     sessionStartRef.current = Date.now();
 
-    const handleBeforeUnload = () => {
-      // Calculate session duration in seconds
+    const trackCurrentSession = () => {
       const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
-      
-      // Only track if duration is at least 5 seconds (to avoid accidental page refreshes)
-      if (durationSeconds >= 5) {
-        const token = localStorage.getItem('token');
-        if (token) {
-          // Use sendBeacon to ensure data is sent even if page is unloading
-          const payload = JSON.stringify({
-            durationSeconds,
-            page: window.location.pathname
-          });
-          const blob = new Blob([payload], { type: 'application/json' });
+      if (durationSeconds < 5 || !localStorage.getItem('token')) return;
 
-          navigator.sendBeacon(
-            'http://localhost:5000/api/auth/track-session',
-            blob
-          );
-        }
-      }
+      authApi.trackSessionBeacon({
+        durationSeconds,
+        page: window.location.pathname,
+      });
+    };
+
+    const handleBeforeUnload = () => {
+      trackCurrentSession();
     };
 
     const handlePageVisibilityChange = () => {
       // Send beacon when tab becomes hidden
       if (document.hidden) {
-        const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
-        
-        if (durationSeconds >= 5) {
-          const token = localStorage.getItem('token');
-          if (token) {
-            const payload = JSON.stringify({
-              durationSeconds,
-              page: window.location.pathname
-            });
-            const blob = new Blob([payload], { type: 'application/json' });
-
-            navigator.sendBeacon(
-              'http://localhost:5000/api/auth/track-session',
-              blob
-            );
-          }
-        }
+        trackCurrentSession();
         
         // Reset session start when tab becomes visible again
       } else {
