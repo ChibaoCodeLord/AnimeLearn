@@ -1102,9 +1102,9 @@ export default function VideoWorkspace() {
               w-full xl:w-[var(--script-panel-width)]
               flex flex-col
               rounded-[1rem]
-              border border-indigo-500/40
-              bg-[#0f172a]
-              shadow-lg shadow-indigo-950/20
+              border border-slate-200
+              bg-white
+              shadow-lg shadow-slate-200/50
               overscroll-contain overflow-hidden shrink-0
               h-[500px] xl:h-[850px]
             "
@@ -1113,18 +1113,18 @@ export default function VideoWorkspace() {
             <div
               className="
                 px-5 py-2.5
-                border-b border-indigo-500/30
-                bg-[#111827]
+                border-b border-slate-100
+                bg-white
                 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4
               "
             >
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-xl bg-indigo-500/15 text-indigo-300 flex items-center justify-center border border-indigo-400/30">
+                <div className="h-8 w-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
                   <BookOpen className="w-4 h-4" />
                 </div>
 
                 <div className="py-1">
-                  <h3 className="font-bold text-slate-100 text-lg tracking-tight">
+                  <h3 className="font-bold text-slate-800 text-lg tracking-tight">
                     Phụ đề
                   </h3>
                 </div>
@@ -1137,12 +1137,12 @@ export default function VideoWorkspace() {
                     size="sm"
                     className="
                       h-8 rounded-full
-                      border-indigo-400/30
-                      bg-indigo-500/10
-                      text-indigo-200
-                      hover:bg-indigo-500/20
-                      hover:text-white
-                      hover:border-indigo-300/50
+                      border-indigo-200
+                      bg-indigo-50
+                      text-indigo-700
+                      hover:bg-indigo-100
+                      hover:text-indigo-800
+                      hover:border-indigo-300
                       transition-colors
                     "
                     onClick={() => setShowVocabList(!showVocabList)}
@@ -1167,12 +1167,12 @@ export default function VideoWorkspace() {
                     size="sm"
                     className="
                       h-8 rounded-full
-                      border-cyan-400/30
-                      bg-cyan-500/10
-                      text-cyan-200
-                      hover:bg-cyan-500/20
-                      hover:text-white
-                      hover:border-cyan-300/50
+                      border-cyan-200
+                      bg-cyan-50
+                      text-cyan-700
+                      hover:bg-cyan-100
+                      hover:text-cyan-800
+                      hover:border-cyan-300
                       transition-colors
                     "
                     onClick={() => setShowFurigana(!showFurigana)}
@@ -1195,9 +1195,9 @@ export default function VideoWorkspace() {
                   <Badge
                     variant="outline"
                     className="
-                      bg-amber-400/15
-                      text-amber-200
-                      border-amber-300/30
+                      bg-amber-50
+                      text-amber-700
+                      border-amber-200
                       shadow-xs
                       font-semibold
                     "
@@ -1208,7 +1208,7 @@ export default function VideoWorkspace() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white/95">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white">
               {script.length > 0 ? (
                 <ScriptPanel
                   script={script}
