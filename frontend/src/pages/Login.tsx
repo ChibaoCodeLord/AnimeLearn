@@ -103,7 +103,7 @@ export default function Login() {
         <div className="absolute inset-0 bg-black/40"></div>
 
         <div className="relative z-10 space-y-12 flex flex-col justify-between h-full">
-          <div>
+          <div className="pt-16">
             <h1 className="text-4xl font-black text-white tracking-tight mb-2">AnimeLearn</h1>
             <p className="text-white/80 text-lg font-light">Unlock the World of Japanese</p>
           </div>

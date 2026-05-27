@@ -1,16 +1,68 @@
-# AnimeLearn
-## thư viện 
-pip install fastapi uvicorn pydantic
-## Cách chạy dự án
-- chạy frontend
-    - cd vào frontend rồi bấm "npm run dev"
-- chạy backend
-    - cd vào backend rồi bấm "npm run dev"
-    - cd vào sripts rồi bấm "py server_AI.py"
-# AnimeLearn/frontend
-# backend
+# AnimeLearn - Learn Japanese Through Anime
 
-## Cấu hình gửi email
+## 🌟 Introduction
+
+Learning a new language can often feel like a tedious chore when restricted to traditional textbooks and rote memorization. For many Japanese language learners, their passion stems from anime and Japanese pop culture, but bridging the gap between casual viewing and active learning is difficult without the right tools.
+
+**AnimeLearn** is an innovative platform designed to solve this by turning your favorite anime scenes into an immersive language-learning experience. Our platform provides dual subtitles, interactive vocabulary lookups, AI-powered grammar explanations, and gamified quizzes, empowering modern otakus to master Japanese naturally and effectively.
+
+This project also serves as a robust application demonstrating the integration of modern web technologies, AI-powered transcription (Whisper), and Retrieval-Augmented Generation (RAG) for language education.
+
+## ✨ Features
+
+Our platform offers specialized features tailored for learners and administrators.
+
+### 👨‍💼 For Administrators (Admin)
+
+Admins maintain the quality of the learning material and monitor platform growth.
+
+*   **Analytics Dashboard:** Visualize key metrics such as total videos, registered learners, and learning hours.
+*   **Video & Content Management:** Upload YouTube videos, generate AI-powered scripts, and curate Japanese-Vietnamese dual subtitles.
+*   **Vocabulary & Kanji Control:** Automatically extract and manage vocabulary lists, JLPT levels, and Kanji definitions for each video.
+*   **User Management:** Oversee user accounts, track learner progress, and handle access control.
+
+### 👩‍🎓 For Learners
+
+Learners have access to a rich suite of interactive tools to study Japanese efficiently.
+
+*   **Immersive Video Player:** Watch anime with synced dual subtitles. Toggle Furigana (reading aids) on or off depending on your level.
+*   **Interactive Subtitles:** Click on any word in the subtitle to instantly look up its meaning, part of speech, JLPT level, and Kanji breakdown without pausing your flow.
+*   **Shadowing & Karaoke Mode:** Practice speaking with Shadowing mode or enjoy synced lyrics in a beautiful Karaoke interface.
+*   **Pop-up Quizzes:** Test your listening and reading comprehension with AI-generated quizzes that appear dynamically while watching.
+*   **AI Grammar Assistant:** Ask the integrated AI Chatbot to deeply explain specific grammar patterns or cultural nuances found in the current scene.
+*   **Personal Vocabulary Notebook:** Save interesting words to your personal notebook and review them later using Spaced Repetition (Flashcards).
+
+## 💻 Tech Stack
+
+*   **Frontend:** React, TypeScript, Vite, Tailwind CSS
+*   **Backend:** Node.js (Express), Python (FastAPI for AI processing)
+*   **Database:** MongoDB, ChromaDB (for Vector Search/RAG)
+*   **AI/ML:** Whisper (Audio Transcription), Kuroshiro/SudachiPy (Japanese NLP), LangChain
+
+## 🚀 How to Run the Project
+
+1. **Start the Frontend:**
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+2. **Start the Backend (Node.js):**
+   ```bash
+   cd backend
+   npm run dev
+   ```
+
+3. **Start the AI Server (Python):**
+   ```bash
+   cd backend/scripts
+   pip install fastapi uvicorn pydantic
+   python server_AI.py
+   ```
+
+---
+
+## 📧 Cấu hình gửi email (For Backend)
 Backend đang dùng `nodemailer` + SMTP để gửi mail khi admin từ chối video hoặc khi bạn cần thêm luồng email khác.
 
 1. Tạo file `backend/.env`.
