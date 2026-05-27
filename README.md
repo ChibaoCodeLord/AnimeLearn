@@ -79,7 +79,4 @@ Keep motivation running high with continuous streak calculation, rank leveling, 
 
 ---
 
-### 3. Administrator Interface
 
-#### 3.1 AI-Powered Video Management Pipeline
-Console for processing auto-transcriptions, parsing text data through Whisper models, and evaluating status cues.
