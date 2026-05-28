@@ -17,6 +17,7 @@
     "axios": "^1.16.1",
     "cloudinary": "^2.9.0",
     "kuroshiro": "^1.2.0",
-    "kuroshiro-analyzer-kuromoji": "^1.1.0"
+    "kuroshiro-analyzer-kuromoji": "^1.1.0",
+    "undici": "^7.26.0"
   }
 }

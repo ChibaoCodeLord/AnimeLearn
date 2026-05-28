@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const MASTERED_INTERVAL_DAYS = 13; // sau 10 ngày ôn và ng dùng vẫn chọn dễ -> đã thuộc 10 -> 13 vì khi set ngày ôn mới 10 chọn dễ thành 13
 // Định nghĩa kiểu dữ liệu cho một từ vựng trong Flashcard
 export interface FlashcardWord {
   id: string | number;
@@ -23,6 +24,7 @@ export interface FlashcardWord {
 interface FlashCardProps {
   words: FlashcardWord[];
   onReview: (payload: { id: string | number; data: any }) => void;
+  onDelete?: (id: string | number) => void;
 }
 
 const jlptColors: Record<string, string> = {
@@ -61,7 +63,7 @@ function calculateNextReview(quality: number, easeFactor: number, interval: numb
   };
 }
 
-export default function FlashCard({ words, onReview }: FlashCardProps) {
+export default function FlashCard({ words, onReview, onDelete }: FlashCardProps) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
@@ -95,16 +97,27 @@ export default function FlashCard({ words, onReview }: FlashCardProps) {
   const word = words[currentIdx];
   if (!word) return null;
 
-  const handleReview = (quality: number) => {
-    const result = calculateNextReview(quality, word.ease_factor || 2.5, word.review_interval || 1);
-    onReview({ id: word.id, data: { ...result, review_count: (word.review_count || 0) + 1 } });
-
+  const moveToNextCard = () => {
     setFlipped(false);
     if (currentIdx < words.length - 1) {
       setCurrentIdx(currentIdx + 1);
     } else {
       setIsFinished(true);
     }
+  };
+
+  const handleReview = (quality: number) => {
+    const result = calculateNextReview(quality, word.ease_factor || 2.5, word.review_interval || 1);
+
+    if (quality === 4 && result.review_interval >= MASTERED_INTERVAL_DAYS && onDelete) {
+      onDelete(word.id);
+      moveToNextCard();
+      return;
+    }
+
+    onReview({ id: word.id, data: { ...result, review_count: (word.review_count || 0) + 1 } });
+
+    moveToNextCard();
   };
 
   return (

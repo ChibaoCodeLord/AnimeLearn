@@ -200,6 +200,7 @@ export default function Vocabulary() {
               <FlashCard 
                 words={dueWords as FlashcardWord[]} 
                 onReview={(payload) => updateMutation.mutate(payload)} 
+                onDelete={(id) => deleteMutation.mutate(id)}
               />
             </div>
           )}
