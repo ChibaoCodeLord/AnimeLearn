@@ -20,6 +20,7 @@ const __dirname = path.dirname(__filename);
 
 import KuroshiroModule from "kuroshiro";
 import KuromojiAnalyzerModule from "kuroshiro-analyzer-kuromoji";
+import VideoWatched from '../models/VideoWatched.js';
 
 const Kuroshiro = KuroshiroModule.default || KuroshiroModule;
 const KuromojiAnalyzer =
@@ -663,6 +664,87 @@ router.post('/unlike/:id', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi bỏ thích video:', error);
     res.status(500).json({ error: 'Lỗi khi bỏ thích video' });
+  }
+});
+
+router.get('/watched', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 30, 1), 100);
+
+    const watchedVideos = await VideoWatched.find({ user: currentUserId })
+      .sort({ watched_at: -1 })
+      .limit(limit)
+      .populate({
+        path: 'video',
+        select: '_id title thumbnail_url jlpt_level views_count likes_count created_date duration video_theme status',
+      })
+      .lean();
+
+    const data = watchedVideos
+      .filter(item => item.video)
+      .map(item => ({
+        history_id: item._id,
+        id: item.video._id,
+        title: item.video.title,
+        thumbnail_url: item.video.thumbnail_url,
+        jlpt_level: item.video.jlpt_level,
+        views_count: item.video.views_count,
+        likes_count: item.video.likes_count,
+        created_date: item.video.created_date,
+        duration: item.video.duration || 0,
+        video_theme: item.video.video_theme || '',
+        status: item.video.status,
+        watched_at: item.watched_at,
+        progress_seconds: item.progress_seconds || 0,
+      }));
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error('Lỗi khi lấy lịch sử xem video:', error);
+    return res.status(500).json({ error: 'Lỗi khi lấy lịch sử xem video' });
+  }
+});
+
+router.post('/watched/:id', authMiddleware, async (req, res) => {
+  try {
+    const videoId = req.params.id;
+    const currentUserId = req.user?.id || req.user?.userId;
+    const progressSeconds = Math.max(0, Number(req.body?.progress_seconds || 0));
+
+    const video = await Video.findById(videoId).select('_id status');
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    if (video.status !== 'approved') {
+      return res.status(403).json({ error: 'Video chưa được duyệt' });
+    }
+
+    const watched = await VideoWatched.create({
+      video: videoId,
+      user: currentUserId,
+      watched_at: new Date(),
+      progress_seconds: progressSeconds,
+    });
+
+    const oldWatchedIds = await VideoWatched.find({ user: currentUserId })
+      .sort({ watched_at: -1 })
+      .skip(30)
+      .select('_id')
+      .lean();
+
+    if (oldWatchedIds.length > 0) {
+      await VideoWatched.deleteMany({ _id: { $in: oldWatchedIds.map(item => item._id) } });
+    }
+
+    return res.json({
+      success: true,
+      watched,
+    });
+  } catch (error) {
+    console.error('Lỗi khi lưu lịch sử xem video:', error);
+    return res.status(500).json({ error: 'Lỗi khi lưu lịch sử xem video' });
   }
 });
 
