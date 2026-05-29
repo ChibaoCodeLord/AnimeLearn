@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import YouTubeOrigin from 'react-youtube';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -204,10 +205,10 @@ async function fetchCurrentUser(): Promise<CurrentUser> {
 }
 
 export default function VideoWorkspace() {
-  const params = new URLSearchParams(window.location.search);
-  const videoId = params.get('id');
-  const youtubeUrl = params.get('url');
-  const resumeTimeParam = Number(params.get('t') || 0);
+  const [searchParams] = useSearchParams();
+  const videoId = searchParams.get('id');
+  const youtubeUrl = searchParams.get('url');
+  const resumeTimeParam = Number(searchParams.get('t') || 0);
   const routeResumeTime = Number.isFinite(resumeTimeParam) && resumeTimeParam > 0
     ? resumeTimeParam
     : 0;
@@ -257,6 +258,39 @@ export default function VideoWorkspace() {
     setPlaybackPosition,
     setProgress: setGlobalProgress,
   } = usePlayerStore();
+
+  useEffect(() => {
+    try {
+      playerRef.current?.pauseVideo?.();
+      playerRef.current?.stopVideo?.();
+    } catch {
+      // The YouTube iframe may already be detached while changing videos.
+    }
+
+    playerRef.current = null;
+    setIsPlaying(false);
+    setGlobalIsPlaying(false);
+    setGlobalProgress(0);
+    setPlaybackPosition(0, 0);
+    setScript([]);
+    setVocabList([]);
+    setCurrentIndex(0);
+    setVideoTitle('');
+    setCurrentYoutubeUrl(youtubeUrl || '');
+    setVideoStatus('pending');
+    setJlptLevel('Unknown');
+    setViewsCount(0);
+    setLikesCount(0);
+    setLikedByMe(false);
+    setLoadError(null);
+    setActivePopupQuestion(null);
+    setShownPopups(new Set());
+    hasCountedViewRef.current = false;
+
+    if (videoId) {
+      setIsCheckingAccess(true);
+    }
+  }, [setGlobalIsPlaying, setGlobalProgress, setPlaybackPosition, videoId, youtubeUrl]);
 
   const { data: currentUser } = useQuery<CurrentUser>({
     queryKey: ['current-user'],
@@ -353,11 +387,15 @@ export default function VideoWorkspace() {
     return Number.isFinite(savedWidth) && savedWidth >= 320 ? savedWidth : 400;
   });
   useEffect(() => {
+    let cancelled = false;
+
     if (videoId) {
       setIsCheckingAccess(true);
       hasCountedViewRef.current = sessionStorage.getItem(`video-view-counted:${videoId}`) === '1';
       videoApi.getVideoDetail<any>(videoId)
         .then(video => {
+          if (cancelled) return;
+
           if (video && !video.error) {
             setScript(video.script || []);
             setVocabList(video.vocab_list || []); 
@@ -369,9 +407,13 @@ export default function VideoWorkspace() {
             setLikesCount(video.likes_count || 0);
             setLikedByMe(Boolean(video.likedByMe));
             setLoadError(null);
+          } else {
+            setLoadError(video?.error || 'Không thể mở video này');
           }
         })
         .catch(err => {
+          if (cancelled) return;
+
           console.error(err);
           const statusMessage =
             err instanceof ApiError && err.status === 401
@@ -383,8 +425,14 @@ export default function VideoWorkspace() {
                   : 'Lỗi khi tải kịch bản từ máy chủ';
           setLoadError(statusMessage);
         })
-        .finally(() => setIsCheckingAccess(false));
+        .finally(() => {
+          if (!cancelled) setIsCheckingAccess(false);
+        });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [videoId]);
 
 
@@ -805,6 +853,7 @@ export default function VideoWorkspace() {
                 >
                   {ytId ? (
                     <YouTube
+                      key={ytId}
                       videoId={ytId}
                       className="absolute inset-0 w-full h-full border-0"
                       iframeClassName="w-full h-full"

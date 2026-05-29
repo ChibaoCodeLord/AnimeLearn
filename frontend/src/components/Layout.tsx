@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Home, Brain, BarChart3, Shield, MessageCircle,
-  Menu, GraduationCap, ChevronRight, Search, Sun, Moon, ChevronDown // ✨ Đã import thêm icon Search
+  Menu, ChevronRight, Search, Sun, Moon, ChevronDown, ArrowRight // ✨ Đã import thêm icon Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import animeLogo from '@/assets/animegirl.jpg';
@@ -11,6 +11,8 @@ import UserBannedError from '@/components/UserBannedError';
 import MiniVinylPlayer from '@/components/player/MiniVinylPlayer';
 import { useTheme } from '@/hooks/useTheme';
 import { authApi } from '@/api/auth.api';
+import { videoApi } from '@/api/video.api';
+import { usePlayerStore } from '@/stores/usePlayerStore';
 
 const navItems = [
   { path: '/home', label: 'Trang chủ', icon: Home },
@@ -35,6 +37,12 @@ interface AuthError {
   data?: { error?: string; bannedAt?: string; unbannedAt?: string; banReason?: string };
 }
 
+interface FooterVideo {
+  id?: string | number;
+  _id?: string | number;
+  title?: string;
+}
+
 const fetchUserProfile = async (): Promise<User> => {
   return authApi.getMe<User>();
 };
@@ -47,6 +55,7 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const { isDark, toggleTheme } = useTheme();
+  const clearPlayer = usePlayerStore(store => store.clearPlayer);
 
   const { data: user, isLoading, error } = useQuery<User>({
     queryKey: ['current-user'],
@@ -79,21 +88,6 @@ export default function Layout() {
     void logout();
   }, [error, navigate, queryClient]);
 
-  if (banInfo) {
-    try {
-      sessionStorage.setItem('banInfo', JSON.stringify(banInfo));
-    } catch (e) {
-      console.error('Cannot persist ban info', e);
-    }
-    return (
-      <UserBannedError
-        banReason={banInfo.banReason}
-        bannedAt={banInfo.bannedAt}
-        unbannedAt={banInfo.unbannedAt}
-      />
-    );
-  }
-
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -109,6 +103,59 @@ export default function Layout() {
   };
 
   const isAdmin = user?.role === 'admin';
+  const isVideoWorkspaceRoute = location.pathname.toLowerCase() === '/videoworkspace';
+  const showLearnerFooter = user?.role === 'user' && isVideoWorkspaceRoute;
+  const [nextVideo, setNextVideo] = useState<FooterVideo | null>(null);
+  const { data: footerVideosResponse } = useQuery<{ data?: FooterVideo[] } | FooterVideo[]>({
+    queryKey: ['learner-footer-random-videos'],
+    queryFn: () => videoApi.getPublicVideos<{ data?: FooterVideo[] } | FooterVideo[]>({ page: 1, limit: 24 }),
+    enabled: showLearnerFooter,
+    staleTime: 5 * 60 * 1000,
+  });
+  const nextVideoId = nextVideo?._id ?? nextVideo?.id;
+
+  useEffect(() => {
+    if (!showLearnerFooter || !footerVideosResponse) {
+      setNextVideo(null);
+      return;
+    }
+
+    const videos = Array.isArray(footerVideosResponse)
+      ? footerVideosResponse
+      : footerVideosResponse.data ?? [];
+    const currentVideoId = new URLSearchParams(location.search).get('id');
+    const candidates = videos.filter(video => {
+      const id = video._id ?? video.id;
+      return id && String(id) !== currentVideoId;
+    });
+
+    setNextVideo(candidates[Math.floor(Math.random() * candidates.length)] ?? null);
+  }, [footerVideosResponse, location.search, showLearnerFooter]);
+
+  const handleContinueClick = () => {
+    clearPlayer();
+    if (nextVideoId) {
+      navigate({
+        pathname: '/VideoWorkspace',
+        search: `?id=${encodeURIComponent(String(nextVideoId))}`,
+      });
+    }
+  };
+
+  if (banInfo) {
+    try {
+      sessionStorage.setItem('banInfo', JSON.stringify(banInfo));
+    } catch (e) {
+      console.error('Cannot persist ban info', e);
+    }
+    return (
+      <UserBannedError
+        banReason={banInfo.banReason}
+        bannedAt={banInfo.bannedAt}
+        unbannedAt={banInfo.unbannedAt}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-linear-to-br from-emerald-50 via-teal-50 to-green-50 transition-colors duration-300 dark:from-slate-950 dark:via-slate-950 dark:to-emerald-950">
@@ -266,49 +313,43 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <footer className="relative z-10 mt-auto w-full shrink-0 border-t border-emerald-100 bg-white dark:border-slate-800 dark:bg-slate-950">
-        <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
-          <div className="max-w-7xl mx-auto px-6 py-8">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-linear-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
-                    <GraduationCap className="w-4 h-4 text-white" />
-                  </div>
-                  <span className="font-bold text-slate-900">My Anime</span>
+      {showLearnerFooter && (
+        <footer className="relative z-10 mt-auto w-full shrink-0 border-t border-slate-200 bg-white/95 text-slate-700 shadow-[0_-1px_0_rgba(15,23,42,0.04)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300">
+          <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
+            <div className="flex min-h-16 flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between lg:px-11">
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-xs font-semibold tracking-wide">
+                <span className="text-slate-900 dark:text-slate-100">© 2026 AnimeLearn</span>
+                <Link to="/Profile" className="text-slate-500 transition-colors hover:text-teal-600 dark:text-slate-400 dark:hover:text-teal-400">
+                  Terms
+                </Link>
+                <Link to="/Profile" className="text-slate-500 transition-colors hover:text-teal-600 dark:text-slate-400 dark:hover:text-teal-400">
+                  Privacy
+                </Link>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="min-w-0 text-left sm:text-right">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600 dark:text-teal-400">
+                    Bài học tiếp theo
+                  </p>
+                  <p className="max-w-52 truncate text-xs font-bold text-slate-950 dark:text-white">
+                    {nextVideo?.title || 'Video ngẫu nhiên'}
+                  </p>
                 </div>
-                <p className="text-sm text-slate-600 max-w-xs">Nền tảng Học tiếng Nhật qua Anime với AI.</p>
+                <button
+                  type="button"
+                  onClick={handleContinueClick}
+                  disabled={!nextVideoId}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-teal-500 px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
+                >
+                  Tiếp tục
+                  <ArrowRight className="h-4 w-4" />
+                </button>
               </div>
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-3">Tính năng</h4>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="hover:text-emerald-600 cursor-pointer">Script AI tự động</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">Phụ đề song ngữ</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">Flashcard thông minh</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-3">Hỗ trợ</h4>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="hover:text-emerald-600 cursor-pointer">Hướng dẫn sử dụng</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">FAQ</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">Liên hệ</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold text-slate-900 mb-3">Theo dõi</h4>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="hover:text-emerald-600 cursor-pointer">Facebook</li>
-                  <li className="hover:text-emerald-600 cursor-pointer">Twitter</li>
-                </ul>
-              </div>
-            </div>
-            <div className="mt-8 pt-6 border-t border-emerald-100 text-center text-sm text-slate-500">
-              © 2026 My Anime. All rights reserved.
             </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }
