@@ -309,14 +309,14 @@ export default function Layout() {
         />
       )}
 
-      <main className={`relative flex h-full min-w-0 flex-1 flex-col pt-16 transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
+      <main className={`relative flex h-full min-w-0 flex-1 flex-col pt-16 transition-all duration-300 ${showLearnerFooter ? 'pb-24' : ''} ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
         <Outlet />
       </main>
 
       {showLearnerFooter && (
-        <footer className="relative z-10 mt-auto w-full shrink-0 border-t border-slate-200 bg-white/95 text-slate-700 shadow-[0_-1px_0_rgba(15,23,42,0.04)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300">
-          <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-20'}`}>
-            <div className="flex min-h-16 flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between lg:px-11">
+        <footer className={`fixed bottom-0 right-0 z-30 h-20 shrink-0 border-t border-slate-200 bg-white/95 text-slate-700 shadow-[0_-1px_0_rgba(15,23,42,0.04)] backdrop-blur transition-all duration-300 dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300 ${sidebarOpen ? 'left-0 lg:left-64' : 'left-0 lg:left-20'}`}>
+          <div className="flex h-full min-w-0 items-center">
+            <div className="flex h-full w-full min-w-0 items-center justify-between gap-4 px-6 lg:px-11">
               <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-xs font-semibold tracking-wide">
                 <span className="text-slate-900 dark:text-slate-100">© 2026 AnimeLearn</span>
                 <Link to="/Profile" className="text-slate-500 transition-colors hover:text-teal-600 dark:text-slate-400 dark:hover:text-teal-400">
@@ -327,8 +327,8 @@ export default function Layout() {
                 </Link>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="min-w-0 text-left sm:text-right">
+              <div className="flex min-w-0 shrink-0 items-center gap-3">
+                <div className="hidden min-w-0 text-right sm:block">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-teal-600 dark:text-teal-400">
                     Bài học tiếp theo
                   </p>
