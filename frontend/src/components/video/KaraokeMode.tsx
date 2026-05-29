@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Pause, ChevronLeft, Volume2, VolumeX, Sparkles, 
-  BookOpen, SkipBack, SkipForward, RotateCcw, RotateCw, X, Quote, Palette
+  Play, Pause, ChevronLeft, Volume2, VolumeX,
+  BookOpen, SkipBack, SkipForward, RotateCcw, RotateCw, X, Quote
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -243,30 +243,30 @@ export default function KaraokeMode({
 
       {/* PORTAL MODAL DRILL-DOWN (Fixed Inset) */}
       {modalStep > 0 && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/40 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-300"
+        <div className="fixed inset-0 z-[9999] bg-slate-900/40 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-300 dark:bg-slate-950/70"
             onClick={() => setModalStep(0)}>    
-          <div className="w-full max-w-2xl bg-white rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh] border border-white/20"
+          <div className="w-full max-w-2xl bg-white rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh] border border-white/20 dark:border-slate-800 dark:bg-slate-950"
             onClick={(e) => e.stopPropagation()}
           >
             
-            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50 shrink-0">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50 shrink-0 dark:border-slate-800 dark:bg-slate-900">
               {modalStep > 1 ? (
-                <Button variant="ghost" size="sm" onClick={() => setModalStep(modalStep - 1)} className="text-slate-500 hover:bg-slate-200 rounded-full">
+                <Button variant="ghost" size="sm" onClick={() => setModalStep(modalStep - 1)} className="text-slate-500 hover:bg-slate-200 rounded-full dark:text-slate-200 dark:hover:bg-slate-800">
                   <ChevronLeft className="w-4 h-4 mr-1" /> Quay lại
                 </Button>
               ) : <div className="w-20" />}
               <Badge className="bg-emerald-100 text-emerald-700 border-none font-bold uppercase px-4 py-1.5 rounded-full text-[10px]">Phân tích chuyên sâu</Badge>
-              <button onClick={() => setModalStep(0)} className="w-10 h-10 flex items-center justify-center bg-slate-200 hover:bg-rose-500 hover:text-white rounded-full transition-all shadow-inner"><X className="w-5 h-5" /></button>
+              <button onClick={() => setModalStep(0)} className="w-10 h-10 flex items-center justify-center bg-slate-200 hover:bg-rose-500 hover:text-white rounded-full transition-all shadow-inner dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-rose-500"><X className="w-5 h-5" /></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-6 md:p-10 bg-[#fcfcfd]">
+            <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-6 md:p-10 bg-[#fcfcfd] dark:bg-slate-950">
               {/* STEP 1: DỊCH NGHĨA */}
               {modalStep === 1 && selectedLine && (
                 <div className="animate-in slide-in-from-bottom-4">
-                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-3xl p-8 border border-emerald-100 mb-8 shadow-sm">
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-3xl p-8 border border-emerald-100 mb-8 shadow-sm dark:from-emerald-950/50 dark:to-teal-950/40 dark:border-emerald-900/60">
                     <p className="text-[10px] font-black text-emerald-600 mb-3 uppercase tracking-[0.2em] flex items-center gap-2"><Quote className="w-4 h-4" /> Dịch nghĩa câu</p>
-                    <h3 className="text-3xl font-black text-slate-800 mb-4 leading-tight">{selectedLine.japanese}</h3>
-                    <p className="text-xl font-medium text-slate-600 italic leading-relaxed">{selectedLine.vietnamese}</p>
+                    <h3 className="text-3xl font-black text-slate-800 mb-4 leading-tight dark:text-slate-50">{selectedLine.japanese}</h3>
+                    <p className="text-xl font-medium text-slate-600 italic leading-relaxed dark:text-slate-200">{selectedLine.vietnamese}</p>
                   </div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Từ vựng quan trọng</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -275,10 +275,10 @@ export default function KaraokeMode({
                         const enriched = vocabList.find(item => item.word === v.word);
                         setSelectedVocab(enriched ? { ...v, ...enriched } : v);
                         setModalStep(2);
-                      }} className="p-5 rounded-2xl border border-slate-200 bg-white hover:border-emerald-400 hover:shadow-lg hover:-translate-y-1 cursor-pointer transition-all">
-                        <p className="text-[10px] text-slate-400 font-bold mb-1 uppercase tracking-widest">{v.reading}</p>
-                        <p className="text-2xl font-black text-slate-800">{v.word}</p>
-                        <p className="text-sm text-slate-500 mt-2 font-medium line-clamp-1 border-t border-slate-50 pt-2">{v.meaning}</p>
+                      }} className="p-5 rounded-2xl border border-slate-200 bg-white hover:border-emerald-400 hover:shadow-lg hover:-translate-y-1 cursor-pointer transition-all dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-500">
+                        <p className="text-[10px] text-slate-400 font-bold mb-1 uppercase tracking-widest dark:text-slate-500">{v.reading}</p>
+                        <p className="text-2xl font-black text-slate-800 dark:text-slate-50">{v.word}</p>
+                        <p className="text-sm text-slate-500 mt-2 font-medium line-clamp-1 border-t border-slate-50 pt-2 dark:border-slate-800 dark:text-slate-300">{v.meaning}</p>
                       </div>
                     ))}
                   </div>
@@ -288,18 +288,18 @@ export default function KaraokeMode({
               {/* STEP 2: CHI TIẾT TỪ VỰNG */}
               {modalStep === 2 && selectedVocab && (
                 <div className="animate-in slide-in-from-right-4">
-                  <div className="bg-violet-50 rounded-3xl p-8 border border-violet-100 mb-8 shadow-sm">
+                  <div className="bg-violet-50 rounded-3xl p-8 border border-violet-100 mb-8 shadow-sm dark:border-violet-900/50 dark:bg-violet-950/30">
                     <p className="text-violet-500 font-bold tracking-tighter text-lg mb-1">{selectedVocab.reading}</p>
-                    <h3 className="text-6xl font-black text-slate-800 mb-4 tracking-tighter">{selectedVocab.word}</h3>
-                    <p className="text-xl font-bold text-slate-700">{selectedVocab.meaning || selectedVocab.meaning_vi}</p>
+                    <h3 className="text-6xl font-black text-slate-800 mb-4 tracking-tighter dark:text-slate-50">{selectedVocab.word}</h3>
+                    <p className="text-xl font-bold text-slate-700 dark:text-slate-200">{selectedVocab.meaning || selectedVocab.meaning_vi}</p>
                   </div>
                   <div className="space-y-4">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><BookOpen className="w-4 h-4"/> Phân tích Hán tự</p>
                     {selectedVocab.kanji_info?.map((kanji: any, i: number) => (
-                      <div key={i} onClick={() => { setSelectedKanji(kanji); setModalStep(3); }} className="flex p-5 rounded-2xl border border-slate-100 bg-white hover:border-rose-300 hover:shadow-xl cursor-pointer transition-all items-center gap-6 group">
+                      <div key={i} onClick={() => { setSelectedKanji(kanji); setModalStep(3); }} className="flex p-5 rounded-2xl border border-slate-100 bg-white hover:border-rose-300 hover:shadow-xl cursor-pointer transition-all items-center gap-6 group dark:border-slate-800 dark:bg-slate-900 dark:hover:border-rose-500">
                         <div className="text-5xl font-black text-rose-500 group-hover:scale-110 transition-transform drop-shadow-sm">{kanji.kanji}</div>
                         <div>
-                          <p className="font-black text-2xl text-slate-800 uppercase tracking-tighter">{kanji.mean}</p>
+                          <p className="font-black text-2xl text-slate-800 uppercase tracking-tighter dark:text-slate-50">{kanji.mean}</p>
                           <p className="text-sm text-slate-400 mt-1 font-bold">N{kanji.level} • {kanji.stroke_count} nét</p>
                         </div>
                       </div>
@@ -311,31 +311,31 @@ export default function KaraokeMode({
               {/* STEP 3: CHI TIẾT KANJI */}
               {modalStep === 3 && selectedKanji && (
                 <div className="animate-in slide-in-from-right-4">
-                  <div className="flex flex-col md:flex-row gap-8 items-center bg-gradient-to-br from-rose-50 to-orange-50 p-10 rounded-[3rem] border border-rose-100 mb-8 shadow-inner">
+                  <div className="flex flex-col md:flex-row gap-8 items-center bg-gradient-to-br from-rose-50 to-orange-50 p-10 rounded-[3rem] border border-rose-100 mb-8 shadow-inner dark:from-rose-950/50 dark:to-orange-950/30 dark:border-rose-900/60">
                     <div className="text-[120px] md:text-[140px] leading-none font-black text-rose-600 drop-shadow-2xl select-none">{selectedKanji.kanji}</div>
                     <div className="text-center md:text-left">
-                      <h2 className="text-4xl md:text-5xl font-black text-slate-800 mb-3 uppercase tracking-tighter">{selectedKanji.mean}</h2>
+                      <h2 className="text-4xl md:text-5xl font-black text-slate-800 mb-3 uppercase tracking-tighter dark:text-slate-50">{selectedKanji.mean}</h2>
                       <div className="flex gap-2 justify-center md:justify-start">
                         <Badge className="bg-rose-500 text-white font-bold px-4 py-1.5 rounded-full shadow-md">N{selectedKanji.level}</Badge>
-                        <Badge variant="outline" className="bg-white border-rose-200 font-bold px-4 py-1.5 rounded-full shadow-sm">{selectedKanji.stroke_count} nét</Badge>
+                        <Badge variant="outline" className="bg-white border-rose-200 font-bold px-4 py-1.5 rounded-full shadow-sm dark:border-rose-900 dark:bg-slate-900 dark:text-slate-200">{selectedKanji.stroke_count} nét</Badge>
                       </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-6 mb-8">
-                    <div className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                    <div className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <p className="text-[10px] font-black text-pink-400 uppercase tracking-widest mb-2">Âm Kun (Nhật)</p>
-                      <p className="text-2xl font-black text-slate-700">{selectedKanji.kun || '---'}</p>
+                      <p className="text-2xl font-black text-slate-700 dark:text-slate-200">{selectedKanji.kun || '---'}</p>
                     </div>
-                    <div className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                    <div className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <p className="text-[10px] font-black text-sky-400 uppercase tracking-widest mb-2">Âm On (Hán)</p>
-                      <p className="text-2xl font-black text-slate-700">{selectedKanji.on || '---'}</p>
+                      <p className="text-2xl font-black text-slate-700 dark:text-slate-200">{selectedKanji.on || '---'}</p>
                     </div>
                   </div>
-                  <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm">
+                  <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-sm dark:border-slate-800 dark:bg-slate-900">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5">Định nghĩa chi tiết</p>
                     <ul className="space-y-4">
                       {selectedKanji.detail?.split(/[,;]/).map((m: string, i: number) => (
-                        <li key={i} className="flex gap-4 text-slate-700 items-start">
+                        <li key={i} className="flex gap-4 text-slate-700 items-start dark:text-slate-200">
                           <span className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-black text-sm shrink-0 mt-0.5 shadow-sm">{i+1}</span>
                           <span className="text-lg font-medium leading-relaxed pt-1.5">{m.trim()}</span>
                         </li>

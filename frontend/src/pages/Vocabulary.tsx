@@ -6,10 +6,9 @@ import { Loader2, BookOpen, Sparkles, CheckCircle2, Download, FileText } from 'l
 import { toast } from 'sonner';
 import FlashCard, { type FlashcardWord } from '../components/vocabulary/Flashcard';
 import VocabList, { type VocabItem } from '../components/vocabulary/VocalList';
+import { vocabularyApi } from '@/api/vocabulary.api';
 
 // --- Các hàm tiện ích xử lý API ---
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 const getExportDateStamp = () => new Date().toISOString().slice(0, 10);
 
@@ -30,13 +29,7 @@ const escapeCsvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, 
 const escapeAnkiField = (value: string) => value.replace(/\t/g, ' ').replace(/\r?\n/g, '<br>');
 
 const fetchVocabulary = async () => {
-  const token = localStorage.getItem('token') || '';
-  const res = await fetch(`${API_BASE_URL}/api/vocabulary`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Không lấy được từ vựng');
-  return data.map((v: any) => ({ ...v, id: v._id || v.id }));
+  return vocabularyApi.getVocabulary<VocabItem[]>();
 };
 
 // --- Component Chính ---
@@ -54,15 +47,7 @@ export default function Vocabulary() {
 
   // 2. Mutation xóa từ vựng
   const deleteMutation = useMutation({
-    mutationFn: async (id: string | number) => {
-      const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${API_BASE_URL}/api/vocabulary/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Xóa từ vựng thất bại');
-    },
+    mutationFn: (id: string | number) => vocabularyApi.deleteWord(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vocabulary'] });
       toast.success('Đã xóa từ vựng khỏi sổ tay');
@@ -74,20 +59,8 @@ export default function Vocabulary() {
 
   // 3. Mutation cập nhật (sau khi review Flashcard)
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string | number; data: any }) => {
-      const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${API_BASE_URL}/api/vocabulary/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(data)
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Cập nhật thất bại');
-      return result;
-    },
+    mutationFn: ({ id, data }: { id: string | number; data: any }) =>
+      vocabularyApi.updateWord(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vocabulary'] });
     },
@@ -227,6 +200,7 @@ export default function Vocabulary() {
               <FlashCard 
                 words={dueWords as FlashcardWord[]} 
                 onReview={(payload) => updateMutation.mutate(payload)} 
+                onDelete={(id) => deleteMutation.mutate(id)}
               />
             </div>
           )}

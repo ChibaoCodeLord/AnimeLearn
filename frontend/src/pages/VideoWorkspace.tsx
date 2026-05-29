@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import YouTubeOrigin from 'react-youtube';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -8,7 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
   Loader2, Sparkles, Share2, Youtube, Mic, Brain, Eye, 
-  EyeOff, Heart, AlertTriangle, BrainCircuit, PlayCircle, X, BookOpen , Mic2
+  EyeOff, Heart, AlertTriangle, BrainCircuit, PlayCircle, X, BookOpen, Mic2,
+  MessageSquare, ThumbsUp, MoreVertical, Pencil, Trash2
 } from 'lucide-react'; 
 import { toast } from 'sonner';
 
@@ -19,12 +21,18 @@ import SubtitleOverlay from '../components/video/SubtitleOverlay'; // phụ đ�
 
 import VocabularyPopup from '../components/video/VocabularyPopup'; //popup từ vựng khi click vào từ trong subtitle
 import VideoRagChatWidget from '../components/video/VideoRagChatWidget'; // chat rag
+import { usePlayerStore } from '@/stores/usePlayerStore';
 
 
 //Tabs
 import QuizPage from './QuizPage';
 import KaraokeMode from '../components/video/KaraokeMode';
 import VocabularyTab from '../components/video/VocabularyTab';
+import { ApiError } from '@/api/client';
+import { adminApi } from '@/api/admin.api';
+import { authApi } from '@/api/auth.api';
+import { quizApi } from '@/api/quiz.api';
+import { videoApi } from '@/api/video.api';
 
 // 1. Định nghĩa Interfaces
 type VideoStatus = 'approved' | 'rejected' | 'pending';
@@ -34,6 +42,36 @@ interface CurrentUser {
   email: string;
   fullName: string;
   role?: 'user' | 'admin';
+  profilePicture?: string | null;
+}
+
+interface RelatedVideo {
+  id: string | number;
+  title: string;
+  thumbnail_url?: string;
+  jlpt_level?: string;
+  views_count?: number;
+  duration?: number;
+  video_theme?: string;
+}
+
+interface VideoCommentAuthor {
+  id: string;
+  fullName: string;
+  profilePicture?: string | null;
+  role?: 'user' | 'admin' | string;
+}
+
+interface VideoCommentItem {
+  id: string;
+  content: string;
+  createdAt: string;
+  updatedAt?: string;
+  isEdited?: boolean;
+  likesCount: number;
+  likedByMe?: boolean;
+  author: VideoCommentAuthor | null;
+  replies?: VideoCommentItem[];
 }
 
 interface QuizQuestion {
@@ -60,7 +98,6 @@ type PopupAnchorPosition = {
   anchorRight?: number;
 };
 
-const API_BASE = 'http://localhost:5000/api';
 const VIDEO_VIEW_THRESHOLD = 0.1;
 const pillBase =
   "h-9 inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-0 text-sm font-semibold leading-none whitespace-nowrap";
@@ -79,6 +116,44 @@ const JLPT_COLORS: Record<string, string> = {
   'N4': 'border-blue-200 bg-blue-50 text-blue-700',
   'N5': 'border-emerald-200 bg-emerald-50 text-emerald-700',
   'Unknown': 'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+const formatShortDuration = (totalSeconds?: number | null) => {
+  if (!totalSeconds || totalSeconds <= 0) return '0:00';
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+const formatCompactViews = (views?: number | null) => {
+  const count = views || 0;
+  if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}K views`;
+  return `${count} views`;
+};
+
+const formatRelativeTime = (value?: string) => {
+  if (!value) return '';
+
+  const diffMs = Date.now() - new Date(value).getTime();
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffMinutes < 1) return 'vừa xong';
+  if (diffMinutes < 60) return `${diffMinutes} phút trước`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} ngày trước`;
+};
+
+const formatFullDateTime = (value?: string) => {
+  if (!value) return '';
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
 };
 
 
@@ -195,15 +270,17 @@ function parseTimestampToSeconds(timestamp: string): number {
 }
 
 async function fetchCurrentUser(): Promise<CurrentUser> {
-  const response = await fetch(`${API_BASE}/auth/me`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, credentials: 'include' });
-  if (!response.ok) throw new Error('Không thể tải thông tin người dùng');
-  return response.json();
+  return authApi.getMe<CurrentUser>();
 }
 
 export default function VideoWorkspace() {
-  const params = new URLSearchParams(window.location.search);
-  const videoId = params.get('id');
-  const youtubeUrl = params.get('url');
+  const [searchParams] = useSearchParams();
+  const videoId = searchParams.get('id');
+  const youtubeUrl = searchParams.get('url');
+  const resumeTimeParam = Number(searchParams.get('t') || 0);
+  const routeResumeTime = Number.isFinite(resumeTimeParam) && resumeTimeParam > 0
+    ? resumeTimeParam
+    : 0;
 
   const [script, setScript] = useState<ScriptLine[]>([]);
   const [vocabList, setVocabList] = useState<any[]>([]); 
@@ -213,6 +290,7 @@ export default function VideoWorkspace() {
   const [generating, setGenerating] = useState(false);
   
   const [showVocabList, setShowVocabList] = useState(true);
+  const [showFurigana, setShowFurigana] = useState(true);
   
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [selectedVocabData, setSelectedVocabData] = useState<any | null>(null);
@@ -229,6 +307,12 @@ export default function VideoWorkspace() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
+  const [commentText, setCommentText] = useState('');
+  const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [openCommentMenuId, setOpenCommentMenuId] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
 
   const [enablePopupQuiz, setEnablePopupQuiz] = useState(false);
   const [activePopupQuestion, setActivePopupQuestion] = useState<QuizQuestion | null>(null);
@@ -241,12 +325,128 @@ export default function VideoWorkspace() {
   const playerRef = useRef<any>(null);
   const hasCountedViewRef = useRef(false);
   const queryClient = useQueryClient();
+  const {
+    isPlaying: globalIsPlaying,
+    currentTime: globalCurrentTime,
+    setCurrentVideo,
+    setIsPlaying: setGlobalIsPlaying,
+    setPlaybackPosition,
+    setProgress: setGlobalProgress,
+  } = usePlayerStore();
+
+  useEffect(() => {
+    try {
+      playerRef.current?.pauseVideo?.();
+      playerRef.current?.stopVideo?.();
+    } catch {
+      // The YouTube iframe may already be detached while changing videos.
+    }
+
+    playerRef.current = null;
+    setIsPlaying(false);
+    setGlobalIsPlaying(false);
+    setGlobalProgress(0);
+    setPlaybackPosition(0, 0);
+    setScript([]);
+    setVocabList([]);
+    setCurrentIndex(0);
+    setVideoTitle('');
+    setCurrentYoutubeUrl(youtubeUrl || '');
+    setVideoStatus('pending');
+    setJlptLevel('Unknown');
+    setViewsCount(0);
+    setLikesCount(0);
+    setLikedByMe(false);
+    setLoadError(null);
+    setActivePopupQuestion(null);
+    setShownPopups(new Set());
+    hasCountedViewRef.current = false;
+
+    if (videoId) {
+      setIsCheckingAccess(true);
+    }
+  }, [setGlobalIsPlaying, setGlobalProgress, setPlaybackPosition, videoId, youtubeUrl]);
 
   const { data: currentUser } = useQuery<CurrentUser>({
     queryKey: ['current-user'],
     queryFn: fetchCurrentUser,
     staleTime: 10 * 60 * 1000,
     retry: 1,
+  });
+
+  const { data: relatedVideosResponse } = useQuery<{ data?: RelatedVideo[] }>({
+    queryKey: ['workspace-related-videos', videoId],
+    queryFn: () => videoApi.getPublicVideos<{ data?: RelatedVideo[] }>({ page: 1, limit: 8 }),
+    enabled: Boolean(videoId),
+    staleTime: 5 * 60 * 1000,
+  });
+  const relatedVideos = (relatedVideosResponse?.data ?? [])
+    .filter(video => String(video.id) !== String(videoId))
+    .slice(0, 3);
+
+  const { data: commentsResponse, isLoading: commentsLoading } = useQuery<{ comments: VideoCommentItem[] }>({
+    queryKey: ['video-comments', videoId],
+    queryFn: () => videoApi.getComments<{ comments: VideoCommentItem[] }>(videoId!),
+    enabled: Boolean(videoId),
+    staleTime: 30 * 1000,
+  });
+  const comments = commentsResponse?.comments ?? [];
+  const commentCount = comments.reduce((total, comment) => total + 1 + (comment.replies?.length || 0), 0);
+
+  const createCommentMutation = useMutation({
+    mutationFn: ({ content, parentComment }: { content: string; parentComment?: string | null }) => {
+      if (!videoId) throw new Error('Thiếu mã video');
+      return videoApi.createComment(videoId, { content, parentComment });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['video-comments', videoId] });
+      if (variables.parentComment) {
+        setReplyTargetId(null);
+        setReplyText('');
+      } else {
+        setCommentText('');
+      }
+      toast.success('Đã gửi bình luận');
+    },
+    onError: (mutationError: Error) => {
+      toast.error(mutationError.message || 'Không thể gửi bình luận');
+    },
+  });
+
+  const toggleCommentLikeMutation = useMutation({
+    mutationFn: (commentId: string) => videoApi.toggleCommentLike(commentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-comments', videoId] });
+    },
+    onError: (mutationError: Error) => {
+      toast.error(mutationError.message || 'Không thể thích bình luận');
+    },
+  });
+
+  const updateCommentMutation = useMutation({
+    mutationFn: ({ commentId, content }: { commentId: string; content: string }) =>
+      videoApi.updateComment(commentId, { content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-comments', videoId] });
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      toast.success('Đã cập nhật bình luận');
+    },
+    onError: (mutationError: Error) => {
+      toast.error(mutationError.message || 'Không thể cập nhật bình luận');
+    },
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: string) => videoApi.deleteComment(commentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-comments', videoId] });
+      setOpenCommentMenuId(null);
+      toast.success('Đã xóa bình luận');
+    },
+    onError: (mutationError: Error) => {
+      toast.error(mutationError.message || 'Không thể xóa bình luận');
+    },
   });
 
   const isAdmin = currentUser?.role === 'admin';
@@ -256,12 +456,7 @@ export default function VideoWorkspace() {
     queryKey: ['video-quiz', videoId],
     queryFn: async () => {
       if (!videoId) return null;
-      const res = await fetch(`${API_BASE}/quiz/${videoId}`, {
-        headers: { ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) }
-      });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error('Lỗi tải quiz');
-      return res.json();
+      return quizApi.getQuizByVideoId<QuizData>(videoId);
     },
     enabled: !!videoId,
   });
@@ -269,16 +464,7 @@ export default function VideoWorkspace() {
   const updateStatusMutation = useMutation({
     mutationFn: ({ status, reason }: { status: VideoStatus; reason?: string }) => {
       if (!videoId) throw new Error('Thiếu mã video');
-      return fetch(`${API_BASE}/admin/videos/${videoId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status, reason }),
-      }).then(async response => {
-        const data = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(data?.error || 'Không thể cập nhật trạng thái');
-        return data;
-      });
+      return adminApi.updateVideoStatus(videoId, { status, reason });
     },
     onSuccess: (_data, variables) => {
       const { status } = variables;
@@ -299,14 +485,7 @@ export default function VideoWorkspace() {
   const likeMutation = useMutation({
     mutationFn: async () => {
       if (!videoId) throw new Error('Thiếu mã video');
-      const response = await fetch(`${API_BASE}/video/like/${videoId}`, {
-        method: 'POST',
-        headers: { ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) },
-        credentials: 'include',
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error || data?.message || 'Không thể thích video');
-      return data as { likes_count?: number; alreadyLiked?: boolean };
+      return videoApi.likeVideo<{ likes_count?: number; alreadyLiked?: boolean }>(videoId);
     },
     onMutate: async () => {
       const previousLikes = likesCount; const previousLikedByMe = likedByMe;
@@ -328,14 +507,7 @@ export default function VideoWorkspace() {
   const unlikeMutation = useMutation({
     mutationFn: async () => {
       if (!videoId) throw new Error('Thiếu mã video');
-      const response = await fetch(`${API_BASE}/video/unlike/${videoId}`, {
-        method: 'POST',
-        headers: { ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) },
-        credentials: 'include',
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(data?.error || data?.message || 'Không thể bỏ thích video');
-      return data as { likes_count?: number; alreadyUnliked?: boolean };
+      return videoApi.unlikeVideo<{ likes_count?: number; alreadyUnliked?: boolean }>(videoId);
     },
     onMutate: async () => {
       const previousLikes = likesCount; const previousLikedByMe = likedByMe;
@@ -365,16 +537,15 @@ export default function VideoWorkspace() {
     return Number.isFinite(savedWidth) && savedWidth >= 320 ? savedWidth : 400;
   });
   useEffect(() => {
+    let cancelled = false;
+
     if (videoId) {
       setIsCheckingAccess(true);
       hasCountedViewRef.current = sessionStorage.getItem(`video-view-counted:${videoId}`) === '1';
-      fetch(`http://localhost:5000/api/video/detail/${videoId}`, { credentials: 'include' })
-        .then(async res => {
-          const video = await res.json().catch(() => null);
-          if (!res.ok) {
-            const statusMessage = res.status === 401 ? 'Bạn cần đăng nhập để xem video này' : res.status === 403 ? 'Video chưa được duyệt nên chỉ admin hoặc người tạo mới được xem' : video?.error || 'Không thể tải video này';
-            throw new Error(statusMessage);
-          }
+      videoApi.getVideoDetail<any>(videoId)
+        .then(video => {
+          if (cancelled) return;
+
           if (video && !video.error) {
             setScript(video.script || []);
             setVocabList(video.vocab_list || []); 
@@ -386,14 +557,32 @@ export default function VideoWorkspace() {
             setLikesCount(video.likes_count || 0);
             setLikedByMe(Boolean(video.likedByMe));
             setLoadError(null);
+          } else {
+            setLoadError(video?.error || 'Không thể mở video này');
           }
         })
         .catch(err => {
+          if (cancelled) return;
+
           console.error(err);
-          setLoadError(err instanceof Error ? err.message : 'Lỗi khi tải kịch bản từ máy chủ');
+          const statusMessage =
+            err instanceof ApiError && err.status === 401
+              ? 'Bạn cần đăng nhập để xem video này'
+              : err instanceof ApiError && err.status === 403
+                ? 'Video chưa được duyệt nên chỉ admin hoặc người tạo mới được xem'
+                : err instanceof Error
+                  ? err.message
+                  : 'Lỗi khi tải kịch bản từ máy chủ';
+          setLoadError(statusMessage);
         })
-        .finally(() => setIsCheckingAccess(false));
+        .finally(() => {
+          if (!cancelled) setIsCheckingAccess(false);
+        });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [videoId]);
 
 
@@ -401,9 +590,46 @@ export default function VideoWorkspace() {
   //furigana
   const [currentFurigana, setCurrentFurigana] = useState<string>('');
   const furiganaCache = useRef<Record<string, string>>({});
+  const furiganaPending = useRef<Record<string, Promise<string>>>({});
+  const activeFuriganaText = useRef('');
+
+  const fetchFurigana = useCallback((rawText: string) => {
+    const text = rawText.trim();
+
+    if (!text) {
+      return Promise.resolve('');
+    }
+
+    if (furiganaCache.current[text]) {
+      return Promise.resolve(furiganaCache.current[text]);
+    }
+
+    if (!furiganaPending.current[text]) {
+      furiganaPending.current[text] = videoApi.createFuriganaLine<{ html?: string }>(text)
+        .then(data => {
+          const html = typeof data.html === 'string' ? data.html : '';
+
+          if (html) {
+            furiganaCache.current[text] = html;
+          }
+
+          return html;
+        })
+        .catch(err => {
+          console.error("Lá»—i láº¥y Furigana:", err);
+          return '';
+        })
+        .finally(() => {
+          delete furiganaPending.current[text];
+        });
+    }
+
+    return furiganaPending.current[text];
+  }, []);
   // Đặt useEffect này bên dưới mấy cái useEffect cũ
   useEffect(() => {
-    const activeLineText = script[currentIndex]?.japanese;
+    const activeLineText = script[currentIndex]?.japanese?.trim() || '';
+    activeFuriganaText.current = activeLineText;
     
     if (!activeLineText) {
       setCurrentFurigana('');
@@ -414,26 +640,27 @@ export default function VideoWorkspace() {
     if (furiganaCache.current[activeLineText]) {
       setCurrentFurigana(furiganaCache.current[activeLineText]);
       return;
+    } else {
+      setCurrentFurigana('');
     }
 
     // Chưa có thì gọi API dịch đúng 1 câu này
-    fetch('http://localhost:5000/api/video/furigana-line', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: activeLineText })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.html) {
-          furiganaCache.current[activeLineText] = data.html; // Lưu cache
-          setCurrentFurigana(data.html); // Cập nhật state
-        }
-      })
-      .catch(err => {
-        console.error("Lỗi lấy Furigana:", err);
-        setCurrentFurigana('');
-      });
-  }, [currentIndex, script]); // Chỉ chạy lại khi nhảy sang câu mới
+    void fetchFurigana(activeLineText).then(html => {
+      if (activeLineText === activeFuriganaText.current) {
+        setCurrentFurigana(html);
+      }
+    });
+  }, [currentIndex, fetchFurigana, script]); // Chỉ chạy lại khi nhảy sang câu mới
+
+  useEffect(() => {
+    const upcomingTexts = [currentIndex + 1, currentIndex + 2]
+      .map(index => script[index]?.japanese?.trim() || '')
+      .filter(Boolean);
+
+    upcomingTexts.forEach(text => {
+      void fetchFurigana(text);
+    });
+  }, [currentIndex, fetchFurigana, script]);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -495,11 +722,61 @@ export default function VideoWorkspace() {
   const ytId = extractYouTubeId(currentYoutubeUrl);
 
   useEffect(() => {
+    if (!currentYoutubeUrl || !ytId) return;
+
+    const playerVideoId = videoId || ytId;
+    const workspacePath = videoId
+      ? `/VideoWorkspace?id=${videoId}`
+      : `/VideoWorkspace?url=${encodeURIComponent(currentYoutubeUrl)}`;
+
+    setCurrentVideo({
+      id: playerVideoId,
+      title: videoTitle || 'Anime đang phát',
+      youtubeUrl: currentYoutubeUrl,
+      thumbnailUrl: `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+      workspacePath,
+    });
+  }, [currentYoutubeUrl, setCurrentVideo, videoId, videoTitle, ytId]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !ytId || globalIsPlaying === isPlaying) return;
+
+    if (globalIsPlaying) {
+      player.playVideo?.();
+    } else {
+      player.pauseVideo?.();
+    }
+  }, [globalIsPlaying, isPlaying, ytId]);
+
+  useEffect(() => {
+    if (activeTab !== 'shadowing' || !playerRef.current) return;
+
+    window.requestAnimationFrame(async () => {
+      try {
+        const currentTime = await playerRef.current.getCurrentTime?.();
+        if (typeof currentTime === 'number') {
+          playerRef.current.seekTo?.(currentTime, true);
+          setPlaybackPosition(currentTime);
+        }
+
+        if (isPlaying) {
+          playerRef.current.playVideo?.();
+        }
+      } catch {
+        // YouTube iframe sometimes needs a tick to redraw after being offscreen.
+      }
+    });
+  }, [activeTab, isPlaying, setPlaybackPosition]);
+
+  useEffect(() => {
     let interval: number;
-    if (isPlaying && playerRef.current && script.length > 0) {
+    if (isPlaying && playerRef.current) {
       interval = window.setInterval(async () => {
         try {
           const currentTime = await playerRef.current.getCurrentTime();
+          const duration = await playerRef.current.getDuration();
+          setPlaybackPosition(currentTime, duration);
           
           let foundIndex = -1;
           for (let i = 0; i < script.length; i++) {
@@ -523,11 +800,10 @@ export default function VideoWorkspace() {
           }
 
           if (!hasCountedViewRef.current && videoId) {
-            const duration = await playerRef.current.getDuration();
             if (duration > 0 && currentTime / duration >= VIDEO_VIEW_THRESHOLD) {
               hasCountedViewRef.current = true;
               sessionStorage.setItem(`video-view-counted:${videoId}`, '1');
-              fetch(`http://localhost:5000/api/video/view/${videoId}`, { method: 'POST' }).then(res => res.json()).then(data => {
+              videoApi.countView<{ views_count?: number }>(videoId).then(data => {
                 if (typeof data?.views_count === 'number') setViewsCount(data.views_count);
               }).catch(() => {});
             }
@@ -536,7 +812,7 @@ export default function VideoWorkspace() {
       }, 300); 
     }
     return () => clearInterval(interval);
-  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion, videoId]);
+  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion, videoId, setPlaybackPosition]);
 
   if (videoId && isCheckingAccess) {
     return (
@@ -566,6 +842,8 @@ export default function VideoWorkspace() {
       const timeSec = parseTimestampToSeconds(script[index].timestamp);
       playerRef.current.seekTo(timeSec, true);
       playerRef.current.playVideo();
+      setPlaybackPosition(timeSec);
+      setGlobalIsPlaying(true);
     }
   };
 
@@ -576,29 +854,20 @@ export default function VideoWorkspace() {
     toast.info('Hệ thống đang tải và phân tích audio, quá trình này có thể mất vài phút...');
 
     try {
-      const token = localStorage.getItem('token') || '';
-      const response = await fetch('http://localhost:5000/api/video/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ url: currentYoutubeUrl }),
-        credentials: 'omit'
+      const result = await videoApi.analyzeVideo<{ title: string; script: ScriptLine[] }>({
+        url: currentYoutubeUrl,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.message || 'Đã có lỗi xảy ra từ máy chủ khi phân tích video.');
-      }
-      const result = await response.json();
       
-      const saveRes = await fetch('http://localhost:5000/api/video/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        credentials: 'omit',
-        body: JSON.stringify({ title: result.title, youtube_url: currentYoutubeUrl, script: result.script })
-      });
+      const saveData = await videoApi.saveVideo<{
+        videoId?: string;
+        script: ScriptLine[];
+        vocab_list?: any[];
+        jlptLevel?: string;
+        error?: string;
+        message?: string;
+      }>({ title: result.title, youtube_url: currentYoutubeUrl, script: result.script });
 
-      const saveData = await saveRes.json();
-      if (saveRes.ok && saveData.videoId) {
+      if (saveData.videoId) {
         setScript(saveData.script);
         setVocabList(saveData.vocab_list || []); 
         setVideoTitle(result.title);
@@ -617,6 +886,7 @@ export default function VideoWorkspace() {
   };
 
   const currentLine = script[currentIndex] || null;
+  const visibleFurigana = showFurigana ? currentFurigana : '';
 
   const handleWordSelect = (word: string, pos: PopupAnchorPosition, specificVocabData?: any) => {
     if (specificVocabData) {
@@ -688,7 +958,7 @@ export default function VideoWorkspace() {
           className={
             activeTab === "shadowing"
               ? "flex-1 m-0 p-0 outline-hidden min-h-0"
-              : "!block fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none w-0 h-0 overflow-hidden"
+              : "!block fixed -top-[9999px] -left-[9999px] w-[720px] h-[405px] opacity-0 pointer-events-none overflow-hidden"
           }
         >
           <div
@@ -699,7 +969,6 @@ export default function VideoWorkspace() {
             <div
               className={`
                 bg-white rounded-[1.5rem] border border-slate-200 shadow-sm shrink-0
-                ${activeTab === 'karaoke' ? 'hidden' : 'block'}
               `}
             >
               {/*
@@ -734,6 +1003,7 @@ export default function VideoWorkspace() {
                 >
                   {ytId ? (
                     <YouTube
+                      key={ytId}
                       videoId={ytId}
                       className="absolute inset-0 w-full h-full border-0"
                       iframeClassName="w-full h-full"
@@ -749,10 +1019,30 @@ export default function VideoWorkspace() {
                       }}
                       onReady={(event: any) => {
                         playerRef.current = event.target;
+                        const resumeTime = routeResumeTime || globalCurrentTime;
+
+                        if (resumeTime > 0) {
+                          event.target.seekTo?.(resumeTime, true);
+                          setPlaybackPosition(resumeTime);
+                        }
+
+                        if (globalIsPlaying) {
+                          event.target.playVideo?.();
+                        }
                       }}
-                      onPlay={() => setIsPlaying(true)}
-                      onPause={() => setIsPlaying(false)}
-                      onEnd={() => setIsPlaying(false)}
+                      onPlay={() => {
+                        setIsPlaying(true);
+                        setGlobalIsPlaying(true);
+                      }}
+                      onPause={() => {
+                        setIsPlaying(false);
+                        setGlobalIsPlaying(false);
+                      }}
+                      onEnd={() => {
+                        setIsPlaying(false);
+                        setGlobalIsPlaying(false);
+                        setGlobalProgress(100);
+                      }}
                     />
                   ) : (
                     <div
@@ -775,7 +1065,7 @@ export default function VideoWorkspace() {
             
             <div className="bg-white rounded-[0.5rem] border border-slate-300 shadow-sm overflow-hidden flex flex-col relative">
               <div className="flex-1 p-0 relative z-10">
-                <SubtitleOverlay currentLine={currentLine} currentFurigana={currentFurigana} onWordSelect={handleWordSelect} />
+                <SubtitleOverlay currentLine={currentLine} currentFurigana={visibleFurigana} onWordSelect={handleWordSelect} />
               </div>
               {/* <div className="bg-slate-50/80 border-t border-slate-100 p-2 relative z-20 backdrop-blur-sm">
                 <PlayerControls
@@ -983,6 +1273,305 @@ export default function VideoWorkspace() {
                 )}
               </div>
             </div>
+
+            <div className="flex h-[430px] flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:h-[625px]">
+              <div className="mb-4 flex items-center gap-3">
+                <MessageSquare className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-base font-bold text-slate-900">Bình luận</h3>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">{commentCount}</span>
+              </div>
+
+              <div className="mb-7 flex gap-3">
+                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-200">
+                  {currentUser?.profilePicture ? (
+                    <img src={currentUser.profilePicture} alt="Avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-teal-600 text-sm font-bold text-white">
+                      {currentUser?.fullName?.[0]?.toUpperCase() || 'U'}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <textarea
+                    rows={3}
+                    placeholder="Viết bình luận..."
+                    value={commentText}
+                    onChange={(event) => setCommentText(event.target.value)}
+                    className="w-full resize-none rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                  />
+                  <div className="mt-2 flex justify-end gap-3">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setCommentText('')} className="text-slate-500 hover:text-slate-700">
+                      Hủy
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!commentText.trim() || createCommentMutation.isPending}
+                      onClick={() => createCommentMutation.mutate({ content: commentText.trim() })}
+                      className="bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      {createCommentMutation.isPending ? 'Đang gửi...' : 'Bình luận'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+                {commentsLoading ? (
+                  <div className="py-4 text-center text-sm text-slate-400">Đang tải bình luận...</div>
+                ) : comments.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+                    Chưa có bình luận nào. Hãy là người đầu tiên trao đổi về bài học này.
+                  </div>
+                ) : comments.map(comment => (
+                  <div key={comment.id} className="flex gap-3">
+                    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-200">
+                      {comment.author?.profilePicture ? (
+                        <img src={comment.author.profilePicture} alt={comment.author.fullName} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-slate-700 text-sm font-bold text-white">
+                          {comment.author?.fullName?.[0]?.toUpperCase() || 'U'}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-bold text-slate-900">{comment.author?.fullName || 'Người dùng'}</span>
+                          {comment.author?.role === 'admin' && (
+                            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">QTV</span>
+                          )}
+                          <span className="text-xs text-slate-400" title={formatFullDateTime(comment.createdAt)}>
+                            {formatRelativeTime(comment.createdAt)}
+                          </span>
+                          {comment.isEdited && (
+                            <span className="text-xs text-slate-400" title={formatFullDateTime(comment.updatedAt)}>
+                              (Đã chỉnh sửa)
+                            </span>
+                          )}
+                        </div>
+                        {String(comment.author?.id) === String(currentUser?.id) && (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setOpenCommentMenuId(openCommentMenuId === comment.id ? null : comment.id)}
+                              className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                            {openCommentMenuId === comment.id && (
+                              <div className="absolute right-0 top-7 z-20 w-32 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCommentId(comment.id);
+                                    setEditingCommentText(comment.content);
+                                    setOpenCommentMenuId(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Chỉnh sửa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteCommentMutation.mutate(comment.id)}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Xóa
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {editingCommentId === comment.id ? (
+                        <div className="mt-2">
+                          <textarea
+                            value={editingCommentText}
+                            onChange={(event) => setEditingCommentText(event.target.value)}
+                            rows={3}
+                            className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                          />
+                          <div className="mt-2 flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingCommentId(null);
+                                setEditingCommentText('');
+                              }}
+                            >
+                              Hủy
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                              onClick={() => updateCommentMutation.mutate({ commentId: comment.id, content: editingCommentText.trim() })}
+                              className="bg-emerald-600 text-white hover:bg-emerald-700"
+                            >
+                              Lưu
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{comment.content}</p>
+                      )}
+                      <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+                        <button
+                          type="button"
+                          onClick={() => toggleCommentLikeMutation.mutate(comment.id)}
+                          className={`inline-flex items-center gap-1 hover:text-emerald-600 ${comment.likedByMe ? 'text-emerald-600' : ''}`}
+                        >
+                          <ThumbsUp className="h-3.5 w-3.5" />
+                          {comment.likesCount}
+                        </button>
+                        <button type="button" onClick={() => setReplyTargetId(comment.id)} className="hover:text-slate-700">Phản hồi</button>
+                      </div>
+
+                      {replyTargetId === comment.id && (
+                        <div className="mt-3 flex gap-2">
+                          <input
+                            value={replyText}
+                            onChange={(event) => setReplyText(event.target.value)}
+                            placeholder={`Trả lời ${comment.author?.fullName || 'bình luận'}...`}
+                            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!replyText.trim() || createCommentMutation.isPending}
+                            onClick={() => createCommentMutation.mutate({ content: replyText.trim(), parentComment: comment.id })}
+                            className="bg-emerald-600 text-white hover:bg-emerald-700"
+                          >
+                            Gửi
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => { setReplyTargetId(null); setReplyText(''); }}>
+                            Hủy
+                          </Button>
+                        </div>
+                      )}
+
+                      {comment.replies && comment.replies.length > 0 && (
+                        <div className="mt-3 space-y-3 border-l-2 border-slate-200 pl-4">
+                          {comment.replies.map(reply => (
+                            <div key={reply.id} className="flex gap-3">
+                              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200">
+                                {reply.author?.profilePicture ? (
+                                  <img src={reply.author.profilePicture} alt={reply.author.fullName} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center bg-slate-700 text-xs font-bold text-white">
+                                    {reply.author?.fullName?.[0]?.toUpperCase() || 'U'}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-bold text-slate-900">{reply.author?.fullName || 'Người dùng'}</span>
+                                    {reply.author?.role === 'admin' && (
+                                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">QTV</span>
+                                    )}
+                                    <span className="text-xs text-slate-400" title={formatFullDateTime(reply.createdAt)}>
+                                      {formatRelativeTime(reply.createdAt)}
+                                    </span>
+                                    {reply.isEdited && (
+                                      <span className="text-xs text-slate-400" title={formatFullDateTime(reply.updatedAt)}>
+                                        (Đã chỉnh sửa)
+                                      </span>
+                                    )}
+                                  </div>
+                                  {String(reply.author?.id) === String(currentUser?.id) && (
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        onClick={() => setOpenCommentMenuId(openCommentMenuId === reply.id ? null : reply.id)}
+                                        className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </button>
+                                      {openCommentMenuId === reply.id && (
+                                        <div className="absolute right-0 top-7 z-20 w-32 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingCommentId(reply.id);
+                                              setEditingCommentText(reply.content);
+                                              setOpenCommentMenuId(null);
+                                            }}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                          >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                            Chỉnh sửa
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => deleteCommentMutation.mutate(reply.id)}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                            Xóa
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                {editingCommentId === reply.id ? (
+                                  <div className="mt-2">
+                                    <textarea
+                                      value={editingCommentText}
+                                      onChange={(event) => setEditingCommentText(event.target.value)}
+                                      rows={2}
+                                      className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                                    />
+                                    <div className="mt-2 flex justify-end gap-2">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setEditingCommentId(null);
+                                          setEditingCommentText('');
+                                        }}
+                                      >
+                                        Hủy
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                                        onClick={() => updateCommentMutation.mutate({ commentId: reply.id, content: editingCommentText.trim() })}
+                                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                                      >
+                                        Lưu
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{reply.content}</p>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCommentLikeMutation.mutate(reply.id)}
+                                  className={`mt-2 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-600 ${reply.likedByMe ? 'text-emerald-600' : ''}`}
+                                >
+                                  <ThumbsUp className="h-3.5 w-3.5" />
+                                  {reply.likesCount}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div
@@ -1009,31 +1598,37 @@ export default function VideoWorkspace() {
           <div
             className="
               w-full xl:w-[var(--script-panel-width)]
-              flex flex-col
-              rounded-[1rem]
-              border border-indigo-500/40
-              bg-[#0f172a]
-              shadow-lg shadow-indigo-950/20
-              overscroll-contain overflow-hidden shrink-0
-              h-[500px] xl:h-[850px]
+              flex flex-col gap-3
+              shrink-0
             "
             style={{ '--script-panel-width': `${scriptPanelWidth}px` } as CSSProperties}
+          >
+          <div
+            className="
+              flex flex-col
+              rounded-[1rem]
+              border border-slate-200
+              bg-white
+              shadow-lg shadow-slate-200/50
+              overscroll-contain overflow-hidden
+              h-[850px] xl:h-[884px]
+            "
           >
             <div
               className="
                 px-5 py-2.5
-                border-b border-indigo-500/30
-                bg-[#111827]
+                border-b border-slate-100
+                bg-white
                 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4
               "
             >
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-xl bg-indigo-500/15 text-indigo-300 flex items-center justify-center border border-indigo-400/30">
+                <div className="h-8 w-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
                   <BookOpen className="w-4 h-4" />
                 </div>
 
                 <div className="py-1">
-                  <h3 className="font-bold text-slate-100 text-lg tracking-tight">
+                  <h3 className="font-bold text-slate-800 text-lg tracking-tight">
                     Phụ đề
                   </h3>
                 </div>
@@ -1046,12 +1641,12 @@ export default function VideoWorkspace() {
                     size="sm"
                     className="
                       h-8 rounded-full
-                      border-indigo-400/30
-                      bg-indigo-500/10
-                      text-indigo-200
-                      hover:bg-indigo-500/20
-                      hover:text-white
-                      hover:border-indigo-300/50
+                      border-indigo-200
+                      bg-indigo-50
+                      text-indigo-700
+                      hover:bg-indigo-100
+                      hover:text-indigo-800
+                      hover:border-indigo-300
                       transition-colors
                     "
                     onClick={() => setShowVocabList(!showVocabList)}
@@ -1071,12 +1666,42 @@ export default function VideoWorkspace() {
                 )}
 
                 {script.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="
+                      h-8 rounded-full
+                      border-cyan-200
+                      bg-cyan-50
+                      text-cyan-700
+                      hover:bg-cyan-100
+                      hover:text-cyan-800
+                      hover:border-cyan-300
+                      transition-colors
+                    "
+                    onClick={() => setShowFurigana(!showFurigana)}
+                  >
+                    {showFurigana ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5 mr-1.5" />
+                        Ẩn furigana
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 mr-1.5" />
+                        Hiện furigana
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {script.length > 0 && (
                   <Badge
                     variant="outline"
                     className="
-                      bg-amber-400/15
-                      text-amber-200
-                      border-amber-300/30
+                      bg-amber-50
+                      text-amber-700
+                      border-amber-200
                       shadow-xs
                       font-semibold
                     "
@@ -1087,29 +1712,82 @@ export default function VideoWorkspace() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white/95">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white">
               {script.length > 0 ? (
                 <ScriptPanel
                   script={script}
                   currentIndex={currentIndex}
-                  currentFurigana={currentFurigana}
+                  currentFurigana={visibleFurigana}
                   onLineClick={(index) => jumpToLine(index)}
                   onWordSelect={handleWordSelect}
                   showVocabList={showVocabList}
                   vocabList={vocabList}
                 />
               ) : (
-                <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-white/80">
-                  <div className="w-16 h-16 rounded-2xl bg-indigo-800 border border-indigo-400/30 flex items-center justify-center mb-4">
-                    <Sparkles className="w-8 h-8 text-green-200" />
+                <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-gradient-to-br from-indigo-50 via-sky-50 to-cyan-50">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 border border-cyan-200 flex items-center justify-center mb-4 shadow-sm shadow-cyan-300/40">
+                    <Sparkles className="w-8 h-8 text-white" />
                   </div>
 
-                  <p className="text-slate-300 font-medium max-w-xs">
-                    Bấm <b className="border-indigo-400/30">"Tạo Script AI"</b> để hệ thống tự động bóc băng video này thành bài học chi tiết.
+                  <p className="text-slate-600 font-medium max-w-xs leading-relaxed">
+                    Bấm{' '}
+                    <b className="text-indigo-700 bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded-md">
+                      "Tạo Script AI"
+                    </b>{' '}
+                    để hệ thống tự động bóc băng video này thành bài học chi tiết.
                   </p>
                 </div>
               )}
             </div>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+              <BookOpen className="h-4 w-4 text-emerald-600" />
+              <h3 className="text-sm font-bold text-slate-900">Bài học liên quan</h3>
+            </div>
+
+            <div className="space-y-3 p-4">
+              {relatedVideos.length > 0 ? (
+                relatedVideos.map(video => (
+                  <Link
+                    key={video.id}
+                    to={`/VideoWorkspace?id=${video.id}`}
+                    className="group flex gap-3 rounded-lg transition-colors hover:bg-slate-50"
+                  >
+                    <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded-md bg-slate-100">
+                      {video.thumbnail_url ? (
+                        <img src={video.thumbnail_url} alt={video.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-slate-200">
+                          <Youtube className="h-5 w-5 text-slate-400" />
+                        </div>
+                      )}
+                      <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 text-[10px] font-bold text-white">
+                        {formatShortDuration(video.duration)}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1 py-0.5">
+                      <p className="line-clamp-2 text-xs font-bold leading-snug text-slate-900 group-hover:text-emerald-700">
+                        {video.title}
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-slate-500">
+                        {video.video_theme || 'Luyện Shadowing'} {video.jlpt_level ? `• ${video.jlpt_level}` : ''} • {formatCompactViews(video.views_count)}
+                      </p>
+                    </div>
+                  </Link>
+                ))
+              ) : (
+                <p className="py-3 text-center text-xs text-slate-400">Chưa có bài học liên quan</p>
+              )}
+            </div>
+
+            <Link
+              to="/home"
+              className="block border-t border-slate-100 px-4 py-3 text-center text-xs font-bold text-emerald-600 hover:bg-emerald-50"
+            >
+              Xem thêm
+            </Link>
+          </div>
           </div>
           </div>
         </TabsContent>

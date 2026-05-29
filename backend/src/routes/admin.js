@@ -36,6 +36,7 @@ router.get('/videos', async (req, res) => {
     const videos = await Video.find(filter)
       .select('-vocab_list -script.vocabulary -script.text') 
       .sort({ created_date: -1 })
+      .allowDiskUse(true)
       .skip(skip)
       .limit(limit)
       .populate('creator', 'fullName email')

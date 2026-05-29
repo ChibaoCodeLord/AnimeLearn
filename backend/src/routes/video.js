@@ -7,11 +7,13 @@ import { authMiddleware, restrictTo } from '../middleware/auth.js'
 import Vocabulary from '../models/Vocabulary.js';
 import Video from '../models/Video.js';
 import VideoLike from '../models/VideoLike.js';
+import VideoComment from '../models/VideoComment.js';
 import { indexVideoScript } from '../services/ragChatService.js';
 import Quiz from '../models/Quiz.js';
 import Kanji from '../models/Kanji.js';
 import { generateQuizFromScript } from '../services/quizAIService.js';
 import axios from 'axios';
+import { Agent } from 'undici';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,6 +29,27 @@ const KuromojiAnalyzer =
 const kuroshiro = new Kuroshiro();
 
 let isKuroshiroInit = false;
+
+const formatComment = (comment, currentUserId) => {
+  const likes = comment.likes || [];
+  return {
+    id: comment._id,
+    content: comment.content,
+    createdAt: comment.createdAt,
+    updatedAt: comment.updatedAt,
+    isEdited: comment.updatedAt && comment.createdAt
+      ? new Date(comment.updatedAt).getTime() - new Date(comment.createdAt).getTime() > 1000
+      : false,
+    likesCount: likes.length,
+    likedByMe: currentUserId ? likes.some(id => String(id) === String(currentUserId)) : false,
+    author: comment.author ? {
+      id: comment.author._id,
+      fullName: comment.author.fullName,
+      profilePicture: comment.author.profilePicture || null,
+      role: comment.author.role || 'user',
+    } : null,
+  };
+};
 let kuroshiroInitPromise = null;
 
 async function initKuroshiro() {
@@ -153,52 +176,115 @@ function normalizeUtf8Value(value) {
   return value;
 }
 
-//Router dịch script
-//chỉ có user đã đăng nhập mới được tạo script
-router.post('/analyze', authMiddleware, async (req, res) =>  {
+
+const AI_FETCH_TIMEOUT_MS = 1000 * 60 * 30; // 30 phút
+
+const aiFetchDispatcher = new Agent({
+  headersTimeout: AI_FETCH_TIMEOUT_MS,
+  bodyTimeout: AI_FETCH_TIMEOUT_MS,
+  connect: {
+    timeout: 1000 * 30,
+  },
+});
+
+async function readResponseSafely(response) {
+  const text = await response.text();
+
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { raw: text };
+  }
+}
+
+// Router dịch script
+// Chỉ có user đã đăng nhập mới được tạo script
+router.post('/analyze', authMiddleware, async (req, res) => {
   const { url } = req.body;
   const endpoint = 'transcribe';
-  console.log(`[analyze Log]: đã gọi analyze}`);
+
+  console.log('[analyze Log]: đã gọi analyze');
+
+  if (req.user?.role === 'admin') {
+    return res.status(403).json({
+      error: 'Admin khong duoc dang video',
+    });
+  }
 
   if (!url) {
-    return res.status(400).json({ error: 'URL is required' });
+    return res.status(400).json({
+      error: 'URL is required',
+    });
   }
 
   try {
+    console.log(`[analyze Log]: gọi AI service ${AI_SERVICE}/${endpoint}`);
+
     const response = await fetch(`${AI_SERVICE}/${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-KEY': process.env.AI_KEY
+        'X-API-KEY': process.env.AI_KEY || '',
       },
-      body:JSON.stringify({
+      body: JSON.stringify({
         media_path: url,
-        use_gpu: true
-      })
+        use_gpu: true,
+      }),
+
+      // Quan trọng: fix UND_ERR_HEADERS_TIMEOUT
+      dispatcher: aiFetchDispatcher,
     });
 
+    const responseData = await readResponseSafely(response);
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || `Script Service error: ${response.status}`);
+      console.error('[SCRIPT_API_ERROR_RESPONSE]', {
+        status: response.status,
+        statusText: response.statusText,
+        data: responseData,
+      });
+
+      throw new Error(
+        responseData.detail ||
+          responseData.error ||
+          responseData.raw ||
+          `Script Service error: ${response.status}`
+      );
     }
 
-    const responseData = await response.json().catch(() => ({}));
     const script = Array.isArray(responseData.segments)
       ? normalizeUtf8Value(responseData.segments)
-      : (Array.isArray(responseData.script) ? normalizeUtf8Value(responseData.script) : []);
+      : Array.isArray(responseData.script)
+        ? normalizeUtf8Value(responseData.script)
+        : [];
 
-    
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
     return res.json({
-        title: typeof responseData.title === 'string' ? responseData.title.normalize('NFC') : 'Youtube Video (Auto-Transcription)',
-        jlpt_level: typeof responseData.jlpt_level === 'string' ? responseData.jlpt_level.normalize('NFC') : (responseData.jlpt_level || 'Unknown'),
-        script
-      });
+      title:
+        typeof responseData.title === 'string'
+          ? responseData.title.normalize('NFC')
+          : 'Youtube Video (Auto-Transcription)',
+
+      jlpt_level:
+        typeof responseData.jlpt_level === 'string'
+          ? responseData.jlpt_level.normalize('NFC')
+          : responseData.jlpt_level || 'Unknown',
+
+      script,
+    });
   } catch (error) {
-    console.error(`[SCRIPT_API_ERROR] ${endpoint}:`, error.message);
+    console.error(`[SCRIPT_API_ERROR] ${endpoint}:`, {
+      name: error?.name,
+      message: error?.message,
+      cause: error?.cause,
+      stack: error?.stack,
+    });
+
     return res.status(500).json({
       error: 'Failed to analyze video',
-      details: error.message
+      details: error?.message || 'Unknown error',
+      cause: error?.cause?.code || null,
     });
   }
 });
@@ -308,6 +394,10 @@ router.post('/save-word', authMiddleware, async (req, res) => {
 
 router.post('/save', authMiddleware, async (req, res) => {
   try {
+    if (req.user?.role === 'admin') {
+      return res.status(403).json({ error: 'Admin khong duoc dang video' });
+    }
+
     const { youtube_url, script } = req.body;
     const userId = req.user.id || req.user.userId;
 
@@ -598,6 +688,196 @@ router.post('/unlike/:id', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/:id/comments', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const video = await Video.findById(req.params.id).select('_id').lean();
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    const [comments, replies] = await Promise.all([
+      VideoComment.find({ video: req.params.id, parentComment: null })
+        .populate('author', 'fullName profilePicture role')
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .lean(),
+      VideoComment.find({ video: req.params.id, parentComment: { $ne: null } })
+        .populate('author', 'fullName profilePicture role')
+        .sort({ createdAt: 1 })
+        .limit(200)
+        .lean(),
+    ]);
+
+    const repliesByParent = replies.reduce((acc, reply) => {
+      const key = String(reply.parentComment);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(formatComment(reply, currentUserId));
+      return acc;
+    }, {});
+
+    res.json({
+      comments: comments.map(comment => ({
+        ...formatComment(comment, currentUserId),
+        replies: repliesByParent[String(comment._id)] || [],
+      })),
+    });
+  } catch (error) {
+    console.error('Lỗi khi lấy bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi lấy bình luận' });
+  }
+});
+
+router.post('/:id/comments', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const content = String(req.body?.content || '').trim();
+    const parentComment = req.body?.parentComment || null;
+
+    if (!content) {
+      return res.status(400).json({ error: 'Nội dung bình luận không được để trống' });
+    }
+
+    if (content.length > 1000) {
+      return res.status(400).json({ error: 'Bình luận tối đa 1000 ký tự' });
+    }
+
+    const video = await Video.findById(req.params.id).select('_id').lean();
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    if (parentComment) {
+      const parent = await VideoComment.findOne({
+        _id: parentComment,
+        video: req.params.id,
+        parentComment: null,
+      }).select('_id').lean();
+
+      if (!parent) {
+        return res.status(404).json({ error: 'Bình luận gốc không tồn tại' });
+      }
+    }
+
+    const comment = await VideoComment.create({
+      video: req.params.id,
+      author: currentUserId,
+      parentComment,
+      content,
+    });
+
+    const populated = await VideoComment.findById(comment._id)
+      .populate('author', 'fullName profilePicture role')
+      .lean();
+
+    res.status(201).json({
+      comment: {
+        ...formatComment(populated, currentUserId),
+        replies: [],
+      },
+    });
+  } catch (error) {
+    console.error('Lỗi khi tạo bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi tạo bình luận' });
+  }
+});
+
+router.post('/comments/:commentId/like', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const comment = await VideoComment.findById(req.params.commentId);
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Bình luận không tồn tại' });
+    }
+
+    const liked = comment.likes.some(id => String(id) === String(currentUserId));
+    if (liked) {
+      comment.likes = comment.likes.filter(id => String(id) !== String(currentUserId));
+    } else {
+      comment.likes.push(currentUserId);
+    }
+
+    await comment.save();
+
+    res.json({
+      likedByMe: !liked,
+      likesCount: comment.likes.length,
+    });
+  } catch (error) {
+    console.error('Lỗi khi thích bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi thích bình luận' });
+  }
+});
+
+router.patch('/comments/:commentId', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const content = String(req.body?.content || '').trim();
+
+    if (!content) {
+      return res.status(400).json({ error: 'Nội dung bình luận không được để trống' });
+    }
+
+    if (content.length > 1000) {
+      return res.status(400).json({ error: 'Bình luận tối đa 1000 ký tự' });
+    }
+
+    const comment = await VideoComment.findById(req.params.commentId);
+    if (!comment) {
+      return res.status(404).json({ error: 'Bình luận không tồn tại' });
+    }
+
+    if (String(comment.author) !== String(currentUserId)) {
+      return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa bình luận này' });
+    }
+
+    comment.content = content;
+    await comment.save();
+
+    const populated = await VideoComment.findById(comment._id)
+      .populate('author', 'fullName profilePicture role')
+      .lean();
+
+    res.json({
+      comment: {
+        ...formatComment(populated, currentUserId),
+        replies: [],
+      },
+    });
+  } catch (error) {
+    console.error('Lỗi khi chỉnh sửa bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi chỉnh sửa bình luận' });
+  }
+});
+
+router.delete('/comments/:commentId', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const comment = await VideoComment.findById(req.params.commentId);
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Bình luận không tồn tại' });
+    }
+
+    if (String(comment.author) !== String(currentUserId)) {
+      return res.status(403).json({ error: 'Bạn không có quyền xóa bình luận này' });
+    }
+
+    await VideoComment.deleteMany({
+      $or: [
+        { _id: comment._id },
+        { parentComment: comment._id },
+      ],
+    });
+
+    res.json({ message: 'Đã xóa bình luận' });
+  } catch (error) {
+    console.error('Lỗi khi xóa bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi xóa bình luận' });
+  }
+});
+
 
 // Fetch user's created videos with pagination
 router.get('/user/my-videos', authMiddleware, async (req, res) => {
@@ -803,6 +1083,7 @@ router.get('/public-videos', async (req, res) => {
         // Chỉ select những trường cần thiết cho Card ở trang Home để tiết kiệm băng thông
         .select('_id title thumbnail_url jlpt_level views_count likes_count created_date duration video_theme')
         .sort({ created_date: -1 }) // Mới nhất xếp trước
+        .allowDiskUse(true)
         .skip(skip)
         .limit(limitNum)
         .lean(), // Trả về plain JS object cho nhẹ

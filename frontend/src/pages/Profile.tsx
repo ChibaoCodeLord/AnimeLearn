@@ -4,6 +4,9 @@ import { Input } from '@/components/ui/input';
 import { MapPin, Flame, Award, BookOpen, Trophy, Lock, Play, Clock, Upload, X, Edit2, MoreVertical, Globe, Shield, Mail, Phone } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { toast } from 'sonner';
+import { useTheme } from '@/hooks/useTheme';
+import { authApi } from '@/api/auth.api';
+import { videoApi } from '@/api/video.api';
 
 interface UserProfile {
   id: string;
@@ -23,142 +26,63 @@ interface PasswordForm {
   confirmPassword: string;
 }
 
+interface LearningProgressResponse {
+  weeklyData?: Array<{ day: string; hours: number; date?: string }>;
+  monthlyData?: Array<{ month: string; hours: number }>;
+}
+
+interface UserVideosResponse {
+  videos: any[];
+  pagination: {
+    currentPage: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+}
+
+interface ProfileStats {
+  totalLearningHours?: number;
+  dayStreak?: number;
+  xpPoints?: number;
+  userRank?: number;
+  ranking?: string;
+  todayHours?: number;
+  weekHours?: number;
+}
+
 const fetchUserProfile = async (): Promise<UserProfile> => {
-  const response = await fetch('http://localhost:5000/api/auth/me', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch user profile');
-  }
-
-  return response.json();
+  return authApi.getMe<UserProfile>();
 };
 
 const updateUserProfile = async (data: Partial<UserProfile> | FormData): Promise<UserProfile> => {
-  const isFormData = data instanceof FormData;
-  const headers: Record<string, string> = {};
-
-  if (!isFormData) {
-    headers['Content-Type'] = 'application/json';
-  }
-
-  const response = await fetch('http://localhost:5000/api/auth/update-profile', {
-    method: 'PUT',
-    headers,
-    credentials: 'include',
-    body: isFormData ? (data as FormData) : JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update profile');
-  }
-
-  return response.json();
+  return authApi.updateProfile<UserProfile>(data);
 };
 
 const changePassword = async (data: { currentPassword: string; newPassword: string }) => {
-  const response = await fetch('http://localhost:5000/api/auth/change-password', {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify(data),
-  });
-
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(result.error || result.message || 'Failed to change password');
-  }
-
-  return result;
+  return authApi.changePassword(data);
 };
 
 const fetchLearningProgress = async (period: string = 'week') => {
-  const response = await fetch(`http://localhost:5000/api/auth/learning-progress?period=${period}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch learning progress');
-  }
-
-  return response.json();
+  return authApi.getLearningProgress<LearningProgressResponse>(period);
 };
 
 const fetchUserVideos = async (page: number = 1) => {
-  const response = await fetch(`http://localhost:5000/api/video/user/my-videos?page=${page}&limit=5`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch videos');
-  }
-
-  return response.json();
+  return videoApi.getUserVideos<UserVideosResponse>({ page, limit: 5 });
 };
 
 const fetchProfileStats = async () => {
-  const response = await fetch('http://localhost:5000/api/auth/profile-stats', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch profile stats');
-  }
-
-  return response.json();
+  return authApi.getProfileStats<ProfileStats>();
 };
 
 const deleteVideo = async (videoId: string) => {
-  const response = await fetch(`http://localhost:5000/api/video/delete/${videoId}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to delete video');
-  }
-
-  return response.json();
+  return videoApi.deleteVideo(videoId);
 };
 
 const updateVideo = async (videoId: string, data: { title: string; visibility?: 'public' | 'private' }) => {
-  const response = await fetch(`http://localhost:5000/api/video/update/${videoId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to update video');
-  }
-
-  return response.json();
+  return videoApi.updateVideo(videoId, data);
 };
 
 // Mock data fallback for videos display
@@ -183,6 +107,7 @@ const mockVideos = [
 
 export default function Profile() {
   const queryClient = useQueryClient();
+  const { isDark } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<UserProfile>>({});
@@ -208,6 +133,14 @@ export default function Profile() {
 
   const isAdmin = user?.role === 'admin';
   const isLearnerProfile = Boolean(user && !isAdmin);
+  const chartGridColor = isDark ? '#334155' : '#e5e7eb';
+  const chartTextColor = isDark ? '#94a3b8' : '#9ca3af';
+  const chartTooltipStyle = {
+    backgroundColor: isDark ? '#0f172a' : '#fff',
+    border: `1px solid ${isDark ? '#334155' : '#e5e7eb'}`,
+    borderRadius: '8px',
+    color: isDark ? '#f8fafc' : '#111827',
+  };
 
   const { data: learningProgress } = useQuery({
     queryKey: ['learningProgress', progressTab],
@@ -800,11 +733,13 @@ export default function Profile() {
                 <div className="w-full h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={learningProgress?.weeklyData || []} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="day" stroke="#9ca3af" />
-                      <YAxis stroke="#9ca3af" domain={[0, 'dataMax + 0.5']} ticks={[0, 0.5, 1, 1.5, 2, 2.5, 3]} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                      <XAxis dataKey="day" stroke={chartTextColor} />
+                      <YAxis stroke={chartTextColor} domain={[0, 'dataMax + 0.5']} ticks={[0, 0.5, 1, 1.5, 2, 2.5, 3]} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                        contentStyle={chartTooltipStyle}
+                        labelStyle={{ color: chartTooltipStyle.color }}
+                        itemStyle={{ color: chartTooltipStyle.color }}
                         formatter={(value: any) => [`${Number(value).toFixed(3)}h`, 'Hours']}
                       />
                       <Bar dataKey="hours" fill="#216E39" radius={[8, 8, 0, 0]} />
@@ -816,11 +751,13 @@ export default function Profile() {
                 <div className="w-full h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={learningProgress?.monthlyData || []} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="month" stroke="#9ca3af" />
-                      <YAxis stroke="#9ca3af" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                      <XAxis dataKey="month" stroke={chartTextColor} />
+                      <YAxis stroke={chartTextColor} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                        contentStyle={chartTooltipStyle}
+                        labelStyle={{ color: chartTooltipStyle.color }}
+                        itemStyle={{ color: chartTooltipStyle.color }}
                         formatter={(value: any) => [`${Number(value).toFixed(3)}h`, 'Hours']}
                       />
                       <Line
@@ -1024,7 +961,7 @@ export default function Profile() {
             const progress = nextMilestone ? Math.min(currentStreak / nextMilestone.days, 1) : 1;
 
             return (
-              <div className="rounded-xl shadow-sm overflow-hidden" style={{ background: 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 40%)' }}>
+              <div className="rounded-xl shadow-sm overflow-hidden bg-linear-to-b from-emerald-50 to-white dark:from-slate-900 dark:to-slate-950">
                 <div className="p-6">
                   {/* Header */}
                   <h2 className="text-xl font-bold text-gray-900">Achievements</h2>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { BookmarkPlus, Loader2, BookOpen } from 'lucide-react'; // Thêm BookOpen cho icon tiêu đề
 import { toast } from 'sonner';
+import { videoApi } from '@/api/video.api';
 
 // Định nghĩa cấu trúc của một từ vựng hiển thị
 export interface VocabItem {
@@ -86,25 +87,7 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
         example_meaning: mockResult.example_meaning || ''
       };
 
-      const response = await fetch('http://localhost:5000/api/video/save-word', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        credentials: 'omit',
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        if (data.message === 'Từ này đã có trong sổ tay') {
-          toast.info(data.message);
-        } else {
-          toast.error(data.error || 'Lỗi khi lưu từ vựng!');
-        }
-        return;
-      }
+      const data = await videoApi.saveWord<{ message?: string; vocab?: any }>(payload);
 
       const savedFromServer = data?.vocab || {};
       const newSavedVocab = {
@@ -138,7 +121,12 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
 
     } catch (error) {
       console.error("Lỗi khi lưu từ vựng:", error);
-      toast.error(`Không thể lưu từ "${vocab.word}"`);
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'Từ này đã có trong sổ tay') {
+        toast.info(message);
+      } else {
+        toast.error(`Không thể lưu từ "${vocab.word}"`);
+      }
     } finally {
       // Tắt trạng thái loading
       setSaving((prev) => ({ ...prev, [vocab.word]: false }));
@@ -187,7 +175,7 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
                   {v.reading && (
                     <span
                       title={v.reading}
-                      className="inline-block max-w-[120px] truncate align-middle text-[14px] font-bold text-emerald-700 border border-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-md"
+                      className="inline-block max-w-[120px] truncate align-middle text-[14px] font-bold text-emerald-900 border border-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-md"
                     >
                       {v.reading}
                     </span>

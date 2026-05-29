@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import * as wanakana from 'wanakana';
-import axios from 'axios';
-import { Search, Loader2, Layers, X, Sparkles, BookOpen } from 'lucide-react';
+import { Search, Loader2, X, BookOpen } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 import WordList from '@/components/dictionary/WordList';
 import WordDetail from '@/components/dictionary/WordDetail';
 import type { WordData, KanjiInfo } from '@/components/dictionary/types';
+import { dictionaryApi } from '@/api/dictionary.api';
+import { kanjiApi } from '@/api/kanji.api';
 
 export default function DictionaryPage() {
   const [inputValue, setInputValue] = useState('');
@@ -53,8 +53,12 @@ export default function DictionaryPage() {
     const fetchDictAndKanji = async () => {
       setLoading(true);
       try {
-        const resDict = await fetch(`http://localhost:5000/api/dictionary/search?q=${encodeURIComponent(searchQuery)}&page=${page}&limit=20`);
-        const dataDict = await resDict.json();
+        const dataDict = await dictionaryApi.searchDictionary<{
+          success?: boolean;
+          data: WordData[];
+          hasMore: boolean;
+          total?: number;
+        }>({ q: searchQuery, page, limit: 20 });
         
         if (dataDict.success) {
           setResults(prev => page === 1 ? dataDict.data : [...prev, ...dataDict.data]);
@@ -66,12 +70,7 @@ export default function DictionaryPage() {
           const kanjisInQuery = searchQuery.match(/[\u4e00-\u9faf]/g);
           if (kanjisInQuery) {
             const uniqueKanjis = Array.from(new Set(kanjisInQuery));
-            const resKanji = await fetch('http://localhost:5000/api/kanji/lookup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ characters: uniqueKanjis })
-            });
-            const dataKanji = await resKanji.json();
+            const dataKanji = await kanjiApi.lookupKanji<{ success?: boolean; data: KanjiInfo[] }>(uniqueKanjis);
             if (dataKanji.success) setKanjiResults(dataKanji.data);
           }
         }
@@ -115,12 +114,7 @@ export default function DictionaryPage() {
 
   const openKanjiDetail = async (kanji: string) => {
     try {
-      const res = await fetch('http://localhost:5000/api/kanji/lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ characters: [kanji] })
-      });
-      const data = await res.json();
+      const data = await kanjiApi.lookupKanji<{ success?: boolean; data: KanjiInfo[] }>([kanji]);
       if (data.success && data.data.length > 0) {
         setSelectedKanji(data.data[0]);
         setShowKanjiModal(true);

@@ -3,6 +3,9 @@ import { Star, BookOpen, Loader2, Volume2, X, Sparkles, Quote } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { ApiError } from '@/api/client';
+import { kanjiApi } from '@/api/kanji.api';
+import { videoApi } from '@/api/video.api';
 
 // 1. Khai báo các Interface
 export interface LookupData {
@@ -151,13 +154,7 @@ export default function VocabularyPopup({
   useEffect(() => {
     const fetchExtraKanji = async (charArray: string[]) => {
       try {
-        const res = await fetch('http://localhost:5000/api/kanji/lookup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ characters: charArray }),
-        });
-
-        const data = await res.json();
+        const data = await kanjiApi.lookupKanji<{ success?: boolean; data: any[] }>(charArray);
 
         if (data.success && data.data.length > 0) {
           setLookupData((prev) => {
@@ -215,15 +212,7 @@ export default function VocabularyPopup({
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/video/translate-word', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: w }),
-      });
-
-      if (!res.ok) throw new Error();
-
-      const data = await res.json();
+      const data = await videoApi.translateWord<any>(w);
 
       setLookupData({
         word: data.word || w,
@@ -248,31 +237,20 @@ export default function VocabularyPopup({
     setSaving(true);
 
     try {
-      const token = localStorage.getItem('token') || '';
-
-      const res = await fetch('http://localhost:5000/api/video/save-word', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          ...lookupData,
-          jlpt_level: lookupData.jlpt_level || 'Unknown',
-        }),
+      const data = await videoApi.saveWord<{ message?: string }>({
+        ...lookupData,
+        jlpt_level: lookupData.jlpt_level || 'Unknown',
       });
 
-      const data = await res.json();
-
-      if (res.ok) {
-        toast.success(data.message || 'Đã lưu từ vựng!');
-      } else {
-        toast.info(data.message || 'Lỗi khi lưu!');
-      }
+      toast.success(data.message || 'Đã lưu từ vựng!');
 
       if (onSave) onSave();
     } catch (error) {
-      toast.error('Lỗi kết nối khi lưu!');
+      if (error instanceof ApiError) {
+        toast.info(error.message || 'Lỗi khi lưu!');
+      } else {
+        toast.error('Lỗi kết nối khi lưu!');
+      }
     } finally {
       setSaving(false);
     }
@@ -326,6 +304,8 @@ export default function VocabularyPopup({
           rounded-2xl
           border border-pink-100
           bg-white
+          dark:border-pink-900/60
+          dark:bg-slate-950
           shadow-xl 
         "
         style={{
@@ -351,7 +331,7 @@ export default function VocabularyPopup({
         </button>
 
         {loading ? (
-          <div className="h-32 bg-[#fdf8fa] p-8 flex flex-col items-center justify-center gap-3">
+          <div className="h-32 bg-[#fdf8fa] p-8 flex flex-col items-center justify-center gap-3 dark:bg-slate-950">
             <Loader2 className="w-6 h-6 text-pink-400 animate-spin" />
             <p className="text-xs font-medium text-pink-400">
               Đang tra từ điển...
@@ -360,7 +340,7 @@ export default function VocabularyPopup({
         ) : lookupData ? (
           <>
             {/* Header compact */}
-            <div className="relative shrink-0 border-b border-pink-100/60 bg-[#fbf3f8] px-4 py-3.5">
+            <div className="relative shrink-0 border-b border-pink-100/60 bg-[#fbf3f8] px-4 py-3.5 dark:border-pink-900/60 dark:bg-slate-900">
               <div className="pr-8">
                 <div className="mb-1 flex items-center gap-2">
                   <p className="truncate text-xs font-bold tracking-widest text-pink-500">
@@ -375,6 +355,7 @@ export default function VocabularyPopup({
                       text-violet-400
                       hover:text-violet-600
                       hover:bg-violet-100
+                      dark:hover:bg-violet-500/20
                       active:scale-95
                       transition-colors
                     "
@@ -399,7 +380,7 @@ export default function VocabularyPopup({
                 {lookupData.part_of_speech && (
                   <Badge
                     variant="outline"
-                    className="bg-white text-violet-600 border-violet-100 px-2 py-0.5 text-[10px] font-medium shadow-xs"
+                    className="bg-white text-violet-600 border-violet-100 px-2 py-0.5 text-[10px] font-medium shadow-xs dark:border-violet-800 dark:bg-violet-950/35 dark:text-violet-200"
                   >
                     {lookupData.part_of_speech}
                   </Badge>
@@ -419,7 +400,7 @@ export default function VocabularyPopup({
             </div>
 
             {/* Body scroll compact */}
-            <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar bg-[#fffbfd]">
+            <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar bg-[#fffbfd] dark:bg-slate-950">
               <div className="px-4 py-3">
                 {meaningLines.length > 0 && meaningLines[0] !== 'N/A' ? (
                   <ul className="space-y-2">
@@ -448,7 +429,7 @@ export default function VocabularyPopup({
               </div>
 
               {sentenceContext && (
-                <div className="border-t border-pink-100 bg-violet-50/30 px-4 py-2.5">
+                <div className="border-t border-pink-100 bg-violet-50/30 px-4 py-2.5 dark:border-violet-900/60 dark:bg-violet-950/30">
                   <p className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-violet-500">
                     <Quote className="w-3 h-3" />
                     Ngữ cảnh trong video
@@ -460,7 +441,7 @@ export default function VocabularyPopup({
               )}
 
               {lookupData.kanji_info && lookupData.kanji_info.length > 0 && (
-                <div className="border-t border-dashed border-pink-200 bg-white px-4 py-3">
+                <div className="border-t border-dashed border-pink-200 bg-white px-4 py-3 dark:border-pink-900/70 dark:bg-slate-950">
                   <p className="mb-2.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-pink-400">
                     <BookOpen className="w-3 h-3" />
                     Phân tích Hán Tự
@@ -482,6 +463,8 @@ export default function VocabularyPopup({
                             rounded-xl
                             border border-pink-50
                             bg-[#fdf8fa]
+                            dark:border-pink-900/60
+                            dark:bg-slate-900
                             p-2.5
                             shadow-sm
                           "
@@ -529,7 +512,7 @@ export default function VocabularyPopup({
             </div>
 
             {/* Footer compact */}
-            <div className="shrink-0 border-t border-pink-100 bg-[#fffbfd] p-3">
+            <div className="shrink-0 border-t border-pink-100 bg-[#fffbfd] p-3 dark:border-pink-900/60 dark:bg-slate-950">
               <Button
                 onClick={handleSave}
                 disabled={saving}
