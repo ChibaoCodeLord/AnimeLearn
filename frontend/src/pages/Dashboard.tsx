@@ -4,6 +4,7 @@ import { BookOpen, Video, Brain, Star, TrendingUp, Clock, ArrowRight, Activity, 
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import moment from 'moment';
+import { videoApi } from '@/api/video.api';
 
 // 1. Khai báo Interfaces
 interface VocabItem {
@@ -16,9 +17,13 @@ interface VocabItem {
 
 interface VideoItem {
   id: string;
+  history_id?: string;
   title: string;
   created_date: string;
+  watched_at?: string;
+  thumbnail_url?: string;
   jlpt_level?: string;
+  progress_seconds?: number;
 }
 
 interface QuizItem {
@@ -43,10 +48,6 @@ const mockVocabulary: VocabItem[] = [
   { id: 'v4', word: '曖昧', reading: 'あいまい', jlpt_level: 'N1', next_review_date: '2026-04-01T00:00:00Z' },
 ];
 
-const mockVideos: VideoItem[] = [
-  { id: 'vid1', title: 'Học tiếng Nhật qua Jujutsu Kaisen Tập 1', created_date: '2026-03-13T10:00:00Z', jlpt_level: 'N3' },
-  { id: 'vid2', title: 'Từ vựng N4 - Frieren: Beyond Journey\'s End', created_date: '2026-03-12T15:30:00Z', jlpt_level: 'N4' },
-];
 
 const mockQuizzes: QuizItem[] = [
   { id: 'q1', created_date: '2026-03-13T11:00:00Z' },
@@ -57,8 +58,12 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const mockApi = {
   getVocabulary: async () => { await delay(600); return mockVocabulary; },
-  getVideos: async () => { await delay(800); return mockVideos; },
   getQuizzes: async () => { await delay(500); return mockQuizzes; },
+};
+
+const fetchWatchedVideos = async () => {
+  const response = await videoApi.getWatchedVideos<{ data: VideoItem[] }>({ limit: 30 });
+  return response.data || [];
 };
 
 // 4. Component Component Con (StatCard được thiết kế lại)
@@ -94,7 +99,7 @@ export default function Dashboard() {
 
   const { data: videos = [], isLoading: videoLoading } = useQuery<VideoItem[]>({
     queryKey: ['dashboard-videos'],
-    queryFn: mockApi.getVideos,
+    queryFn: fetchWatchedVideos,
     initialData: [],
   });
 
@@ -203,7 +208,7 @@ export default function Dashboard() {
               <Clock className="w-5 h-5 text-blue-500" />
               Video học gần đây
             </h3>
-            <Link to="/home" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">Xem tất cả</Link>
+            <Link to="/WatchHistory" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">Xem tất cả</Link>
           </div>
           
           <div className="flex-1">
@@ -220,14 +225,14 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3">
                 {videos.slice(0, 4).map(v => (
-                  <Link key={v.id} to={`/VideoWorkspace?id=${v.id}`} className="block">
+                  <Link key={v.history_id || v.id} to={`/VideoWorkspace?id=${v.id}`} className="block">
                     <div className="flex items-center gap-4 p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all group">
                       <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-xl shrink-0 group-hover:scale-105 transition-transform">
                         🎬
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-800 truncate group-hover:text-emerald-600 transition-colors">{v.title}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{moment(v.created_date).fromNow()}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{moment(v.watched_at || v.created_date).fromNow()}</p>
                       </div>
                       {v.jlpt_level && (
                         <Badge className="bg-white border-slate-200 text-slate-600 shrink-0 font-medium">

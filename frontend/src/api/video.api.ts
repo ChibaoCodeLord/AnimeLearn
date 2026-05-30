@@ -21,6 +21,12 @@ export const videoApi = {
 
   countView: <T = ApiMessageResponse>(id: ApiId) => apiClient.post<T>(ENDPOINTS.video.view(id)),
 
+  markWatched: <T = ApiMessageResponse>(id: ApiId, payload?: { progress_seconds?: number }) =>
+    apiClient.post<T>(ENDPOINTS.video.markWatched(id), payload ?? {}),
+
+  getWatchedVideos: <T = unknown>(params?: QueryParams) =>
+    apiClient.get<T>(withQuery(ENDPOINTS.video.watched, params)),
+
   likeVideo: <T = ApiMessageResponse>(id: ApiId) => apiClient.post<T>(ENDPOINTS.video.like(id)),
 
   unlikeVideo: <T = ApiMessageResponse>(id: ApiId) =>

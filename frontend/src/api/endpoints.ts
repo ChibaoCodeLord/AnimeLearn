@@ -27,6 +27,8 @@ export const ENDPOINTS = {
     save: '/video/save',
     detail: (id: ApiId) => `/video/detail/${id}`,
     view: (id: ApiId) => `/video/view/${id}`,
+    watched: '/video/watched',
+    markWatched: (id: ApiId) => `/video/watched/${id}`,
     like: (id: ApiId) => `/video/like/${id}`,
     unlike: (id: ApiId) => `/video/unlike/${id}`,
     comments: (id: ApiId) => `/video/${id}/comments`,

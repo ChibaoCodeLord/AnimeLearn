@@ -806,13 +806,18 @@ export default function VideoWorkspace() {
               videoApi.countView<{ views_count?: number }>(videoId).then(data => {
                 if (typeof data?.views_count === 'number') setViewsCount(data.views_count);
               }).catch(() => {});
+              videoApi.markWatched(videoId, {
+                progress_seconds: Math.floor(currentTime),
+              }).then(() => {
+                queryClient.invalidateQueries({ queryKey: ['dashboard-videos'] });
+              }).catch(() => {});
             }
           }
         } catch (e) { }
       }, 300); 
     }
     return () => clearInterval(interval);
-  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion, videoId, setPlaybackPosition]);
+  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion, videoId, setPlaybackPosition, queryClient]);
 
   if (videoId && isCheckingAccess) {
     return (
