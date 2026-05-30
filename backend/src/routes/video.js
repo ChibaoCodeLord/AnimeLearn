@@ -7,6 +7,7 @@ import { authMiddleware, restrictTo } from '../middleware/auth.js'
 import Vocabulary from '../models/Vocabulary.js';
 import Video from '../models/Video.js';
 import VideoLike from '../models/VideoLike.js';
+import VideoComment from '../models/VideoComment.js';
 import { indexVideoScript } from '../services/ragChatService.js';
 import Quiz from '../models/Quiz.js';
 import Kanji from '../models/Kanji.js';
@@ -29,6 +30,27 @@ const KuromojiAnalyzer =
 const kuroshiro = new Kuroshiro();
 
 let isKuroshiroInit = false;
+
+const formatComment = (comment, currentUserId) => {
+  const likes = comment.likes || [];
+  return {
+    id: comment._id,
+    content: comment.content,
+    createdAt: comment.createdAt,
+    updatedAt: comment.updatedAt,
+    isEdited: comment.updatedAt && comment.createdAt
+      ? new Date(comment.updatedAt).getTime() - new Date(comment.createdAt).getTime() > 1000
+      : false,
+    likesCount: likes.length,
+    likedByMe: currentUserId ? likes.some(id => String(id) === String(currentUserId)) : false,
+    author: comment.author ? {
+      id: comment.author._id,
+      fullName: comment.author.fullName,
+      profilePicture: comment.author.profilePicture || null,
+      role: comment.author.role || 'user',
+    } : null,
+  };
+};
 let kuroshiroInitPromise = null;
 
 async function initKuroshiro() {
@@ -745,6 +767,197 @@ router.post('/watched/:id', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('Lỗi khi lưu lịch sử xem video:', error);
     return res.status(500).json({ error: 'Lỗi khi lưu lịch sử xem video' });
+  }
+});
+
+
+router.get('/:id/comments', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const video = await Video.findById(req.params.id).select('_id').lean();
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    const [comments, replies] = await Promise.all([
+      VideoComment.find({ video: req.params.id, parentComment: null })
+        .populate('author', 'fullName profilePicture role')
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .lean(),
+      VideoComment.find({ video: req.params.id, parentComment: { $ne: null } })
+        .populate('author', 'fullName profilePicture role')
+        .sort({ createdAt: 1 })
+        .limit(200)
+        .lean(),
+    ]);
+
+    const repliesByParent = replies.reduce((acc, reply) => {
+      const key = String(reply.parentComment);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(formatComment(reply, currentUserId));
+      return acc;
+    }, {});
+
+    res.json({
+      comments: comments.map(comment => ({
+        ...formatComment(comment, currentUserId),
+        replies: repliesByParent[String(comment._id)] || [],
+      })),
+    });
+  } catch (error) {
+    console.error('Lỗi khi lấy bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi lấy bình luận' });
+  }
+});
+
+router.post('/:id/comments', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const content = String(req.body?.content || '').trim();
+    const parentComment = req.body?.parentComment || null;
+
+    if (!content) {
+      return res.status(400).json({ error: 'Nội dung bình luận không được để trống' });
+    }
+
+    if (content.length > 1000) {
+      return res.status(400).json({ error: 'Bình luận tối đa 1000 ký tự' });
+    }
+
+    const video = await Video.findById(req.params.id).select('_id').lean();
+    if (!video) {
+      return res.status(404).json({ error: 'Video không tồn tại' });
+    }
+
+    if (parentComment) {
+      const parent = await VideoComment.findOne({
+        _id: parentComment,
+        video: req.params.id,
+        parentComment: null,
+      }).select('_id').lean();
+
+      if (!parent) {
+        return res.status(404).json({ error: 'Bình luận gốc không tồn tại' });
+      }
+    }
+
+    const comment = await VideoComment.create({
+      video: req.params.id,
+      author: currentUserId,
+      parentComment,
+      content,
+    });
+
+    const populated = await VideoComment.findById(comment._id)
+      .populate('author', 'fullName profilePicture role')
+      .lean();
+
+    res.status(201).json({
+      comment: {
+        ...formatComment(populated, currentUserId),
+        replies: [],
+      },
+    });
+  } catch (error) {
+    console.error('Lỗi khi tạo bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi tạo bình luận' });
+  }
+});
+
+router.post('/comments/:commentId/like', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const comment = await VideoComment.findById(req.params.commentId);
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Bình luận không tồn tại' });
+    }
+
+    const liked = comment.likes.some(id => String(id) === String(currentUserId));
+    if (liked) {
+      comment.likes = comment.likes.filter(id => String(id) !== String(currentUserId));
+    } else {
+      comment.likes.push(currentUserId);
+    }
+
+    await comment.save();
+
+    res.json({
+      likedByMe: !liked,
+      likesCount: comment.likes.length,
+    });
+  } catch (error) {
+    console.error('Lỗi khi thích bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi thích bình luận' });
+  }
+});
+
+router.patch('/comments/:commentId', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const content = String(req.body?.content || '').trim();
+
+    if (!content) {
+      return res.status(400).json({ error: 'Nội dung bình luận không được để trống' });
+    }
+
+    if (content.length > 1000) {
+      return res.status(400).json({ error: 'Bình luận tối đa 1000 ký tự' });
+    }
+
+    const comment = await VideoComment.findById(req.params.commentId);
+    if (!comment) {
+      return res.status(404).json({ error: 'Bình luận không tồn tại' });
+    }
+
+    if (String(comment.author) !== String(currentUserId)) {
+      return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa bình luận này' });
+    }
+
+    comment.content = content;
+    await comment.save();
+
+    const populated = await VideoComment.findById(comment._id)
+      .populate('author', 'fullName profilePicture role')
+      .lean();
+
+    res.json({
+      comment: {
+        ...formatComment(populated, currentUserId),
+        replies: [],
+      },
+    });
+  } catch (error) {
+    console.error('Lỗi khi chỉnh sửa bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi chỉnh sửa bình luận' });
+  }
+});
+
+router.delete('/comments/:commentId', authMiddleware, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id || req.user?.userId;
+    const comment = await VideoComment.findById(req.params.commentId);
+
+    if (!comment) {
+      return res.status(404).json({ error: 'Bình luận không tồn tại' });
+    }
+
+    if (String(comment.author) !== String(currentUserId)) {
+      return res.status(403).json({ error: 'Bạn không có quyền xóa bình luận này' });
+    }
+
+    await VideoComment.deleteMany({
+      $or: [
+        { _id: comment._id },
+        { parentComment: comment._id },
+      ],
+    });
+
+    res.json({ message: 'Đã xóa bình luận' });
+  } catch (error) {
+    console.error('Lỗi khi xóa bình luận:', error);
+    res.status(500).json({ error: 'Lỗi khi xóa bình luận' });
   }
 });
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import YouTubeOrigin from 'react-youtube';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -8,7 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
   Loader2, Sparkles, Share2, Youtube, Mic, Brain, Eye, 
-  EyeOff, Heart, AlertTriangle, BrainCircuit, PlayCircle, X, BookOpen , Mic2
+  EyeOff, Heart, AlertTriangle, BrainCircuit, PlayCircle, X, BookOpen, Mic2,
+  MessageSquare, ThumbsUp, MoreVertical, Pencil, Trash2
 } from 'lucide-react'; 
 import { toast } from 'sonner';
 
@@ -40,6 +42,36 @@ interface CurrentUser {
   email: string;
   fullName: string;
   role?: 'user' | 'admin';
+  profilePicture?: string | null;
+}
+
+interface RelatedVideo {
+  id: string | number;
+  title: string;
+  thumbnail_url?: string;
+  jlpt_level?: string;
+  views_count?: number;
+  duration?: number;
+  video_theme?: string;
+}
+
+interface VideoCommentAuthor {
+  id: string;
+  fullName: string;
+  profilePicture?: string | null;
+  role?: 'user' | 'admin' | string;
+}
+
+interface VideoCommentItem {
+  id: string;
+  content: string;
+  createdAt: string;
+  updatedAt?: string;
+  isEdited?: boolean;
+  likesCount: number;
+  likedByMe?: boolean;
+  author: VideoCommentAuthor | null;
+  replies?: VideoCommentItem[];
 }
 
 interface QuizQuestion {
@@ -84,6 +116,44 @@ const JLPT_COLORS: Record<string, string> = {
   'N4': 'border-blue-200 bg-blue-50 text-blue-700',
   'N5': 'border-emerald-200 bg-emerald-50 text-emerald-700',
   'Unknown': 'border-slate-200 bg-slate-50 text-slate-600',
+};
+
+const formatShortDuration = (totalSeconds?: number | null) => {
+  if (!totalSeconds || totalSeconds <= 0) return '0:00';
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+const formatCompactViews = (views?: number | null) => {
+  const count = views || 0;
+  if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}K views`;
+  return `${count} views`;
+};
+
+const formatRelativeTime = (value?: string) => {
+  if (!value) return '';
+
+  const diffMs = Date.now() - new Date(value).getTime();
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffMinutes < 1) return 'vừa xong';
+  if (diffMinutes < 60) return `${diffMinutes} phút trước`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} ngày trước`;
+};
+
+const formatFullDateTime = (value?: string) => {
+  if (!value) return '';
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
 };
 
 
@@ -204,10 +274,10 @@ async function fetchCurrentUser(): Promise<CurrentUser> {
 }
 
 export default function VideoWorkspace() {
-  const params = new URLSearchParams(window.location.search);
-  const videoId = params.get('id');
-  const youtubeUrl = params.get('url');
-  const resumeTimeParam = Number(params.get('t') || 0);
+  const [searchParams] = useSearchParams();
+  const videoId = searchParams.get('id');
+  const youtubeUrl = searchParams.get('url');
+  const resumeTimeParam = Number(searchParams.get('t') || 0);
   const routeResumeTime = Number.isFinite(resumeTimeParam) && resumeTimeParam > 0
     ? resumeTimeParam
     : 0;
@@ -237,6 +307,12 @@ export default function VideoWorkspace() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
+  const [commentText, setCommentText] = useState('');
+  const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [openCommentMenuId, setOpenCommentMenuId] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
 
   const [enablePopupQuiz, setEnablePopupQuiz] = useState(false);
   const [activePopupQuestion, setActivePopupQuestion] = useState<QuizQuestion | null>(null);
@@ -258,11 +334,119 @@ export default function VideoWorkspace() {
     setProgress: setGlobalProgress,
   } = usePlayerStore();
 
+  useEffect(() => {
+    try {
+      playerRef.current?.pauseVideo?.();
+      playerRef.current?.stopVideo?.();
+    } catch {
+      // The YouTube iframe may already be detached while changing videos.
+    }
+
+    playerRef.current = null;
+    setIsPlaying(false);
+    setGlobalIsPlaying(false);
+    setGlobalProgress(0);
+    setPlaybackPosition(0, 0);
+    setScript([]);
+    setVocabList([]);
+    setCurrentIndex(0);
+    setVideoTitle('');
+    setCurrentYoutubeUrl(youtubeUrl || '');
+    setVideoStatus('pending');
+    setJlptLevel('Unknown');
+    setViewsCount(0);
+    setLikesCount(0);
+    setLikedByMe(false);
+    setLoadError(null);
+    setActivePopupQuestion(null);
+    setShownPopups(new Set());
+    hasCountedViewRef.current = false;
+
+    if (videoId) {
+      setIsCheckingAccess(true);
+    }
+  }, [setGlobalIsPlaying, setGlobalProgress, setPlaybackPosition, videoId, youtubeUrl]);
+
   const { data: currentUser } = useQuery<CurrentUser>({
     queryKey: ['current-user'],
     queryFn: fetchCurrentUser,
     staleTime: 10 * 60 * 1000,
     retry: 1,
+  });
+
+  const { data: relatedVideosResponse } = useQuery<{ data?: RelatedVideo[] }>({
+    queryKey: ['workspace-related-videos', videoId],
+    queryFn: () => videoApi.getPublicVideos<{ data?: RelatedVideo[] }>({ page: 1, limit: 8 }),
+    enabled: Boolean(videoId),
+    staleTime: 5 * 60 * 1000,
+  });
+  const relatedVideos = (relatedVideosResponse?.data ?? [])
+    .filter(video => String(video.id) !== String(videoId))
+    .slice(0, 3);
+
+  const { data: commentsResponse, isLoading: commentsLoading } = useQuery<{ comments: VideoCommentItem[] }>({
+    queryKey: ['video-comments', videoId],
+    queryFn: () => videoApi.getComments<{ comments: VideoCommentItem[] }>(videoId!),
+    enabled: Boolean(videoId),
+    staleTime: 30 * 1000,
+  });
+  const comments = commentsResponse?.comments ?? [];
+  const commentCount = comments.reduce((total, comment) => total + 1 + (comment.replies?.length || 0), 0);
+
+  const createCommentMutation = useMutation({
+    mutationFn: ({ content, parentComment }: { content: string; parentComment?: string | null }) => {
+      if (!videoId) throw new Error('Thiếu mã video');
+      return videoApi.createComment(videoId, { content, parentComment });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['video-comments', videoId] });
+      if (variables.parentComment) {
+        setReplyTargetId(null);
+        setReplyText('');
+      } else {
+        setCommentText('');
+      }
+      toast.success('Đã gửi bình luận');
+    },
+    onError: (mutationError: Error) => {
+      toast.error(mutationError.message || 'Không thể gửi bình luận');
+    },
+  });
+
+  const toggleCommentLikeMutation = useMutation({
+    mutationFn: (commentId: string) => videoApi.toggleCommentLike(commentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-comments', videoId] });
+    },
+    onError: (mutationError: Error) => {
+      toast.error(mutationError.message || 'Không thể thích bình luận');
+    },
+  });
+
+  const updateCommentMutation = useMutation({
+    mutationFn: ({ commentId, content }: { commentId: string; content: string }) =>
+      videoApi.updateComment(commentId, { content }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-comments', videoId] });
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      toast.success('Đã cập nhật bình luận');
+    },
+    onError: (mutationError: Error) => {
+      toast.error(mutationError.message || 'Không thể cập nhật bình luận');
+    },
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: string) => videoApi.deleteComment(commentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['video-comments', videoId] });
+      setOpenCommentMenuId(null);
+      toast.success('Đã xóa bình luận');
+    },
+    onError: (mutationError: Error) => {
+      toast.error(mutationError.message || 'Không thể xóa bình luận');
+    },
   });
 
   const isAdmin = currentUser?.role === 'admin';
@@ -353,11 +537,15 @@ export default function VideoWorkspace() {
     return Number.isFinite(savedWidth) && savedWidth >= 320 ? savedWidth : 400;
   });
   useEffect(() => {
+    let cancelled = false;
+
     if (videoId) {
       setIsCheckingAccess(true);
       hasCountedViewRef.current = sessionStorage.getItem(`video-view-counted:${videoId}`) === '1';
       videoApi.getVideoDetail<any>(videoId)
         .then(video => {
+          if (cancelled) return;
+
           if (video && !video.error) {
             setScript(video.script || []);
             setVocabList(video.vocab_list || []); 
@@ -369,9 +557,13 @@ export default function VideoWorkspace() {
             setLikesCount(video.likes_count || 0);
             setLikedByMe(Boolean(video.likedByMe));
             setLoadError(null);
+          } else {
+            setLoadError(video?.error || 'Không thể mở video này');
           }
         })
         .catch(err => {
+          if (cancelled) return;
+
           console.error(err);
           const statusMessage =
             err instanceof ApiError && err.status === 401
@@ -383,8 +575,14 @@ export default function VideoWorkspace() {
                   : 'Lỗi khi tải kịch bản từ máy chủ';
           setLoadError(statusMessage);
         })
-        .finally(() => setIsCheckingAccess(false));
+        .finally(() => {
+          if (!cancelled) setIsCheckingAccess(false);
+        });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [videoId]);
 
 
@@ -810,6 +1008,7 @@ export default function VideoWorkspace() {
                 >
                   {ytId ? (
                     <YouTube
+                      key={ytId}
                       videoId={ytId}
                       className="absolute inset-0 w-full h-full border-0"
                       iframeClassName="w-full h-full"
@@ -1079,6 +1278,305 @@ export default function VideoWorkspace() {
                 )}
               </div>
             </div>
+
+            <div className="flex h-[430px] flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:h-[625px]">
+              <div className="mb-4 flex items-center gap-3">
+                <MessageSquare className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-base font-bold text-slate-900">Bình luận</h3>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">{commentCount}</span>
+              </div>
+
+              <div className="mb-7 flex gap-3">
+                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-200">
+                  {currentUser?.profilePicture ? (
+                    <img src={currentUser.profilePicture} alt="Avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-teal-600 text-sm font-bold text-white">
+                      {currentUser?.fullName?.[0]?.toUpperCase() || 'U'}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <textarea
+                    rows={3}
+                    placeholder="Viết bình luận..."
+                    value={commentText}
+                    onChange={(event) => setCommentText(event.target.value)}
+                    className="w-full resize-none rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                  />
+                  <div className="mt-2 flex justify-end gap-3">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setCommentText('')} className="text-slate-500 hover:text-slate-700">
+                      Hủy
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!commentText.trim() || createCommentMutation.isPending}
+                      onClick={() => createCommentMutation.mutate({ content: commentText.trim() })}
+                      className="bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      {createCommentMutation.isPending ? 'Đang gửi...' : 'Bình luận'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+                {commentsLoading ? (
+                  <div className="py-4 text-center text-sm text-slate-400">Đang tải bình luận...</div>
+                ) : comments.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+                    Chưa có bình luận nào. Hãy là người đầu tiên trao đổi về bài học này.
+                  </div>
+                ) : comments.map(comment => (
+                  <div key={comment.id} className="flex gap-3">
+                    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-200">
+                      {comment.author?.profilePicture ? (
+                        <img src={comment.author.profilePicture} alt={comment.author.fullName} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-slate-700 text-sm font-bold text-white">
+                          {comment.author?.fullName?.[0]?.toUpperCase() || 'U'}
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-bold text-slate-900">{comment.author?.fullName || 'Người dùng'}</span>
+                          {comment.author?.role === 'admin' && (
+                            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">QTV</span>
+                          )}
+                          <span className="text-xs text-slate-400" title={formatFullDateTime(comment.createdAt)}>
+                            {formatRelativeTime(comment.createdAt)}
+                          </span>
+                          {comment.isEdited && (
+                            <span className="text-xs text-slate-400" title={formatFullDateTime(comment.updatedAt)}>
+                              (Đã chỉnh sửa)
+                            </span>
+                          )}
+                        </div>
+                        {String(comment.author?.id) === String(currentUser?.id) && (
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setOpenCommentMenuId(openCommentMenuId === comment.id ? null : comment.id)}
+                              className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                            {openCommentMenuId === comment.id && (
+                              <div className="absolute right-0 top-7 z-20 w-32 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingCommentId(comment.id);
+                                    setEditingCommentText(comment.content);
+                                    setOpenCommentMenuId(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Chỉnh sửa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteCommentMutation.mutate(comment.id)}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Xóa
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {editingCommentId === comment.id ? (
+                        <div className="mt-2">
+                          <textarea
+                            value={editingCommentText}
+                            onChange={(event) => setEditingCommentText(event.target.value)}
+                            rows={3}
+                            className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                          />
+                          <div className="mt-2 flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingCommentId(null);
+                                setEditingCommentText('');
+                              }}
+                            >
+                              Hủy
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                              onClick={() => updateCommentMutation.mutate({ commentId: comment.id, content: editingCommentText.trim() })}
+                              className="bg-emerald-600 text-white hover:bg-emerald-700"
+                            >
+                              Lưu
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{comment.content}</p>
+                      )}
+                      <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+                        <button
+                          type="button"
+                          onClick={() => toggleCommentLikeMutation.mutate(comment.id)}
+                          className={`inline-flex items-center gap-1 hover:text-emerald-600 ${comment.likedByMe ? 'text-emerald-600' : ''}`}
+                        >
+                          <ThumbsUp className="h-3.5 w-3.5" />
+                          {comment.likesCount}
+                        </button>
+                        <button type="button" onClick={() => setReplyTargetId(comment.id)} className="hover:text-slate-700">Phản hồi</button>
+                      </div>
+
+                      {replyTargetId === comment.id && (
+                        <div className="mt-3 flex gap-2">
+                          <input
+                            value={replyText}
+                            onChange={(event) => setReplyText(event.target.value)}
+                            placeholder={`Trả lời ${comment.author?.fullName || 'bình luận'}...`}
+                            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={!replyText.trim() || createCommentMutation.isPending}
+                            onClick={() => createCommentMutation.mutate({ content: replyText.trim(), parentComment: comment.id })}
+                            className="bg-emerald-600 text-white hover:bg-emerald-700"
+                          >
+                            Gửi
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => { setReplyTargetId(null); setReplyText(''); }}>
+                            Hủy
+                          </Button>
+                        </div>
+                      )}
+
+                      {comment.replies && comment.replies.length > 0 && (
+                        <div className="mt-3 space-y-3 border-l-2 border-slate-200 pl-4">
+                          {comment.replies.map(reply => (
+                            <div key={reply.id} className="flex gap-3">
+                              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200">
+                                {reply.author?.profilePicture ? (
+                                  <img src={reply.author.profilePicture} alt={reply.author.fullName} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center bg-slate-700 text-xs font-bold text-white">
+                                    {reply.author?.fullName?.[0]?.toUpperCase() || 'U'}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-bold text-slate-900">{reply.author?.fullName || 'Người dùng'}</span>
+                                    {reply.author?.role === 'admin' && (
+                                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">QTV</span>
+                                    )}
+                                    <span className="text-xs text-slate-400" title={formatFullDateTime(reply.createdAt)}>
+                                      {formatRelativeTime(reply.createdAt)}
+                                    </span>
+                                    {reply.isEdited && (
+                                      <span className="text-xs text-slate-400" title={formatFullDateTime(reply.updatedAt)}>
+                                        (Đã chỉnh sửa)
+                                      </span>
+                                    )}
+                                  </div>
+                                  {String(reply.author?.id) === String(currentUser?.id) && (
+                                    <div className="relative">
+                                      <button
+                                        type="button"
+                                        onClick={() => setOpenCommentMenuId(openCommentMenuId === reply.id ? null : reply.id)}
+                                        className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </button>
+                                      {openCommentMenuId === reply.id && (
+                                        <div className="absolute right-0 top-7 z-20 w-32 overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingCommentId(reply.id);
+                                              setEditingCommentText(reply.content);
+                                              setOpenCommentMenuId(null);
+                                            }}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                          >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                            Chỉnh sửa
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => deleteCommentMutation.mutate(reply.id)}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                            Xóa
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                {editingCommentId === reply.id ? (
+                                  <div className="mt-2">
+                                    <textarea
+                                      value={editingCommentText}
+                                      onChange={(event) => setEditingCommentText(event.target.value)}
+                                      rows={2}
+                                      className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+                                    />
+                                    <div className="mt-2 flex justify-end gap-2">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setEditingCommentId(null);
+                                          setEditingCommentText('');
+                                        }}
+                                      >
+                                        Hủy
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        disabled={!editingCommentText.trim() || updateCommentMutation.isPending}
+                                        onClick={() => updateCommentMutation.mutate({ commentId: reply.id, content: editingCommentText.trim() })}
+                                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                                      >
+                                        Lưu
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">{reply.content}</p>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCommentLikeMutation.mutate(reply.id)}
+                                  className={`mt-2 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-600 ${reply.likedByMe ? 'text-emerald-600' : ''}`}
+                                >
+                                  <ThumbsUp className="h-3.5 w-3.5" />
+                                  {reply.likesCount}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div
@@ -1105,15 +1603,21 @@ export default function VideoWorkspace() {
           <div
             className="
               w-full xl:w-[var(--script-panel-width)]
+              flex flex-col gap-3
+              shrink-0
+            "
+            style={{ '--script-panel-width': `${scriptPanelWidth}px` } as CSSProperties}
+          >
+          <div
+            className="
               flex flex-col
               rounded-[1rem]
               border border-slate-200
               bg-white
               shadow-lg shadow-slate-200/50
-              overscroll-contain overflow-hidden shrink-0
-              h-[500px] xl:h-[850px]
+              overscroll-contain overflow-hidden
+              h-[850px] xl:h-[884px]
             "
-            style={{ '--script-panel-width': `${scriptPanelWidth}px` } as CSSProperties}
           >
             <div
               className="
@@ -1240,6 +1744,55 @@ export default function VideoWorkspace() {
                 </div>
               )}
             </div>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+              <BookOpen className="h-4 w-4 text-emerald-600" />
+              <h3 className="text-sm font-bold text-slate-900">Bài học liên quan</h3>
+            </div>
+
+            <div className="space-y-3 p-4">
+              {relatedVideos.length > 0 ? (
+                relatedVideos.map(video => (
+                  <Link
+                    key={video.id}
+                    to={`/VideoWorkspace?id=${video.id}`}
+                    className="group flex gap-3 rounded-lg transition-colors hover:bg-slate-50"
+                  >
+                    <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded-md bg-slate-100">
+                      {video.thumbnail_url ? (
+                        <img src={video.thumbnail_url} alt={video.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-slate-200">
+                          <Youtube className="h-5 w-5 text-slate-400" />
+                        </div>
+                      )}
+                      <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 text-[10px] font-bold text-white">
+                        {formatShortDuration(video.duration)}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1 py-0.5">
+                      <p className="line-clamp-2 text-xs font-bold leading-snug text-slate-900 group-hover:text-emerald-700">
+                        {video.title}
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-slate-500">
+                        {video.video_theme || 'Luyện Shadowing'} {video.jlpt_level ? `• ${video.jlpt_level}` : ''} • {formatCompactViews(video.views_count)}
+                      </p>
+                    </div>
+                  </Link>
+                ))
+              ) : (
+                <p className="py-3 text-center text-xs text-slate-400">Chưa có bài học liên quan</p>
+              )}
+            </div>
+
+            <Link
+              to="/home"
+              className="block border-t border-slate-100 px-4 py-3 text-center text-xs font-bold text-emerald-600 hover:bg-emerald-50"
+            >
+              Xem thêm
+            </Link>
+          </div>
           </div>
           </div>
         </TabsContent>

@@ -32,6 +32,23 @@ export const videoApi = {
   unlikeVideo: <T = ApiMessageResponse>(id: ApiId) =>
     apiClient.post<T>(ENDPOINTS.video.unlike(id)),
 
+  getComments: <T = unknown>(id: ApiId) =>
+    apiClient.get<T>(ENDPOINTS.video.comments(id)),
+
+  createComment: <T = unknown>(
+    id: ApiId,
+    payload: { content: string; parentComment?: ApiId | null },
+  ) => apiClient.post<T>(ENDPOINTS.video.comments(id), payload),
+
+  toggleCommentLike: <T = unknown>(id: ApiId) =>
+    apiClient.post<T>(ENDPOINTS.video.commentLike(id)),
+
+  updateComment: <T = unknown>(id: ApiId, payload: { content: string }) =>
+    apiClient.patch<T>(ENDPOINTS.video.comment(id), payload),
+
+  deleteComment: <T = ApiMessageResponse>(id: ApiId) =>
+    apiClient.delete<T>(ENDPOINTS.video.comment(id)),
+
   getUserVideos: <T = unknown>(params?: QueryParams) =>
     apiClient.get<T>(withQuery(ENDPOINTS.video.userVideos, params)),
 
