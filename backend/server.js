@@ -29,7 +29,7 @@ Video.syncIndexes()
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://172.16.3.103:5173')
   .split(',')
   .map(origin => origin.trim())
   .filter(Boolean);
