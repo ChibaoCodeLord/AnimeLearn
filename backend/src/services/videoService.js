@@ -477,7 +477,7 @@ export const getVideoVocabularyService = async (videoId) => {
   }));
 };
 
-export const getPublicVideosService = async ({ level, page = 1, limit = 4 }) => {
+export const getPublicVideosService = async ({ level, search, page = 1, limit = 4 }) => {
   const pageNum = Math.max(Number.parseInt(page) || 1, 1);
   const limitNum = Math.min(Math.max(Number.parseInt(limit) || 4, 1), 100);
   const skip = (pageNum - 1) * limitNum;
@@ -487,6 +487,13 @@ export const getPublicVideosService = async ({ level, page = 1, limit = 4 }) => 
     query.jlpt_level = { $nin: ['N1', 'N2', 'N3', 'N4', 'N5'] };
   } else if (level) {
     query.jlpt_level = level;
+  }
+  
+  if (search) {
+    query.$or = [
+      { title: { $regex: search, $options: 'i' } },
+      { video_theme: { $regex: search, $options: 'i' } }
+    ];
   }
 
   const [videos, total] = await Promise.all([
