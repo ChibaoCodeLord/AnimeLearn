@@ -99,6 +99,8 @@ type PopupAnchorPosition = {
 };
 
 const VIDEO_VIEW_THRESHOLD = 0.1;
+const getVideoViewStorageKey = (videoId: string, currentUserId?: string) =>
+  `video-view-counted:${currentUserId || 'guest'}:${videoId}`;
 const pillBase =
   "h-9 inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-0 text-sm font-semibold leading-none whitespace-nowrap";
 
@@ -324,6 +326,7 @@ export default function VideoWorkspace() {
 
   const playerRef = useRef<any>(null);
   const hasCountedViewRef = useRef(false);
+  const isCountingViewRef = useRef(false);
   const queryClient = useQueryClient();
   const {
     isPlaying: globalIsPlaying,
@@ -361,6 +364,7 @@ export default function VideoWorkspace() {
     setActivePopupQuestion(null);
     setShownPopups(new Set());
     hasCountedViewRef.current = false;
+    isCountingViewRef.current = false;
 
     if (videoId) {
       setIsCheckingAccess(true);
@@ -541,7 +545,8 @@ export default function VideoWorkspace() {
 
     if (videoId) {
       setIsCheckingAccess(true);
-      hasCountedViewRef.current = sessionStorage.getItem(`video-view-counted:${videoId}`) === '1';
+      hasCountedViewRef.current =
+        sessionStorage.getItem(getVideoViewStorageKey(videoId, currentUser?.id)) === '1';
       videoApi.getVideoDetail<any>(videoId)
         .then(video => {
           if (cancelled) return;
@@ -583,7 +588,7 @@ export default function VideoWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, [videoId]);
+  }, [currentUser?.id, videoId]);
 
 
   
@@ -799,20 +804,40 @@ export default function VideoWorkspace() {
             }
           }
 
-          if (!hasCountedViewRef.current && videoId) {
+          if (!hasCountedViewRef.current && !isCountingViewRef.current && videoId) {
             if (duration > 0 && currentTime / duration >= VIDEO_VIEW_THRESHOLD) {
-              hasCountedViewRef.current = true;
-              sessionStorage.setItem(`video-view-counted:${videoId}`, '1');
-              videoApi.countView<{ views_count?: number }>(videoId).then(data => {
-                if (typeof data?.views_count === 'number') setViewsCount(data.views_count);
-              }).catch(() => {});
+              isCountingViewRef.current = true;
+              videoApi.countView<{ message?: string; views_count?: number }>(videoId).then(data => {
+                if (typeof data?.views_count === 'number') {
+                  setViewsCount(data.views_count);
+                }
+
+                if (data?.message !== 'View counted successfully') {
+                  return null;
+                }
+
+                hasCountedViewRef.current = true;
+                sessionStorage.setItem(getVideoViewStorageKey(videoId, currentUser?.id), '1');
+
+                return videoApi.markWatched(videoId, {
+                  progress_seconds: Math.floor(currentTime),
+                });
+              }).then(watched => {
+                if (watched) {
+                  queryClient.invalidateQueries({ queryKey: ['dashboard-videos'] });
+                }
+              }).catch((error) => {
+                console.error('Cannot count video view:', error);
+              }).finally(() => {
+                isCountingViewRef.current = false;
+              });
             }
           }
         } catch (e) { }
       }, 300); 
     }
     return () => clearInterval(interval);
-  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion, videoId, setPlaybackPosition]);
+  }, [isPlaying, script, currentIndex, enablePopupQuiz, existingQuiz, shownPopups, activePopupQuestion, videoId, setPlaybackPosition, queryClient, currentUser?.id]);
 
   if (videoId && isCheckingAccess) {
     return (

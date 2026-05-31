@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, Clock, ChevronRight, ChevronLeft, Play, Layers, Heart } from 'lucide-react';
+import { Eye, Clock, ChevronRight, ChevronLeft, Play, Layers, Heart, Search, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import moment from 'moment';
@@ -61,18 +61,26 @@ export default function VideosByLevel({ initialVideos = [], isInitialLoading = f
   // States Filter & Pagination
   const [activeJlpt, setActiveJlpt] = useState('Tất cả');
   const [activeTheme, setActiveTheme] = useState('Tất cả chủ đề');
+  const [isThemeOpen, setIsThemeOpen] = useState(false);
+  const themeDropdownRef = useRef<HTMLDivElement>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(18);
   const [totalVideos, setTotalVideos] = useState(124); // Thay bằng API count thật nếu có
 
-  const fetchVideos = async (levelFilter: string, currentPage: number, limit: number) => {
+  const fetchVideos = async (levelFilter: string, currentPage: number, limit: number, searchRaw?: string) => {
     setIsLoading(true);
     try {
-      const res = await videoApi.getPublicVideos<{ data: any[]; hasMore: boolean; total?: number }>({
+      const queryParams: any = {
         page: currentPage,
         limit,
         level: levelFilter === 'Tất cả' ? undefined : levelFilter,
-      });
+      };
+      if (searchRaw && searchRaw.trim() !== '') {
+        queryParams.search = searchRaw.trim();
+      }
+      
+      const res = await videoApi.getPublicVideos<{ data: any[]; hasMore: boolean; total?: number }>(queryParams);
       
       const enrichedData = res.data.map((v: any) => ({
         ...v,
@@ -98,8 +106,23 @@ export default function VideosByLevel({ initialVideos = [], isInitialLoading = f
   // Effect gọi lại API khi đổi Filter hoặc Page
   useEffect(() => {
     // Không gọi nếu đang load lần đầu từ props Home
-    fetchVideos(activeJlpt, page, itemsPerPage);
-  }, [activeJlpt, page, itemsPerPage]);
+    const timer = setTimeout(() => {
+      fetchVideos(activeJlpt, page, itemsPerPage, searchQuery);
+    }, 500); // Thêm debounce 500ms để tránh gọi API liên tục khi gõ
+
+    return () => clearTimeout(timer);
+  }, [activeJlpt, page, itemsPerPage, searchQuery]);
+
+  // Đóng dropdown theme khi click ra ngoài
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (themeDropdownRef.current && !themeDropdownRef.current.contains(event.target as Node)) {
+        setIsThemeOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Reset page về 1 khi đổi filter
   const handleJlptChange = (level: string) => {
@@ -112,9 +135,23 @@ export default function VideosByLevel({ initialVideos = [], isInitialLoading = f
   return (
     <div className="max-w-[1600px] mx-auto px-4 md:px-6 py-8">
       
-      {/* --- Filter Bar --- */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div className="flex flex-wrap items-center gap-2">
+      {/* --- Filter Bar & Search --- */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6 relative w-full">
+        <div className="flex items-center relative w-full lg:w-[320px] xl:w-[350px] shrink-0">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Tìm kiếm bài học, anime hoặc bài hát..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
+            className="w-full pl-10 pr-4 py-2.5 rounded-full border border-slate-200 outline-none focus:ring-1 focus:ring-teal-400 transition-all text-sm text-slate-700 placeholder:text-slate-400 bg-white"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:overflow-x-auto lg:pb-1 no-scrollbar shrink-0 mx-auto max-w-full">
           {FILTERS.map(filter => (
             <button
               key={filter}
@@ -131,7 +168,40 @@ export default function VideosByLevel({ initialVideos = [], isInitialLoading = f
         </div>
         
         {/* Additional Filters (Themes) */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
+        <div className="relative shrink-0 hidden lg:block" ref={themeDropdownRef}>
+          <button
+            onClick={() => setIsThemeOpen(!isThemeOpen)}
+            className="flex items-center justify-center gap-2 bg-slate-900 text-white min-w-[140px] px-5 py-2.5 rounded-full text-sm font-medium outline-none cursor-pointer shadow-sm hover:bg-slate-800 transition-all border border-slate-900"
+          >
+            {activeTheme}
+          </button>
+          
+          {/* Menu xổ xuống (Dropdown Menu) - Cân đối và mềm mại */}
+          {isThemeOpen && (
+            <div className="absolute right-0 top-full mt-2 min-w-[180px] bg-white rounded-3xl shadow-[0_10px_40px_rgb(0,0,0,0.08)] border border-slate-100 p-2.5 z-50 font-medium">
+              {THEMES.map(theme => (
+                <button
+                  key={theme}
+                  onClick={() => {
+                    setActiveTheme(theme);
+                    setPage(1);
+                    setIsThemeOpen(false);
+                  }}
+                  className={`w-full text-left px-5 py-3 rounded-2xl text-sm transition-colors mb-1 last:mb-0 ${
+                    activeTheme === theme
+                      ? 'bg-slate-100/80 text-slate-800'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {theme}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {/* Mobile Filter Theme */}
+        <div className="flex md:hidden items-center gap-2 overflow-x-auto pb-2 no-scrollbar w-full mt-2">
            {THEMES.map(theme => (
             <button
               key={theme}
