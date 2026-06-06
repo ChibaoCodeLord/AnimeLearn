@@ -1,3 +1,105 @@
+import { spawn } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import axios from 'axios';
+import { Agent } from 'undici';
+import KuroshiroModule from "kuroshiro";
+import KuromojiAnalyzerModule from "kuroshiro-analyzer-kuromoji";
+import Vocabulary from '../models/Vocabulary.js';
+import Video from '../models/Video.js';
+import VideoLike from '../models/VideoLike.js';
+import VideoWatched from '../models/VideoWatched.js';
+import VideoComment from '../models/VideoComment.js';
+import Kanji from '../models/Kanji.js';
+import Quiz from '../models/Quiz.js';
+import { indexVideoScript } from './ragChatService.js';
+import { generateQuizFromScript } from './quizAIService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const AI_SERVICE = process.env.AI_SERVICE; 
+
+function resolvePythonCommand() {
+  if (process.env.PYTHON_PATH) return process.env.PYTHON_PATH;
+  const projectRoot = path.resolve(__dirname, '../../..');
+  const venvCandidates = [
+    path.join(projectRoot, '.venv', 'Scripts', 'python.exe'),
+    path.join(projectRoot, '.venv', 'bin', 'python')
+  ];
+  for (const candidate of venvCandidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return 'python';
+}
+const PYTHON_CMD = resolvePythonCommand();
+
+const AI_FETCH_TIMEOUT_MS = 1000 * 60 * 30; // 30 phút
+const aiFetchDispatcher = new Agent({
+  headersTimeout: AI_FETCH_TIMEOUT_MS,
+  bodyTimeout: AI_FETCH_TIMEOUT_MS,
+  connect: { timeout: 1000 * 30 },
+});
+
+async function readResponseSafely(response) {
+  const text = await response.text();
+  try { return text ? JSON.parse(text) : {}; } catch { return { raw: text }; }
+}
+
+function normalizeUtf8Value(value) {
+  if (typeof value === 'string') return value.normalize('NFC');
+  if (Array.isArray(value)) return value.map(normalizeUtf8Value);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, normalizeUtf8Value(entry)])
+    );
+  }
+  return value;
+}
+
+function parseYouTubeDuration(durationStr) {
+  const match = durationStr.match(/PT(d+H)?(d+M)?(d+S)?/);
+  if (!match) return 0;
+  const hours = (parseInt(match[1]) || 0);
+  const minutes = (parseInt(match[2]) || 0);
+  const seconds = (parseInt(match[3]) || 0);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+async function fetchYouTubeVideoDetails(videoId) {
+  try {
+    const API_KEY = process.env.YOUTUBE_API_KEY; 
+    const url = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet,contentDetails&key=${API_KEY}`;
+    const response = await axios.get(url);
+    const items = response.data.items;
+    if (items && items.length > 0) {
+      const videoData = items[0];
+      const title = videoData.snippet.title; 
+      const isoDuration = videoData.contentDetails.duration; 
+      const durationSeconds = parseYouTubeDuration(isoDuration); 
+      return { title, duration: durationSeconds };
+    }
+    return { title: 'Video tự động bóc băng', duration: 0 };
+  } catch (error) {
+    console.error("Lỗi lấy thông tin từ YouTube API:", error.message);
+    return { title: 'Video tự động bóc băng', duration: 0 };
+  }
+}
+
+const Kuroshiro = KuroshiroModule.default || KuroshiroModule;
+const KuromojiAnalyzer = KuromojiAnalyzerModule.default || KuromojiAnalyzerModule;
+const kuroshiro = new Kuroshiro();
+let isKuroshiroInit = false;
+let kuroshiroInitPromise = null;
+
+async function initKuroshiro() {
+  if (isKuroshiroInit) return;
+  if (!kuroshiroInitPromise) kuroshiroInitPromise = kuroshiro.init(new KuromojiAnalyzer());
+  await kuroshiroInitPromise;
+  isKuroshiroInit = true;
+}
+
 import Video from '../models/Video.js';
 import VideoLike from '../models/VideoLike.js';
 import VideoWatched from '../models/VideoWatched.js';
@@ -523,4 +625,192 @@ export const getPublicVideosService = async ({ level, search, page = 1, limit = 
     hasMore: total > skip + videos.length,
     total,
   };
+};
+
+
+export const analyzeVideoScriptService = async (url) => {
+  const response = await fetch(`${AI_SERVICE}/transcribe`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-KEY': process.env.AI_KEY || '',
+    },
+    body: JSON.stringify({ media_path: url, use_gpu: true }),
+    dispatcher: aiFetchDispatcher,
+  });
+
+  const responseData = await readResponseSafely(response);
+
+  if (!response.ok) {
+    throw new Error(responseData.detail || responseData.error || responseData.raw || `Script Service error: ${response.status}`);
+  }
+
+  const script = Array.isArray(responseData.segments)
+    ? normalizeUtf8Value(responseData.segments)
+    : Array.isArray(responseData.script)
+      ? normalizeUtf8Value(responseData.script)
+      : [];
+
+  return {
+    title: typeof responseData.title === 'string' ? responseData.title.normalize('NFC') : 'Youtube Video (Auto-Transcription)',
+    jlpt_level: typeof responseData.jlpt_level === 'string' ? responseData.jlpt_level.normalize('NFC') : responseData.jlpt_level || 'Unknown',
+    script,
+  };
+};
+
+export const translateWordService = async (word) => {
+  return new Promise((resolve, reject) => {
+    const pythonScript = `
+import sys, json
+sys.stdout.reconfigure(encoding='utf-8')
+try:
+    import fugashi
+    try:
+      import unidic_lite
+    except Exception:
+      unidic_lite = None
+    from deep_translator import GoogleTranslator
+
+    def build_tagger():
+      if unidic_lite is not None:
+        try:
+          import os
+          dicdir = unidic_lite.DICDIR
+          mecabrc = os.path.join(dicdir, "mecabrc")
+          return fugashi.Tagger(f'-d "{dicdir}" -r "{mecabrc}"')
+        except Exception:
+          pass
+      try:
+        return fugashi.Tagger()
+      except Exception:
+        return None
+
+    word = sys.argv[1]
+    tagger = build_tagger()
+    translator = GoogleTranslator(source='ja', target='vi')
+    
+    meaning = translator.translate(word)
+    reading = ""
+    pos = "Chưa rõ"
+    
+    if tagger is not None:
+      for node in tagger(word):
+        pos = node.feature.pos1 if hasattr(node.feature, 'pos1') else ""
+        reading = node.feature.kana if hasattr(node.feature, 'kana') else ""
+        break # lấy node đầu tiên
+        
+    print(json.dumps({
+        "word": word,
+        "reading": reading,
+        "meaning_vi": meaning,
+        "part_of_speech": pos
+    }, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({"error": str(e)}))
+`;
+
+    const pythonProcess = spawn(PYTHON_CMD, ['-c', pythonScript, word]);
+    let outData = '';
+
+    pythonProcess.stdout.on('data', (data) => { outData += data.toString(); });
+    pythonProcess.on('close', (code) => {
+      try { resolve(JSON.parse(outData)); } 
+      catch (e) { reject(new Error('Failed')); }
+    });
+  });
+};
+
+export const saveWordService = async (userId, data) => {
+  const { word, reading, meaning_vi, meaning_en, part_of_speech, jlpt_level, example_sentence, example_meaning, ease_factor, review_interval, review_count } = data;
+
+  const existing = await Vocabulary.findOne({ user: userId, word });
+  if (existing) {
+    const err = new Error('Từ này đã có trong sổ tay'); err.status = 400; throw err;
+  }
+
+  const newVocab = new Vocabulary({
+    user: userId, word, reading, meaning_vi, meaning_en, part_of_speech, jlpt_level, example_sentence, example_meaning, ease_factor, review_interval, review_count,
+  });
+
+  await newVocab.save();
+  return newVocab;
+};
+
+export const saveVideoWithQuizService = async (userId, youtube_url, script) => {
+  const ytMatch = youtube_url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?\s]+)/);
+  const ytId = ytMatch ? ytMatch[1] : null;
+  const thumbnail_url = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : '';
+
+  let autoTitle = 'Youtube auto transcription';
+  let realDurationSeconds = 0;
+  if (ytId) {
+     const ytDetails = await fetchYouTubeVideoDetails(ytId);
+     autoTitle = ytDetails.title;             
+     realDurationSeconds = ytDetails.duration; 
+  }
+
+  const vocabMap = new Map();
+  const allKanjiSet = new Set();
+
+  if (script && Array.isArray(script)) {
+    script.forEach(segment => {
+      if (segment.vocabulary && Array.isArray(segment.vocabulary)) {
+        segment.vocabulary.forEach(v => {
+          if (!vocabMap.has(v.word)) {
+            vocabMap.set(v.word, v);
+            const chars = v.word.split('');
+            chars.forEach(char => {
+              if (char.match(/[一-龯]/)) allKanjiSet.add(char);
+            });
+          }
+        });
+      }
+    });
+  }
+
+  const uniqueKanjis = Array.from(allKanjiSet);
+  const kanjiData = await Kanji.find({ kanji: { $in: uniqueKanjis } }).select('kanji mean kun on level stroke_count detail img').lean();
+  const kanjiMap = {};
+  kanjiData.forEach(k => kanjiMap[k.kanji] = k);
+
+  const enrichedVocabList = Array.from(vocabMap.values()).map(vocab => {
+    const kanjiDetails = vocab.word.split('')
+      .filter(char => char.match(/[一-龯]/))
+      .map(char => kanjiMap[char])
+      .filter(Boolean);
+
+    return {
+      word: vocab.word, reading: vocab.reading, meaning: vocab.meaning, pos: vocab.pos, kanji_info: kanjiDetails 
+    };
+  });
+
+  const newVideo = new Video({
+    title: autoTitle, youtube_url, thumbnail_url, script, vocab_list: enrichedVocabList, creator: userId, jlpt_level: 'Unknown', duration: realDurationSeconds || 0, video_theme: 'Anime'          
+  });
+
+  let aiResult = null;
+  try {
+    aiResult = await generateQuizFromScript(script); 
+  } catch (aiError) {
+    console.warn("⚠️ [Auto-AI] Gemini API đang quá tải hoặc lỗi. Bỏ qua tạo Quiz:", aiError.message);
+  }
+
+  newVideo.jlpt_level = aiResult?.jlptLevel || 'Unknown';
+  await newVideo.save(); 
+
+  let newQuiz = null;
+  if (aiResult && aiResult.questions) {
+    newQuiz = new Quiz({ videoId: newVideo._id, questions: aiResult.questions });
+    await newQuiz.save();
+  }
+
+  indexVideoScript(newVideo._id, script).catch(console.error);
+
+  return { newVideo, newQuiz, aiResult };
+};
+
+export const convertFuriganaService = async (text) => {
+  if (!text || !String(text).trim()) return "";
+  await initKuroshiro();
+  return await kuroshiro.convert(String(text), { mode: "furigana", to: "hiragana" });
 };

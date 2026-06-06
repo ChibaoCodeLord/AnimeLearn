@@ -45,6 +45,22 @@ const VocabularySchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  next_review_date: {
+    type: Date,
+    default: Date.now
+  },
+  review_interval: {
+    type: Number,
+    default: 1
+  },
+  ease_factor: {
+    type: Number,
+    default: 2.5
+  },
+  review_count: {
+    type: Number,
+    default: 0
+  },
   saved_at: {
     type: Date,
     default: Date.now
