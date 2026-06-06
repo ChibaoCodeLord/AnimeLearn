@@ -223,13 +223,13 @@ function ExamCard({ paper }: { paper: ExamPaper }) {
       </div>
 
       <div className="relative z-10 mt-auto pt-6">
-        <button
-          type="button"
+        <Link
+          to={`/ExamLibrary/${paper.id}`}
           className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-transparent bg-[#008a67] px-5 text-base font-extrabold text-white shadow-sm transition-colors hover:bg-[#007a5a] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:focus-visible:ring-emerald-500/25"
         >
           Luyện tập
           <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-        </button>
+        </Link>
       </div>
     </article>
   );
