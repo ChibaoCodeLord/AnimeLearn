@@ -13,6 +13,7 @@ import VideoWorkspace from './pages/VideoWorkspace';
 import Vocabulary from './pages/Vocabulary';
 // import VocabularyNotebook from './pages/VocabularyNotebook';
 import QuizPage from './pages/QuizPage';
+import ExamLibrary from './pages/ExamLibrary';
 import Dashboard from './pages/Dashboard';
 import WatchHistory from './pages/WatchHistory';
 import AIChatTutor from './pages/AIChatTutor';
@@ -128,6 +129,7 @@ const AuthenticatedApp = () => {
         <Route path="/VideoWorkspace" element={<ProtectedRoute element={<VideoWorkspace />} />} />
         <Route path="/Vocabulary" element={<ProtectedRoute element={<Vocabulary />} />} />
         <Route path="/QuizPage" element={<ProtectedRoute element={<QuizPage />} />} />
+        <Route path="/ExamLibrary" element={<ProtectedRoute element={<ExamLibrary />} />} />
         <Route path="/Dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
         <Route path="/WatchHistory" element={<ProtectedRoute element={<WatchHistory />} />} />
         <Route path="/Dictionary" element={<ProtectedRoute element={<DictionaryPage />} />} />
