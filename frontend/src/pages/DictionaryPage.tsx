@@ -1,12 +1,49 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Loader2, X, BookOpen } from 'lucide-react';
+import { Search, Loader2, X, BookOpen, BookmarkPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 import WordList from '@/components/dictionary/WordList';
 import WordDetail from '@/components/dictionary/WordDetail';
 import type { WordData, KanjiInfo } from '@/components/dictionary/types';
 import { dictionaryApi } from '@/api/dictionary.api';
 import { kanjiApi } from '@/api/kanji.api';
+import { LearningSaveModal } from '@/components/vocabulary-hub/LearningSaveModal';
+import type { FlashcardItem } from '@/components/vocabulary-hub/types';
+
+const wordToFlashcard = (word: WordData): FlashcardItem => {
+  const mainJapanese = word.japanese?.[0] || { word: word.word, reading: word.reading };
+  const meaning = Array.isArray(word.meaning)
+    ? word.meaning.filter(Boolean).join('\n')
+    : word.meaning || word.meaning_vi || '';
+
+  return {
+    id: word._id || word.id || mainJapanese.word || word.word,
+    item_type: 'vocab',
+    word: mainJapanese.word || word.word,
+    reading: mainJapanese.reading || word.reading,
+    meaning_vi: meaning,
+    part_of_speech: word.pos || (typeof word.partOfSpeech === 'string' ? word.partOfSpeech : ''),
+    jlpt_level: word.jlpt?.[0]?.toUpperCase(),
+  };
+};
+
+const kanjiInfoToFlashcard = (kanji: KanjiInfo): FlashcardItem => {
+  const level = kanji.level ? String(kanji.level).replace(/^N/i, '') : '';
+
+  return {
+    id: kanji.kanji,
+    item_type: 'kanji',
+    word: kanji.kanji,
+    meaning_vi: kanji.mean,
+    mean: kanji.mean,
+    on: kanji.on,
+    kun: kanji.kun,
+    jlpt_level: level ? `N${level}` : undefined,
+    stroke_count: Number(kanji.stroke_count) || undefined,
+    detail: kanji.detail,
+  };
+};
 
 export default function DictionaryPage() {
   const [inputValue, setInputValue] = useState('');
@@ -19,14 +56,33 @@ export default function DictionaryPage() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [totalFound, setTotalFound] = useState(0);
+  const [searchVersion, setSearchVersion] = useState(0);
 
   const [kanjiResults, setKanjiResults] = useState<KanjiInfo[]>([]);
   const [selectedKanji, setSelectedKanji] = useState<KanjiInfo | null>(null);
   const [showKanjiModal, setShowKanjiModal] = useState(false);
+  const [saveTarget, setSaveTarget] = useState<FlashcardItem | null>(null);
 
     // --- 1. XỬ LÝ NHẬP LIỆU (TỰ DO) ---
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
+  };
+
+  const handleSearchKanji = (kanji: string) => {
+    const query = kanji.trim();
+
+    setInputValue(query);
+    setSearchQuery(query);
+
+    setPage(1);
+    setResults([]);
+    setKanjiResults([]);
+    setSelectedWord(null);
+
+    setSelectedKanji(null);
+    setShowKanjiModal(false);
+
+    setSearchVersion((prev) => prev + 1);
   };
 
   // --- 2. DEBOUNCE LOGIC (Chỉ để chờ người dùng gõ xong mới gọi API) ---
@@ -82,7 +138,7 @@ export default function DictionaryPage() {
     };
 
     fetchDictAndKanji();
-  }, [searchQuery, page]);
+  }, [searchQuery, page, searchVersion]);
 
   const observer = useRef<IntersectionObserver | null>(null);
   const lastElementRef = useCallback((node: HTMLLIElement | null) => {
@@ -101,9 +157,7 @@ export default function DictionaryPage() {
   };
 
   const saveWord = (word: WordData) => {
-    if (!savedWords.some(saved => saved.word === word.word && saved.reading === word.reading)) {
-      setSavedWords([...savedWords, word]);
-    }
+    setSaveTarget(wordToFlashcard(word));
   };
 
   const playPronunciation = (text: string) => {
@@ -123,156 +177,247 @@ export default function DictionaryPage() {
   };
 
   return (
-    <div className="w-full flex-1 flex flex-col md:flex-row overflow-hidden bg-slate-50 h-[calc(100vh-64px)]">
+  <div className="flex h-[calc(100dvh-64px)] min-h-0 w-full flex-col overflow-hidden bg-slate-50 md:flex-row">
+    
+    {/* 40% LEFT PANEL */}
+    <section className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white shadow-lg md:w-[40%] md:shadow-none">
       
-      {/* 40% LEFT PANEL: TÌM KIẾM & DANH SÁCH (Khóa overflow-hidden) */}
-      <section className="w-full md:w-[40%] h-full flex flex-col border-r border-slate-200 bg-white shrink-0 z-10 shadow-lg md:shadow-none overflow-hidden">
-        
-        {/* Khối Header Tìm Kiếm (Cố định ở trên) */}
-        <div className="p-4 bg-white border-b border-slate-200 shrink-0">
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-              <Search className="w-5 h-5 text-slate-400 group-focus-within:text-violet-500 transition-colors" />
-            </div>
-            <input
-              type="text"
-              value={inputValue}
-              onChange={handleInputChange}
-              placeholder="Tra từ (kanji, kana, romaji, tiếng việt)..."
-              className="w-full h-12 pl-12 pr-4 bg-slate-100 border-2 border-transparent focus:bg-white focus:border-violet-300 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none transition-all"
-            />
-            {loading && page === 1 && (
-              <div className="absolute inset-y-0 right-4 flex items-center">
-                <Loader2 className="w-5 h-5 text-violet-500 animate-spin" />
-              </div>
-            )}
+      {/* Header tìm kiếm */}
+      <div className="shrink-0 border-b border-slate-200 bg-white p-4">
+        <div className="group relative">
+          <div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+            <Search className="h-5 w-5 text-slate-400 transition-colors group-focus-within:text-violet-500" />
           </div>
-          
-          {searchQuery && !loading && (
-            <div className="flex items-center justify-between mt-3 px-1">
-              <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                <span>{totalFound} kết quả</span>
-              </p>
+
+          <input
+            type="text"
+            value={inputValue}
+            onChange={handleInputChange}
+            placeholder="Tra từ (kanji, kana, romaji, tiếng việt)..."
+            className="h-12 w-full rounded-xl border-2 border-transparent bg-slate-100 pl-12 pr-4 text-slate-800 placeholder:text-slate-400 focus:border-violet-300 focus:bg-white focus:outline-none"
+          />
+
+          {loading && page === 1 && (
+            <div className="absolute inset-y-0 right-4 flex items-center">
+              <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
             </div>
           )}
         </div>
 
-        {/* Khối chứa WordList (WordList tự xử lý scroll) */}
-        <div className="flex-1 overflow-hidden bg-slate-50">
-          {searchQuery ? (
-            <WordList 
-              searchResults={results} 
-              selectedWord={selectedWord} 
-              onWordSelect={handleWordSelect}
-              loading={loading}
-              lastElementRef={lastElementRef}
-              kanjiResults={kanjiResults}
-              onOpenKanji={(k) => {
-                setSelectedKanji(k);
-                setShowKanjiModal(true);
-              }}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center opacity-60">
-              <BookOpen className="w-16 h-16 mb-4 text-slate-300" />
-              <p className="font-medium text-lg">Bắt đầu gõ để tra cứu từ vựng</p>
-            </div>
-          )}
-        </div>
-      </section>
-      
-      {/* 60% RIGHT PANEL: CHI TIẾT TỪ VỰNG (Khóa overflow-hidden) */}
-      <section className="w-full md:w-[60%] h-full flex flex-col bg-slate-50 overflow-hidden relative">
-        {selectedWord ? (
-          <div className="animate-in fade-in slide-in-from-right-4 duration-300 h-full w-full">
-            <WordDetail 
-              word={selectedWord}
-              playPronunciation={playPronunciation}
-              onSaveWord={saveWord}
-              onOpenKanji={openKanjiDetail}
-              isSaved={savedWords.some(saved => saved.word === selectedWord.word && saved.reading === selectedWord.reading)}
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
-            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm border border-slate-100">
-              <Search className="w-10 h-10 text-slate-300" />
-            </div>
-            <h3 className="text-2xl font-bold text-slate-600 mb-2">Chưa chọn từ vựng</h3>
-            <p className="text-slate-500 max-w-sm">Chọn một từ bên cột danh sách để xem chi tiết Hán tự và Ví dụ.</p>
+        {searchQuery && !loading && (
+          <div className="mt-3 flex items-center justify-between px-1">
+            <p className="flex items-center gap-1.5 text-xs text-slate-500">
+              <span>{totalFound} kết quả</span>
+            </p>
           </div>
         )}
-      </section>
+      </div>
 
-      {/* MODAL KANJI */}
-      {showKanjiModal && selectedKanji && (
-        <div 
-          className="fixed inset-0 z-9999 bg-slate-900/60 flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200 "
-          onClick={() => setShowKanjiModal(false)}
+      {/* Khu vực danh sách */}
+      <div className="min-h-0 flex-1 overflow-hidden bg-slate-50">
+        {searchQuery ? (
+          <WordList
+            searchResults={results}
+            selectedWord={selectedWord}
+            onWordSelect={handleWordSelect}
+            loading={loading}
+            lastElementRef={lastElementRef}
+            kanjiResults={kanjiResults}
+            onOpenKanji={(kanji) => {
+              setSelectedKanji(kanji);
+              setShowKanjiModal(true);
+            }}
+          />
+        ) : (
+          <div className="flex h-full min-h-0 flex-col items-center justify-center p-8 text-center text-slate-400 opacity-60">
+            <BookOpen className="mb-4 h-16 w-16 text-slate-300" />
+            <p className="text-lg font-medium">
+              Bắt đầu gõ để tra cứu từ vựng
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+
+    {/* 60% RIGHT PANEL */}
+    <section className="relative flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden bg-slate-50 md:w-[60%]">
+      {selectedWord ? (
+        <div className="h-full min-h-0 w-full overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300">
+          <WordDetail
+            word={selectedWord}
+            playPronunciation={playPronunciation}
+            onSaveWord={saveWord}
+            onOpenKanji={openKanjiDetail}
+            isSaved={savedWords.some(
+              (saved) =>
+                saved.word === selectedWord.word &&
+                saved.reading === selectedWord.reading
+            )}
+          />
+        </div>
+      ) : (
+        <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-hidden p-8 text-center text-slate-400">
+          <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-slate-100 bg-white shadow-sm">
+            <Search className="h-10 w-10 text-slate-300" />
+          </div>
+
+          <h3 className="mb-2 text-2xl font-bold text-slate-600">
+            Chưa chọn từ vựng
+          </h3>
+
+          <p className="max-w-sm text-slate-500">
+            Chọn một từ bên cột danh sách để xem chi tiết Hán tự và ví dụ.
+          </p>
+        </div>
+      )}
+    </section>
+
+    {/* MODAL KANJI */}
+    {showKanjiModal && selectedKanji && (
+      <div
+        className="fixed inset-0 z-[50] flex items-center justify-center bg-slate-900/60 p-4 animate-in fade-in duration-200 md:p-8"
+        onClick={() => setShowKanjiModal(false)}
+      >
+        <div
+          className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl"
+          onClick={(event) => event.stopPropagation()}
         >
-          <div 
-            className="w-full max-w-2xl bg-white rounded-[2rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh] overscroll-contain"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50 shrink-0">
-              <div className="w-8"></div>
-              <Badge className="bg-rose-100 text-rose-700 border-none font-bold uppercase px-4 py-1 rounded-full text-[10px] tracking-widest">
-                Phân tích Hán tự
-              </Badge>
-              <button 
-                onClick={() => setShowKanjiModal(false)} 
-                className="w-8 h-8 flex items-center justify-center bg-slate-200 hover:bg-rose-500 hover:text-white rounded-full transition-colors"
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50 p-4">
+            <div className="w-8" />
+
+            <Badge className="rounded-full border-none bg-rose-100 px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-rose-700">
+              Phân tích Hán tự
+            </Badge>
+
+            <button
+              type="button"
+              onClick={() => setShowKanjiModal(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 transition-colors hover:bg-rose-500 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white p-6 md:p-10">
+            <div className="mb-8 flex items-center gap-8 rounded-[2rem] border border-rose-100 bg-linear-to-br from-rose-50 to-orange-50 p-8 shadow-inner">
+              <a
+                href={`?q=${encodeURIComponent(selectedKanji.kanji)}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleSearchKanji(selectedKanji.kanji);
+                }}
+                title={`Tìm kiếm từ có chứa chữ ${selectedKanji.kanji}`}
+                className="
+                  inline-block shrink-0 cursor-pointer
+                  text-[100px] font-black leading-none text-rose-600
+                  drop-shadow-xl transition-all duration-200
+                  decoration-rose-400 decoration-4 underline-offset-8
+                  hover:text-rose-700 hover:underline
+                  focus-visible:rounded-xl focus-visible:outline-none
+                  focus-visible:ring-4 focus-visible:ring-rose-300
+                  md:text-[120px]
+                "
               >
-                <X className="w-4 h-4" />
-              </button>
+                {selectedKanji.kanji}
+              </a>
+
+              <div>
+                <h2 className="mb-3 text-3xl font-black uppercase tracking-tighter text-slate-800 md:text-4xl">
+                  {selectedKanji.mean}
+                </h2>
+
+                <div className="flex gap-2">
+                  {selectedKanji.level && (
+                    <Badge className="rounded-sm bg-rose-500 px-3 py-3 text-xl font-bold text-white">
+                      N{selectedKanji.level}
+                    </Badge>
+                  )}
+
+                  <Badge
+                    variant="outline"
+                    className="rounded-sm border-rose-200 bg-white px-3 py-3 text-xl  font-bold text-slate-600"
+                  >
+                    {selectedKanji.stroke_count} nét
+                  </Badge>
+                </div>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10 bg-white">
-              <div className="flex gap-8 items-center bg-linear-to-br from-rose-50 to-orange-50 p-8 rounded-[2rem] border border-rose-100 mb-8 shadow-inner">
-                <div className="text-[100px] md:text-[120px] leading-none font-black text-rose-600 drop-shadow-xl select-none">
-                  {selectedKanji.kanji}
-                </div>
-                <div>
-                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-3 uppercase tracking-tighter">
-                    {selectedKanji.mean}
-                  </h2>
-                  <div className="flex gap-2">
-                    <Badge className="bg-rose-500 text-white font-bold px-3 py-1 text-sm rounded-lg">N{selectedKanji.level}</Badge>
-                    <Badge variant="outline" className="bg-white border-rose-200 font-bold px-3 py-1 text-sm rounded-lg text-slate-600">{selectedKanji.stroke_count} nét</Badge>
-                  </div>
-                </div>
+            <div className="mb-8 grid grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5">
+                <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-pink-500">
+                  Âm Kun
+                </p>
+                <p className="text-xl font-black text-slate-700">
+                  {selectedKanji.kun || "---"}
+                </p>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4 mb-8">
-                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                  <p className="text-[10px] font-black text-pink-500 uppercase tracking-widest mb-1">Âm Kun</p>
-                  <p className="text-xl font-black text-slate-700">{selectedKanji.kun || '---'}</p>
-                </div>
-                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                  <p className="text-[10px] font-black text-sky-500 uppercase tracking-widest mb-1">Âm On</p>
-                  <p className="text-xl font-black text-slate-700">{selectedKanji.on || '---'}</p>
-                </div>
+
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5">
+                <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-sky-500">
+                  Âm On
+                </p>
+                <p className="text-xl font-black text-slate-700">
+                  {selectedKanji.on || "---"}
+                </p>
               </div>
-              
-              <div className="p-6 bg-slate-50 border border-slate-100 rounded-2xl">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Định nghĩa chi tiết</p>
-                {selectedKanji.detail ? (
-                  <ul className="space-y-3">
-                    {selectedKanji.detail.split(/[,;]/).map((m: string, i: number) => (
-                      <li key={i} className="flex gap-3 text-slate-700 items-start">
-                        <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">{i+1}</span>
-                        <span className="text-base font-medium leading-relaxed">{m.trim()}</span>
+            </div>
+
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-6">
+              <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Định nghĩa chi tiết
+              </p>
+
+              {selectedKanji.detail ? (
+                <ul className="space-y-3">
+                  {selectedKanji.detail
+                    .split(/[,;]/)
+                    .map((meaning: string, index: number) => (
+                      <li
+                        key={`${meaning}-${index}`}
+                        className="flex items-start gap-3 text-slate-700"
+                      >
+                        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-100 text-xs font-black text-rose-600">
+                          {index + 1}
+                        </span>
+
+                        <span className="text-base font-medium leading-relaxed">
+                          {meaning.trim()}
+                        </span>
                       </li>
                     ))}
-                  </ul>
-                ) : (
-                  <p className="text-slate-400 italic">Không có giải nghĩa chi tiết.</p>
-                )}
-              </div>
+                </ul>
+              ) : (
+                <p className="italic text-slate-400">
+                  Không có giải nghĩa chi tiết.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <Button
+                type="button"
+                onClick={() => setSaveTarget(kanjiInfoToFlashcard(selectedKanji))}
+                className="rounded-xl bg-rose-600 font-bold text-white hover:bg-rose-700"
+              >
+                <BookmarkPlus className="mr-2 h-4 w-4" />
+                Lưu Kanji
+              </Button>
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    )}
+
+    <LearningSaveModal
+      item={saveTarget}
+      onClose={() => setSaveTarget(null)}
+      onSaved={(item) => {
+        if (item.item_type !== 'vocab' || !selectedWord) return;
+        if (savedWords.some((saved) => saved.word === selectedWord.word && saved.reading === selectedWord.reading)) return;
+        setSavedWords((current) => [...current, selectedWord]);
+      }}
+    />
+  </div>
+);
 }
