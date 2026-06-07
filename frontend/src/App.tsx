@@ -11,13 +11,9 @@ import Home from './pages/Home';
 import Home_guest from './pages/Home_guest';
 import VideoWorkspace from './pages/VideoWorkspace';
 import Vocabulary from './pages/Vocabulary';
-// import VocabularyNotebook from './pages/VocabularyNotebook';
 import QuizPage from './pages/QuizPage';
 import ExamLibrary from './pages/ExamLibrary';
 import ExamDetail from './pages/ExamDetail';
-import Dashboard from './pages/Dashboard';
-import WatchHistory from './pages/WatchHistory';
-import AIChatTutor from './pages/AIChatTutor';
 import AdminPanel from './pages/AdminPanel';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
@@ -205,10 +201,7 @@ const AuthenticatedApp = () => {
         <Route path="/QuizPage" element={<ProtectedRoute element={<QuizPage />} />} />
         <Route path="/ExamLibrary" element={<ProtectedRoute element={<ExamLibrary />} />} />
         <Route path="/ExamLibrary/:examId" element={<ProtectedRoute element={<ExamDetail />} />} />
-        <Route path="/Dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
-        <Route path="/WatchHistory" element={<ProtectedRoute element={<WatchHistory />} />} />
         <Route path="/Dictionary" element={<ProtectedRoute element={<DictionaryPage />} />} />
-        <Route path="/AIChatTutor" element={<ProtectedRoute element={<AIChatTutor />} />} />
         <Route path="/Profile" element={<ProtectedRoute element={<Profile />} />} />
         <Route path="/AdminPanel" element={<ProtectedRoute element={<AdminPanel />} />} />
       </Route>

@@ -54,9 +54,6 @@ export default function Navbar() {
           <Link to="/home" className="transition-colors hover:text-emerald-600">
             Khám phá
           </Link>
-          <Link to="/Dashboard" className="transition-colors hover:text-emerald-600">
-            Video của tôi
-          </Link>
           <Link to="/Vocabulary" className="transition-colors hover:text-emerald-600">
             Từ vựng đã lưu
           </Link>
