@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Eye, Clock, ChevronRight, ChevronLeft, Play, Layers, Heart, Search, ChevronDown } from 'lucide-react';
+import { Eye, Clock, ChevronRight, ChevronLeft, Play, Layers, Heart, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import moment from 'moment';
