@@ -259,20 +259,105 @@ export function FlashcardModal({
                   <CardFace
                     side="front"
                     className={cn(
-                      'bg-white',
+                      'relative isolate bg-white',
                       tone.border,
                     )}
                   >
+                    {/* ==================== */}
+                    {/* TRANG TRÍ NỀN */}
+                    {/* Không tham gia layout và không bắt sự kiện */}
+                    {/* ==================== */}
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+                    >
+                      {/* Chữ Nhật lớn dạng watermark */}
+                      <span
+                        className={cn(
+                          `
+                            absolute -right-8 top-24
+                            select-none whitespace-nowrap
+                            text-[clamp(10rem,28vw,18rem)]
+                            font-black leading-none
+                            opacity-[0.045]
+                          `,
+                          tone.text,
+                        )}
+                      >
+                        {isKanji ? '字' : '語'}
+                      </span>
+
+                      {/* Chữ nhỏ theo chiều dọc bên trái */}
+                      <span
+                        className={cn(
+                          `
+                            absolute bottom-10 left-5
+                            select-none text-[9px] font-black
+                            uppercase tracking-[0.35em]
+                            opacity-25
+                            [writing-mode:vertical-rl]
+                          `,
+                          tone.text,
+                        )}
+                      >
+                        Japanese Study Card
+                      </span>
+
+                      {/* Đường ngang trang trí phía trên */}
+                      <div
+                        className={cn(
+                          'absolute left-6 top-24 h-px w-16 opacity-30',
+                          tone.strip,
+                        )}
+                      />
+
+                      {/* Số thứ tự thẻ nhỏ */}
+                      <span className="absolute right-7 top-24 font-mono text-[10px] font-bold tracking-[0.2em] text-slate-300">
+                        {String(index + 1).padStart(2, '0')}
+                        {' / '}
+                        {String(items.length).padStart(2, '0')}
+                      </span>
+
+                      {/* Góc trang trí dưới phải */}
+                      <div
+                        className={cn(
+                          `
+                            absolute bottom-7 right-7
+                            h-12 w-12
+                            border-b-2 border-r-2
+                            opacity-20
+                          `,
+                          tone.border,
+                        )}
+                      />
+
+                      {/* Hai chấm nhỏ */}
+                      <div className="absolute bottom-9 right-24 flex gap-1.5">
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full opacity-35',
+                            tone.strip,
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full opacity-15',
+                            tone.strip,
+                          )}
+                        />
+                      </div>
+                    </div>
+
                     {/* Thanh màu phía trên */}
                     <div
                       className={cn(
-                        'h-2 shrink-0',
+                        'relative z-10 h-2 shrink-0',
                         tone.strip,
                       )}
                     />
 
                     {/* Header card cố định */}
-                    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white px-5 py-4">
+                    <div className="relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white/95 px-5 py-4">
                       <Badge
                         className={cn(
                           'border-0 ring-1',
@@ -285,7 +370,7 @@ export function FlashcardModal({
                       {item.jlpt_level && (
                         <Badge
                           variant="outline"
-                          className="shrink-0"
+                          className="shrink-0 bg-white"
                         >
                           {item.jlpt_level}
                         </Badge>
@@ -293,9 +378,9 @@ export function FlashcardModal({
                     </div>
 
                     {/* Vùng cuộn dọc duy nhất của mặt trước */}
-                    <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
+                    <div className="custom-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
                       <div className="flex min-h-full w-full min-w-0 flex-col items-center justify-center px-5 py-8 sm:px-8">
-                        {/* Từ/Kanji - cuộn ngang nếu quá dài */}
+                        {/* Từ/Kanji */}
                         <div className="pb-8">
                           <h2
                             className={cn(
@@ -309,6 +394,7 @@ export function FlashcardModal({
                                 font-black
                                 tracking-tight
                                 text-slate-950
+                                drop-shadow-[0_1px_0_rgba(255,255,255,0.9)]
                               `,
                               wordSize,
                             )}
@@ -322,18 +408,22 @@ export function FlashcardModal({
                           <div className="mt-7 flex w-full min-w-0 justify-center">
                             {shouldShowReading ? (
                               <div className="flex max-w-full items-center gap-4">
-                                {/* Nội dung */}
-                                <p className="min-w-0 break-words text-[clamp(1.25rem,3vw,1.9rem)]  font-black leading-snug tracking-wide text-slate-800 [overflow-wrap:anywhere]">
+                                <p className="min-w-0 break-words text-[clamp(1.25rem,3vw,2.5rem)] font-black leading-snug tracking-wide text-slate-800 [overflow-wrap:anywhere]">
                                   【{item.reading}】
                                 </p>
                               </div>
                             ) : (
                               <div className="flex items-center gap-3 text-slate-400">
-                                <span className="text-xl font-black text-slate-300">
+                                <span
+                                  className={cn(
+                                    'text-xl font-black opacity-40',
+                                    tone.text,
+                                  )}
+                                >
                                   読
                                 </span>
 
-                                <span className="text-medium font-bold tracking-wide">
+                                <span className="text-2xl font-bold tracking-normal">
                                   Cách đọc đang được ẩn
                                 </span>
                               </div>
@@ -342,12 +432,15 @@ export function FlashcardModal({
                         )}
 
                         {/* Hướng dẫn lật */}
-                        <div className="mt-15 flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-100 px-4 py-2.5 text-center text-sm font-semibold text-slate-500">
-                          <RotateCcw className="h-4 w-4 shrink-0" />
+                        <div className="mt-15 flex shrink-0 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2.5 text-center text-sm font-semibold text-slate-500 shadow-sm">
+                          <RotateCcw
+                            className={cn(
+                              'h-4 w-4 shrink-0',
+                              tone.text,
+                            )}
+                          />
 
-                          <span>
-                            Bấm vào thẻ để lật
-                          </span>
+                          <span>Bấm vào thẻ để lật</span>
                         </div>
                       </div>
                     </div>

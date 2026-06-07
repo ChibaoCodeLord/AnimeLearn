@@ -4,7 +4,7 @@ import Folder from '../models/Folder.js';
 import Kanji from '../models/Kanji.js';
 import Vocabulary from '../models/Vocabulary.js';
 
-const DEFAULT_LIMIT = 20;
+const DEFAULT_LIMIT = 16;
 const MAX_LIMIT = 100;
 
 const VOCAB_RANGES = {
@@ -26,7 +26,7 @@ const getUserId = (req) => req.user?.id || req.user?.userId;
 
 const parsePagination = (query) => {
   const page = Math.max(Number.parseInt(query.page, 10) || 1, 1);
-  const requestedLimit = Number.parseInt(query.limit, 16) || DEFAULT_LIMIT;
+  const requestedLimit = Number.parseInt(query.limit, 10) || DEFAULT_LIMIT;
   const limit = Math.min(Math.max(requestedLimit, 1), MAX_LIMIT);
   const skip = (page - 1) * limit;
 
@@ -55,6 +55,8 @@ const parseJlptLevel = (value) => {
 };
 
 const isValidId = (value) => value && mongoose.Types.ObjectId.isValid(String(value));
+
+const toObjectId = (value) => isValidId(value) ? new mongoose.Types.ObjectId(String(value)) : value;
 
 const assertOwnedFolder = async (userId, folderId) => {
   if (!folderId) return null;
@@ -104,8 +106,37 @@ export const getVocabulary = async (req, res) => {
     const { page, limit, skip } = parsePagination(req.query);
     const { folderId, item_type } = req.query;
 
+    if (!folderId || folderId === 'all') {
+      const match = { user: toObjectId(userId) };
+      if (['vocab', 'kanji'].includes(item_type)) match.item_type = item_type;
+
+      const [result = { items: [], total: [] }] = await Vocabulary.aggregate([
+        { $match: match },
+        { $sort: { saved_at: -1, _id: -1 } },
+        {
+          $group: {
+            _id: { item_type: '$item_type', word: '$word' },
+            item: { $first: '$$ROOT' }
+          }
+        },
+        { $replaceRoot: { newRoot: '$item' } },
+        { $sort: { saved_at: -1, _id: -1 } },
+        {
+          $facet: {
+            items: [{ $skip: skip }, { $limit: limit }],
+            total: [{ $count: 'count' }]
+          }
+        }
+      ]);
+
+      const items = await Vocabulary.populate(result.items, { path: 'folderId', select: 'name color' });
+      const total = result.total[0]?.count || 0;
+
+      return res.json(paginatedResponse({ items, total, page, limit }));
+    }
+
     const filter = { user: userId };
-    if (folderId && folderId !== 'all') filter.folderId = folderId === 'none' ? null : folderId;
+    filter.folderId = folderId === 'none' ? null : folderId;
     if (['vocab', 'kanji'].includes(item_type)) filter.item_type = item_type;
 
     const [items, total] = await Promise.all([
@@ -270,8 +301,12 @@ export const deleteFolder = async (req, res) => {
     const deleted = await Folder.findOneAndDelete({ _id: id, user: userId });
     if (!deleted) return res.status(404).json({ error: 'Folder not found' });
 
-    await Vocabulary.updateMany({ user: userId, folderId: id }, { $set: { folderId: null } });
-    return res.json({ message: 'Folder deleted successfully', folder: deleted });
+    const deletedItems = await Vocabulary.deleteMany({ user: userId, folderId: id });
+    return res.json({
+      message: 'Folder deleted successfully',
+      folder: deleted,
+      deletedItemCount: deletedItems.deletedCount || 0
+    });
   } catch (error) {
     console.error('deleteFolder error:', error);
     return res.status(500).json({ error: 'Server error' });
@@ -343,6 +378,10 @@ export const saveLearningItem = async (req, res) => {
     const item = await Vocabulary.create(payload);
     return res.status(201).json({ message: 'Item saved successfully', item, duplicated: false });
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(200).json({ message: 'Item already saved', duplicated: true });
+    }
+
     console.error('saveLearningItem error:', error);
     return res.status(500).json({ error: 'Server error' });
   }
