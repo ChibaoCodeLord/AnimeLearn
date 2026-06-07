@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import moment from 'moment';
 import { adminApi } from '@/api/admin.api';
 import { authApi } from '@/api/auth.api';
+import { ExamAdminPanel } from '@/components/admin/ExamAdminPanel';
 
 // ─── Kiểu dữ liệu ─────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ interface StatsData {
   totalVideos: number;
   totalUsers: number;
   totalAdmins: number;
+  totalExams?: number;
 }
 
 // ─── Cấu hình trạng thái ──────────────────────────────────────────────────────
@@ -657,6 +659,10 @@ export default function AdminPanel() {
                   className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2 text-sm dark:text-slate-300 dark:data-[state=active]:bg-slate-950 dark:data-[state=active]:text-slate-50">
                   <Users className="w-4 h-4" /> Người dùng
                 </TabsTrigger>
+                <TabsTrigger value="exams"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-xs rounded-md px-6 flex gap-2 text-sm dark:text-slate-300 dark:data-[state=active]:bg-slate-950 dark:data-[state=active]:text-slate-50">
+                  <BookOpen className="w-4 h-4" /> Đề thi
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -1069,6 +1075,10 @@ export default function AdminPanel() {
                   </div>
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="exams" className="m-0 p-0">
+              <ExamAdminPanel />
             </TabsContent>
 
           </Tabs>

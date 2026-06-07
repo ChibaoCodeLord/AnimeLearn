@@ -14,9 +14,11 @@ import dictionaryRoutes from './src/routes/dictionary.js'
 import quizRoutes from './src/routes/quiz.js';
 import vocabularyRouters from './src/routes/vocabulary.js';
 import kanjiRouters from './src/routes/kanji.js';
+import examRoutes from './src/routes/exam.js';
 import User from './src/models/User.js';
 
 import Video from './src/models/Video.js';
+import Vocabulary from './src/models/Vocabulary.js';
 
 
 // Load environment variables
@@ -34,6 +36,43 @@ const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || 'http://localhost:5173,htt
   .map(origin => origin.trim())
   .filter(Boolean);
 const BAN_SWEEP_INTERVAL_MS = 5 * 60 * 1000; // cứ cách 5p kiểm tra để tự động gở ban
+
+const reconcileVocabularyIndexes = async () => {
+  try {
+    let indexes = [];
+    try {
+      indexes = await Vocabulary.collection.indexes();
+    } catch (error) {
+      if (error?.code !== 26 && error?.codeName !== 'NamespaceNotFound') {
+        throw error;
+      }
+    }
+
+    const legacyUniqueIndexes = indexes.filter((index) => {
+      const key = index.key || {};
+      return index.unique && key.word && !key.folderId;
+    });
+
+    await Promise.all(
+      legacyUniqueIndexes.map((index) => Vocabulary.collection.dropIndex(index.name))
+    );
+
+    await Vocabulary.collection.createIndex(
+      { user: 1, folderId: 1, item_type: 1, word: 1 },
+      {
+        unique: true,
+        name: 'unique_user_folder_item_word',
+        partialFilterExpression: { folderId: { $type: 'objectId' } }
+      }
+    );
+
+    if (legacyUniqueIndexes.length) {
+      console.log(`[VocabularyIndexes] Dropped ${legacyUniqueIndexes.length} legacy unique index(es)`);
+    }
+  } catch (error) {
+    console.error('[VocabularyIndexes] Could not reconcile indexes:', error.message || error);
+  }
+};
 
 const sweepExpiredBans = async () => {
   try {
@@ -63,8 +102,10 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log('✅ Connected to MongoDB successfully');
+
+    await reconcileVocabularyIndexes();
 
     void sweepExpiredBans();
 
@@ -107,6 +148,7 @@ app.use('/api/dictionary', dictionaryRoutes);
 app.use('/api/quiz', quizRoutes);
 app.use('/api/vocabulary', vocabularyRouters);
 app.use('/api/kanji', kanjiRouters);
+app.use('/api/exams', examRoutes);
 
 // Basic test route
 app.get('/api/health', (req, res) => {

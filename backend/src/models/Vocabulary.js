@@ -4,12 +4,26 @@ const VocabularySchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    index: true
+  },
+  folderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Folder',
+    default: null,
+    index: true
+  },
+  item_type: {
+    type: String,
+    enum: ['vocab', 'kanji'],
+    default: 'vocab',
+    index: true
   },
   word: {
     type: String,
     required: true,
-    index: true // Tối ưu hóa khi tìm kiếm theo từ khóa
+    trim: true,
+    index: true
   },
   reading: {
     type: String
@@ -27,19 +41,55 @@ const VocabularySchema = new mongoose.Schema({
     type: String,
     default: 'Unknown'
   },
-  
-  // ---> TRƯỜNG LƯU TRỮ THỨ HẠNG PHỔ BIẾN <---
   popularity_score: {
     type: Number,
-    default: 999999, // Số càng nhỏ càng phổ biến. Default lớn để đẩy các từ hiếm xuống đáy.
-    index: true 
+    default: 999999,
+    index: true
   },
-
+  on: {
+    type: String
+  },
+  kun: {
+    type: String
+  },
+  mean: {
+    type: String
+  },
+  stroke_count: {
+    type: Number
+  },
+  freq: {
+    type: Number,
+    index: true
+  },
+  detail: {
+    type: String
+  },
+  img: {
+    type: String
+  },
   example_sentence: {
     type: String
   },
   example_meaning: {
     type: String
+  },
+  next_review_date: {
+    type: Date,
+    default: Date.now,
+    index: true
+  },
+  review_interval: {
+    type: Number,
+    default: 1
+  },
+  ease_factor: {
+    type: Number,
+    default: 2.5
+  },
+  review_count: {
+    type: Number,
+    default: 0
   },
   review_date: {
     type: Date,
@@ -65,9 +115,18 @@ const VocabularySchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
-});
+}, { timestamps: true });
 
-// Tạo Compound Index để tối ưu triệt để câu lệnh VỪA SEARCH word VỪA SORT popularity
 VocabularySchema.index({ word: 1, popularity_score: 1 });
+VocabularySchema.index({ user: 1, folderId: 1, item_type: 1, saved_at: -1 });
+VocabularySchema.index({ user: 1, item_type: 1, next_review_date: 1 });
+VocabularySchema.index(
+  { user: 1, folderId: 1, item_type: 1, word: 1 },
+  {
+    unique: true,
+    name: 'unique_user_folder_item_word',
+    partialFilterExpression: { folderId: { $type: 'objectId' } }
+  }
+);
 
 export default mongoose.model('Vocabulary', VocabularySchema);

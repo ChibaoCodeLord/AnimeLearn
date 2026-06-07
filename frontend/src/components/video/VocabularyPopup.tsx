@@ -6,9 +6,12 @@ import { toast } from 'sonner';
 import { ApiError } from '@/api/client';
 import { kanjiApi } from '@/api/kanji.api';
 import { videoApi } from '@/api/video.api';
+import type { FlashcardItem } from '@/components/vocabulary-hub/types';
 
 // 1. Khai báo các Interface
 export interface LookupData {
+  id?: string;
+  _id?: string;
   word: string;
   reading?: string;
   meaning_vi?: string;
@@ -27,7 +30,7 @@ interface VocabularyPopupProps {
   vocabData?: any;
   sentenceContext?: string;
   onClose: () => void;
-  onSave?: () => void;
+  onSave?: (item: FlashcardItem) => void;
   onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
   onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
 }
@@ -234,18 +237,47 @@ export default function VocabularyPopup({
   const handleSave = async () => {
     if (!lookupData) return;
 
+    onSave?.({
+      id: lookupData._id || lookupData.id || lookupData.word,
+      item_type: 'vocab',
+      word: lookupData.word,
+      reading: lookupData.reading || '',
+      meaning_vi: lookupData.meaning_vi || '',
+      meaning_en: lookupData.meaning_en || '',
+      part_of_speech: lookupData.part_of_speech || '',
+      jlpt_level: lookupData.jlpt_level || 'Unknown',
+      example_sentence: lookupData.example_sentence || sentenceContext || '',
+      example_meaning: lookupData.example_meaning || '',
+    });
+    return;
+
     setSaving(true);
 
     try {
       const data = await videoApi.saveWord<{ message?: string }>({
-        ...lookupData,
-        jlpt_level: lookupData.jlpt_level || 'Unknown',
+        word: lookupData!.word,
+        reading: lookupData!.reading || '',
+        meaning_vi: lookupData!.meaning_vi || '',
+        meaning_en: lookupData!.meaning_en || '',
+        part_of_speech: lookupData!.part_of_speech || '',
+        jlpt_level: lookupData!.jlpt_level || 'Unknown',
+        example_sentence: lookupData!.example_sentence || '',
+        example_meaning: lookupData!.example_meaning || '',
       });
 
       toast.success(data.message || 'Đã lưu từ vựng!');
 
-      if (onSave) onSave();
-    } catch (error) {
+      if (onSave) {
+        onSave?.({
+          id: lookupData!.word,
+          item_type: 'vocab',
+          word: lookupData!.word,
+          reading: lookupData!.reading || '',
+          meaning_vi: lookupData!.meaning_vi || '',
+          jlpt_level: lookupData!.jlpt_level || 'Unknown',
+        });
+      }
+    } catch (error: any) {
       if (error instanceof ApiError) {
         toast.info(error.message || 'Lỗi khi lưu!');
       } else {
