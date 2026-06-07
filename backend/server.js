@@ -14,6 +14,7 @@ import dictionaryRoutes from './src/routes/dictionary.js'
 import quizRoutes from './src/routes/quiz.js';
 import vocabularyRouters from './src/routes/vocabulary.js';
 import kanjiRouters from './src/routes/kanji.js';
+import examRoutes from './src/routes/exam.js';
 import User from './src/models/User.js';
 
 import Video from './src/models/Video.js';
@@ -147,6 +148,7 @@ app.use('/api/dictionary', dictionaryRoutes);
 app.use('/api/quiz', quizRoutes);
 app.use('/api/vocabulary', vocabularyRouters);
 app.use('/api/kanji', kanjiRouters);
+app.use('/api/exams', examRoutes);
 
 // Basic test route
 app.get('/api/health', (req, res) => {
