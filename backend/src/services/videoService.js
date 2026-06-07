@@ -100,12 +100,6 @@ async function initKuroshiro() {
   isKuroshiroInit = true;
 }
 
-import Video from '../models/Video.js';
-import VideoLike from '../models/VideoLike.js';
-import VideoWatched from '../models/VideoWatched.js';
-import VideoComment from '../models/VideoComment.js';
-import Kanji from '../models/Kanji.js';
-
 const createError = (message, status) => {
   const error = new Error(message);
   error.status = status;
@@ -579,7 +573,7 @@ export const getVideoVocabularyService = async (videoId) => {
   }));
 };
 
-export const getPublicVideosService = async ({ level, search, page = 1, limit = 4 }) => {
+export const getPublicVideosService = async ({ level, search, page = 1, limit = 4, sort }) => {
   const pageNum = Math.max(Number.parseInt(page) || 1, 1);
   const limitNum = Math.min(Math.max(Number.parseInt(limit) || 4, 1), 100);
   const skip = (pageNum - 1) * limitNum;
@@ -598,10 +592,19 @@ export const getPublicVideosService = async ({ level, search, page = 1, limit = 
     ];
   }
 
+  let sortOption = { created_date: -1 };
+  if (sort === '-views_count') {
+    sortOption = { views_count: -1, created_date: -1 };
+  } else if (sort === '-likes_count') {
+    sortOption = { likes_count: -1, created_date: -1 };
+  } else if (sort) {
+    sortOption = sort;
+  }
+
   const [videos, total] = await Promise.all([
     Video.find(query)
-      .select('_id title thumbnail_url jlpt_level views_count likes_count created_date duration video_theme')
-      .sort({ created_date: -1 })
+      .select('_id title youtube_url thumbnail_url jlpt_level views_count likes_count created_date duration video_theme')
+      .sort(sortOption)
       .allowDiskUse(true)
       .skip(skip)
       .limit(limitNum)
@@ -614,6 +617,7 @@ export const getPublicVideosService = async ({ level, search, page = 1, limit = 
     data: videos.map(video => ({
       id: video._id,
       title: video.title,
+      youtube_url: video.youtube_url,
       thumbnail_url: video.thumbnail_url,
       jlpt_level: video.jlpt_level,
       views_count: video.views_count,

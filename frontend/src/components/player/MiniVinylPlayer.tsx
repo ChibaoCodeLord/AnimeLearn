@@ -36,11 +36,11 @@ export default function MiniVinylPlayer({ className = '' }: MiniVinylPlayerProps
       className={`
         flex h-11 min-w-0 max-w-30 items-center gap-3
         rounded-sm
-        border border-cyan-400/30
-        bg-slate-950
+        border border-green-400/30 dark:border-green-800/50
+        bg-green-100 dark:bg-green-900/60
         px-2.5 pr-4
-        text-slate-200
-        shadow-sm shadow-cyan-500/20
+        text-green-900 dark:text-white
+        shadow-sm shadow-green-500/20
         backdrop-blur
         ${className}
       `}
@@ -50,25 +50,25 @@ export default function MiniVinylPlayer({ className = '' }: MiniVinylPlayerProps
           relative
           flex h-8 w-8 shrink-0 items-center justify-center
           rounded-full
-          bg-slate-900
-          ring-1 ring-cyan-400/40
-          shadow-sm shadow-cyan-500/20
+          bg-green-200 dark:bg-green-800
+          ring-1 ring-green-400/40 dark:ring-green-700/50
+          shadow-sm shadow-green-500/20
         "
       >
-        <Disc3 className="h-5 w-5 text-cyan-300" />
+        <Disc3 className="h-5 w-5 text-green-600 dark:text-green-300" />
 
         <span
           className="
             absolute -right-0.5 -top-0.5
             h-2.5 w-2.5
             rounded-full
-            bg-cyan-300
-            ring-2 ring-slate-950
+            bg-green-500 dark:bg-green-400
+            ring-2 ring-green-100 dark:ring-green-900
           "
         />
       </div>
 
-      <p className="min-w-0 truncate text-xs font-semibold text-slate-300">
+      <p className="min-w-0 truncate text-xs font-semibold text-green-800 dark:text-white">
         Chọn một video để chill nào (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧
       </p>
     </div>

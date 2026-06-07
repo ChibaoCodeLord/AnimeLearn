@@ -16,7 +16,6 @@ export interface VocabItem {
 
 interface VocabularyAnalysisProps {
   vocabulary: VocabItem[];
-  // THÊM PROP NÀY ĐỂ KÍCH HOẠT MODAL Ở SCRIPT PANEL
   onWordClick?: (vocab: any) => void; 
 }
 
