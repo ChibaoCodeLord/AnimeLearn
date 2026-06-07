@@ -22,6 +22,8 @@ import SubtitleOverlay from '../components/video/SubtitleOverlay'; // phụ đ�
 import VocabularyPopup from '../components/video/VocabularyPopup'; //popup từ vựng khi click vào từ trong subtitle
 import VideoRagChatWidget from '../components/video/VideoRagChatWidget'; // chat rag
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { LearningSaveModal } from '@/components/vocabulary-hub/LearningSaveModal';
+import type { FlashcardItem } from '@/components/vocabulary-hub/types';
 
 
 //Tabs
@@ -297,6 +299,7 @@ export default function VideoWorkspace() {
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [selectedVocabData, setSelectedVocabData] = useState<any | null>(null);
   const [popupPos, setPopupPos] = useState<PopupAnchorPosition | null>(null);
+  const [learningSaveTarget, setLearningSaveTarget] = useState<FlashcardItem | null>(null);
   
   const [videoTitle, setVideoTitle] = useState('');
   const [currentYoutubeUrl, setCurrentYoutubeUrl] = useState(youtubeUrl || '');
@@ -1853,13 +1856,23 @@ export default function VideoWorkspace() {
           position={popupPos}
           vocabData={selectedVocabData}
           onClose={() => { setSelectedWord(null); setSelectedVocabData(null); }}
-          onSave={() => { 
+          onSave={(item) => {
+            setLearningSaveTarget(item);
+            setSelectedWord(null);
+            setSelectedVocabData(null);
+            return;
+
             toast.success(`Đã lưu "${selectedWord}" vào sổ tay!`);
             setSelectedWord(null); 
             setSelectedVocabData(null); 
           }}
         />
       )}
+
+      <LearningSaveModal
+        item={learningSaveTarget}
+        onClose={() => setLearningSaveTarget(null)}
+      />
 
       <VideoRagChatWidget videoId={videoId} bottomOffsetClassName={showReviewBar ? 'bottom-24 md:bottom-28' : 'bottom-4 md:bottom-6'} />
 

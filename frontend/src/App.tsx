@@ -1,4 +1,4 @@
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client'; // Đảm bảo file này tồn tại hoặc dùng new QueryClient()
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
@@ -26,11 +26,45 @@ import Layout from './components/Layout';
 import DictionaryPage from './pages/DictionaryPage';
 import UserBannedError from './components/UserBannedError';
 import { authApi } from '@/api/auth.api';
+import type { AuthUser } from '@/api/types';
 
-// Authentication check function
-const isAuthenticated = (): boolean => {
-  return !!localStorage.getItem('token');
+const CURRENT_USER_QUERY_KEY = ['current-user'] as const;
+
+interface AuthRouteError {
+  status?: number;
+  data?: {
+    error?: string;
+    bannedAt?: string;
+    unbannedAt?: string;
+    banReason?: string;
+  };
+}
+
+const fetchCurrentUser = () => authApi.getMe<AuthUser>();
+
+const rememberBanInfo = (data?: AuthRouteError['data']) => {
+  if (data?.error !== 'User is banned') return;
+
+  try {
+    sessionStorage.setItem('banInfo', JSON.stringify(data));
+  } catch (error) {
+    console.error('Cannot persist ban info', error);
+  }
 };
+
+const AuthLoadingScreen = () => (
+  <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm font-semibold text-slate-500">
+    Đang kiểm tra đăng nhập...
+  </div>
+);
+
+const useCurrentUser = () =>
+  useQuery<AuthUser>({
+    queryKey: CURRENT_USER_QUERY_KEY,
+    queryFn: fetchCurrentUser,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
 
 // Mock Component cho trường hợp 404
 const PageNotFound = () => (
@@ -64,9 +98,48 @@ const BannedRoute = () => {
   );
 };
 
+const GuestLandingRoute = () => {
+  const { data: user, isLoading, isFetching, error } = useCurrentUser();
+  const authError = error as AuthRouteError | undefined;
+
+  if (user) return <Navigate to="/home" replace />;
+  if (authError?.status === 403) {
+    rememberBanInfo(authError.data);
+    return <Navigate to="/banned" replace />;
+  }
+  if (isLoading || isFetching) return <AuthLoadingScreen />;
+
+  return <Home_guest />;
+};
+
+const GuestOnlyRoute = ({ element }: { element: React.ReactNode }) => {
+  const { data: user, isLoading, isFetching, error } = useCurrentUser();
+  const authError = error as AuthRouteError | undefined;
+
+  if (user) return <Navigate to="/home" replace />;
+  if (authError?.status === 403) {
+    rememberBanInfo(authError.data);
+    return <Navigate to="/banned" replace />;
+  }
+  if (isLoading || isFetching) return <AuthLoadingScreen />;
+
+  return element;
+};
+
 // Protected Route Component
 const ProtectedRoute = ({ element }: { element: React.ReactNode }) => {
-  return isAuthenticated() ? element : <Navigate to="/login" replace />;
+  const { data: user, isLoading, isFetching, error } = useCurrentUser();
+  const authError = error as AuthRouteError | undefined;
+
+  if (user) return element;
+  if (authError?.status === 403) {
+    rememberBanInfo(authError.data);
+    return <Navigate to="/banned" replace />;
+  }
+  if (isLoading || isFetching) return <AuthLoadingScreen />;
+
+  localStorage.removeItem('token');
+  return <Navigate to="/login" replace />;
 };
 
 const AuthenticatedApp = () => {
@@ -114,11 +187,11 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       {/* Landing Page - Public */}
-      <Route path="/" element={<Home_guest />} />
+      <Route path="/" element={<GuestLandingRoute />} />
 
       {/* Login & Signup - Public Routes (không bọc trong Layout) */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
+      <Route path="/login" element={<GuestOnlyRoute element={<Login />} />} />
+      <Route path="/signup" element={<GuestOnlyRoute element={<Signup />} />} />
       <Route path="/banned" element={<BannedRoute />} />
 
       {/* Authenticated Routes bọc trong Layout (Sidebar + Header) */}

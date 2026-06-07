@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { ApiError } from '@/api/client';
 import { videoApi } from '@/api/video.api';
+import { LearningSaveModal } from '@/components/vocabulary-hub/LearningSaveModal';
+import type { FlashcardItem } from '@/components/vocabulary-hub/types';
 
 // Bảng màu JLPT
 const jlptBadgeColors: Record<string, string> = {
@@ -24,6 +26,38 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
   const [selectedVocab, setSelectedVocab] = useState<any | null>(null);
   const [selectedKanji, setSelectedKanji] = useState<any | null>(null);
   const [savingMap, setSavingMap] = useState<Record<string, boolean>>({});
+  const [saveTarget, setSaveTarget] = useState<FlashcardItem | null>(null);
+
+  const vocabToFlashcard = (vocab: any): FlashcardItem => ({
+    id: vocab._id || vocab.id || vocab.word,
+    item_type: 'vocab',
+    word: vocab.word,
+    reading: vocab.reading || '',
+    meaning_vi: vocab.meaning || vocab.meaning_vi || '',
+    meaning_en: vocab.meaning_en || '',
+    part_of_speech: vocab.pos || vocab.part_of_speech || '',
+    jlpt_level: vocab.jlpt_level || 'Unknown',
+    example_sentence: vocab.example_sentence || '',
+    example_meaning: vocab.example_meaning || '',
+  });
+
+  const kanjiToFlashcard = (kanji: any): FlashcardItem => {
+    const level = kanji.level ? String(kanji.level).replace(/^N/i, '') : '';
+
+    return {
+      id: kanji._id || kanji.id || kanji.kanji,
+      item_type: 'kanji',
+      word: kanji.kanji,
+      meaning_vi: kanji.mean || '',
+      mean: kanji.mean || '',
+      on: kanji.on || '',
+      kun: kanji.kun || '',
+      jlpt_level: level ? `N${level}` : undefined,
+      stroke_count: Number(kanji.stroke_count) || undefined,
+      detail: kanji.detail || '',
+      freq: Number(kanji.freq) || undefined,
+    };
+  };
 
   // 1. Logic lọc từ không phải tiếng Nhật (Chỉ lấy Hiragana, Katakana, Kanji)
   const isJapaneseWord = (word: string) => {
@@ -36,6 +70,9 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
   // 2. Logic Lưu từ vựng
   const handleSave = async (vocab: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    setSaveTarget(vocabToFlashcard(vocab));
+    return;
+
     setSavingMap(prev => ({ ...prev, [vocab.word]: true }));
     
     try {
@@ -50,7 +87,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
 
       const data = await videoApi.saveWord<{ message?: string }>(payload);
       toast.success(data.message || `Đã lưu "${vocab.word}" vào sổ tay!`);
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof ApiError) {
         toast.info(error.message || 'Lỗi khi lưu.');
       } else {
@@ -142,7 +179,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
       {/* ======================================================== */}
       {selectedVocab && (
         <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 transition-all dark:bg-slate-950/70"
+          className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-slate-900/40 transition-all dark:bg-slate-950/70"
           onClick={closeModal}
         >
           <div 
@@ -163,6 +200,15 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                   <div className="p-6 bg-gradient-to-br from-rose-50 to-pink-50 border-b border-rose-100 shrink-0 dark:from-rose-950/50 dark:to-pink-950/40 dark:border-rose-900/60">
                     <Button variant="ghost" size="sm" onClick={() => setSelectedKanji(null)} className="mb-4 text-rose-500 hover:text-rose-700 hover:bg-rose-100/50 -ml-2 dark:text-rose-300 dark:hover:bg-rose-900/40 dark:hover:text-rose-100">
                       <ArrowLeft className="w-4 h-4 mr-1" /> Quay lại từ vựng
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setSaveTarget(kanjiToFlashcard(selectedKanji))}
+                      className="mb-4 ml-2 rounded-xl bg-rose-600 font-bold text-white hover:bg-rose-700"
+                    >
+                      <BookmarkPlus className="mr-1.5 h-4 w-4" />
+                      Lưu Kanji
                     </Button>
                     <div className="flex items-end gap-6">
                       <div className="text-8xl md:text-[120px] font-black text-rose-600 leading-none drop-shadow-sm select-none">
@@ -312,6 +358,11 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
           </div>
         </div>
       )}
+
+      <LearningSaveModal
+        item={saveTarget}
+        onClose={() => setSaveTarget(null)}
+      />
     </div>
   );
 }

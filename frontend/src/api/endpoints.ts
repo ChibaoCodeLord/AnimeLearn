@@ -69,6 +69,11 @@ export const ENDPOINTS = {
   },
   vocabulary: {
     list: '/vocabulary',
+    save: '/vocabulary/save',
+    folders: '/vocabulary/folders',
+    folder: (id: ApiId) => `/vocabulary/folders/${id}`,
+    discoverDictionary: '/vocabulary/discover/dictionary',
+    discoverKanji: '/vocabulary/discover/kanji',
     item: (id: ApiId) => `/vocabulary/${id}`,
   },
   kanji: {
