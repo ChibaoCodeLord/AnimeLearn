@@ -23,7 +23,7 @@ import type {
 } from '@/components/vocabulary-hub/types';
 
 const DEFAULT_PAGE = 1;
-const DEFAULT_LIMIT = 10;
+const DEFAULT_LIMIT = 16;
 
 async function fetchFolderDetail(folder: HubFolder, page: number, limit: number): Promise<FolderDetailData> {
   if (folder.kind === 'user') {
@@ -253,7 +253,7 @@ export default function Vocabulary() {
 
   const handleDeleteFolder = (folder: HubFolder) => {
     if (!folder.folderId || folder.folderId === 'all') return;
-    if (!window.confirm(`Xóa thư mục "${folder.title}"? Các thẻ bên trong sẽ được chuyển về sổ tay chung.`)) return;
+    if (!window.confirm(`Xóa thư mục "${folder.title}"? Các thẻ bên trong thư mục này sẽ bị xóa.`)) return;
     deleteFolderMutation.mutate(folder.folderId);
   };
 

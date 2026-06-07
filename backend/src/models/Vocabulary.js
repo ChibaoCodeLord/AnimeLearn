@@ -104,5 +104,13 @@ const VocabularySchema = new mongoose.Schema({
 VocabularySchema.index({ word: 1, popularity_score: 1 });
 VocabularySchema.index({ user: 1, folderId: 1, item_type: 1, saved_at: -1 });
 VocabularySchema.index({ user: 1, item_type: 1, next_review_date: 1 });
+VocabularySchema.index(
+  { user: 1, folderId: 1, item_type: 1, word: 1 },
+  {
+    unique: true,
+    name: 'unique_user_folder_item_word',
+    partialFilterExpression: { folderId: { $type: 'objectId' } }
+  }
+);
 
 export default mongoose.model('Vocabulary', VocabularySchema);
