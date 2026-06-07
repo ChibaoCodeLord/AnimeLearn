@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -8,42 +9,23 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   FileText,
   Headphones,
   Search,
   type LucideIcon,
 } from 'lucide-react';
+import { examApi, type ExamLevel, type ExamPaper, type ExamSectionType } from '@/api/exam.api';
 import { cn } from '@/lib/utils';
 
-type ExamLevel = 'N1' | 'N2' | 'N3' | 'N4' | 'N5';
-type ExamSectionKind = 'vocabulary' | 'grammar' | 'listening' | 'reading';
 type SortMode = 'newest' | 'oldest';
 
-interface ExamSection {
-  kind: ExamSectionKind;
-  name: string;
-  minutes: number;
-}
-
-interface ExamPaper {
-  id: string;
-  level: ExamLevel;
-  title: string;
-  subtitle: string;
-  year: number;
-  month: number;
-  isNew?: boolean;
-  sections: ExamSection[];
-}
-
 const filters: Array<ExamLevel | 'all'> = ['all', 'N1', 'N2', 'N3', 'N4', 'N5'];
-const totalAvailable = 142;
 
-const sectionIconMap: Record<ExamSectionKind, LucideIcon> = {
-  vocabulary: BookOpen,
-  grammar: FileText,
+const sectionIconMap: Record<ExamSectionType, LucideIcon> = {
+  vocabulary_grammar: BookOpen,
+  reading: ClipboardList,
   listening: Headphones,
-  reading: BookOpen,
 };
 
 const levelStyles: Record<ExamLevel, { badge: string }> = {
@@ -64,123 +46,17 @@ const levelStyles: Record<ExamLevel, { badge: string }> = {
   },
 };
 
-const mockExamPapers: ExamPaper[] = [
-  {
-    id: 'jlpt-n2-2023-12',
-    level: 'N2',
-    title: 'Đề thi tháng 12/2023',
-    subtitle: 'Kỳ thi JLPT chính thức',
-    year: 2023,
-    month: 12,
-    isNew: true,
-    sections: [
-      { kind: 'vocabulary', name: 'Từ vựng / Chữ Hán', minutes: 30 },
-      { kind: 'grammar', name: 'Ngữ pháp / Đọc hiểu', minutes: 75 },
-      { kind: 'listening', name: 'Nghe hiểu', minutes: 50 },
-    ],
-  },
-  {
-    id: 'jlpt-n2-2023-07',
-    level: 'N2',
-    title: 'Đề thi tháng 07/2023',
-    subtitle: 'Kỳ thi JLPT chính thức',
-    year: 2023,
-    month: 7,
-    sections: [
-      { kind: 'vocabulary', name: 'Từ vựng / Chữ Hán', minutes: 30 },
-      { kind: 'grammar', name: 'Ngữ pháp / Đọc hiểu', minutes: 75 },
-      { kind: 'listening', name: 'Nghe hiểu', minutes: 50 },
-    ],
-  },
-  {
-    id: 'jlpt-n1-2022-12',
-    level: 'N1',
-    title: 'Đề thi tháng 12/2022',
-    subtitle: 'Kỳ thi JLPT chính thức',
-    year: 2022,
-    month: 12,
-    sections: [
-      { kind: 'reading', name: 'Kiến thức ngôn ngữ / Đọc', minutes: 110 },
-      { kind: 'listening', name: 'Nghe hiểu', minutes: 60 },
-    ],
-  },
-  {
-    id: 'jlpt-n3-2023-12',
-    level: 'N3',
-    title: 'Đề thi tháng 12/2023',
-    subtitle: 'Kỳ thi JLPT chính thức',
-    year: 2023,
-    month: 12,
-    sections: [
-      { kind: 'vocabulary', name: 'Từ vựng / Chữ Hán', minutes: 30 },
-      { kind: 'grammar', name: 'Ngữ pháp / Đọc hiểu', minutes: 70 },
-      { kind: 'listening', name: 'Nghe hiểu', minutes: 40 },
-    ],
-  },
-  {
-    id: 'jlpt-n3-2023-07',
-    level: 'N3',
-    title: 'Đề thi tháng 07/2023',
-    subtitle: 'Kỳ thi JLPT chính thức',
-    year: 2023,
-    month: 7,
-    sections: [
-      { kind: 'vocabulary', name: 'Từ vựng / Chữ Hán', minutes: 30 },
-      { kind: 'grammar', name: 'Ngữ pháp / Đọc hiểu', minutes: 70 },
-      { kind: 'listening', name: 'Nghe hiểu', minutes: 40 },
-    ],
-  },
-  {
-    id: 'jlpt-n3-2022-12',
-    level: 'N3',
-    title: 'Đề thi tháng 12/2022',
-    subtitle: 'Kỳ thi JLPT chính thức',
-    year: 2022,
-    month: 12,
-    sections: [
-      { kind: 'vocabulary', name: 'Từ vựng / Chữ Hán', minutes: 30 },
-      { kind: 'grammar', name: 'Ngữ pháp / Đọc hiểu', minutes: 70 },
-      { kind: 'listening', name: 'Nghe hiểu', minutes: 40 },
-    ],
-  },
-  {
-    id: 'jlpt-n4-2022-07',
-    level: 'N4',
-    title: 'Đề thi tháng 07/2022',
-    subtitle: 'Kỳ thi JLPT chính thức',
-    year: 2022,
-    month: 7,
-    sections: [
-      { kind: 'vocabulary', name: 'Từ vựng / Chữ Hán', minutes: 25 },
-      { kind: 'grammar', name: 'Ngữ pháp / Đọc hiểu', minutes: 55 },
-      { kind: 'listening', name: 'Nghe hiểu', minutes: 35 },
-    ],
-  },
-  {
-    id: 'jlpt-n5-2021-12',
-    level: 'N5',
-    title: 'Đề thi tháng 12/2021',
-    subtitle: 'Kỳ thi JLPT chính thức',
-    year: 2021,
-    month: 12,
-    sections: [
-      { kind: 'vocabulary', name: 'Từ vựng / Chữ Hán', minutes: 20 },
-      { kind: 'grammar', name: 'Ngữ pháp / Đọc hiểu', minutes: 40 },
-      { kind: 'listening', name: 'Nghe hiểu', minutes: 30 },
-    ],
-  },
-];
-
-function getDateKey(paper: ExamPaper) {
-  return paper.year * 100 + paper.month;
+function monthLabel(month: number) {
+  return String(month || 1).padStart(2, '0');
 }
 
 function ExamCard({ paper }: { paper: ExamPaper }) {
   const styles = levelStyles[paper.level];
+  const sections = [...(paper.sections || [])].sort((a, b) => a.order - b.order);
 
   return (
     <article className="group relative flex min-h-[306px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
-      {paper.isNew && (
+      {paper.status === 'published' && paper.publishedAt && (
         <span className="absolute right-5 top-0 rounded-b-xl bg-[#20b486] px-5 py-1.5 text-xs font-bold text-white shadow-sm">
           Mới
         </span>
@@ -203,20 +79,24 @@ function ExamCard({ paper }: { paper: ExamPaper }) {
         <h2 className="text-xl font-extrabold tracking-tight text-slate-950 dark:text-white">
           {paper.title}
         </h2>
-        <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">{paper.subtitle}</p>
+        <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+          {paper.subtitle || `${paper.source || 'JLPT'} tháng ${monthLabel(paper.month)}/${paper.year}`}
+        </p>
       </div>
 
       <div className="relative z-10 mt-6 space-y-3 border-b border-slate-100 pb-5 dark:border-slate-800">
-        {paper.sections.map(section => {
-          const Icon = sectionIconMap[section.kind];
+        {sections.map(section => {
+          const Icon = sectionIconMap[section.type] || FileText;
 
           return (
-            <div key={`${paper.id}-${section.name}`} className="flex items-center justify-between gap-4 text-sm">
+            <div key={`${paper.id}-${section.type}`} className="flex items-center justify-between gap-4 text-sm">
               <span className="flex min-w-0 items-center gap-2 font-medium text-slate-700 dark:text-slate-300">
                 <Icon className="h-4 w-4 shrink-0 text-slate-700 dark:text-slate-300" />
-                <span className="truncate">{section.name}</span>
+                <span className="truncate">{section.title}</span>
               </span>
-              <span className="shrink-0 font-bold text-slate-950 dark:text-white">{section.minutes} phút</span>
+              <span className="shrink-0 font-bold text-slate-950 dark:text-white">
+                {section.durationMinutes} phút
+              </span>
             </div>
           );
         })}
@@ -224,7 +104,7 @@ function ExamCard({ paper }: { paper: ExamPaper }) {
 
       <div className="relative z-10 mt-auto pt-6">
         <Link
-          to={`/ExamLibrary/${paper.id}`}
+          to={`/ExamLibrary/${paper.slug || paper.id}`}
           className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-transparent bg-[#008a67] px-5 text-base font-extrabold text-white shadow-sm transition-colors hover:bg-[#007a5a] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-200 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:focus-visible:ring-emerald-500/25"
         >
           Luyện tập
@@ -235,31 +115,56 @@ function ExamCard({ paper }: { paper: ExamPaper }) {
   );
 }
 
+function LoadingGrid() {
+  return (
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div key={index} className="h-[306px] animate-pulse rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+          <div className="mb-8 h-12 w-12 rounded-full bg-slate-200 dark:bg-slate-800" />
+          <div className="h-6 w-3/4 rounded bg-slate-200 dark:bg-slate-800" />
+          <div className="mt-3 h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-800" />
+          <div className="mt-8 space-y-3">
+            <div className="h-4 rounded bg-slate-200 dark:bg-slate-800" />
+            <div className="h-4 rounded bg-slate-200 dark:bg-slate-800" />
+            <div className="h-4 rounded bg-slate-200 dark:bg-slate-800" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ExamLibrary() {
   const [selectedLevel, setSelectedLevel] = useState<ExamLevel | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('newest');
+  const [page, setPage] = useState(1);
+  const limit = 12;
 
-  const filteredPapers = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+  useEffect(() => {
+    setPage(1);
+  }, [selectedLevel, searchTerm, sortMode]);
 
-    return mockExamPapers
-      .filter(paper => {
-        const matchesLevel = selectedLevel === 'all' || paper.level === selectedLevel;
-        const searchable = [
-          paper.title,
-          paper.subtitle,
-          paper.level,
-          paper.year,
-          String(paper.month).padStart(2, '0'),
-        ]
-          .join(' ')
-          .toLowerCase();
+  const examsQuery = useQuery({
+    queryKey: ['exams', selectedLevel, searchTerm, sortMode, page],
+    queryFn: () => examApi.list({
+      level: selectedLevel,
+      search: searchTerm.trim(),
+      sort: sortMode,
+      page,
+      limit,
+    }),
+  });
 
-        return matchesLevel && (!normalizedSearch || searchable.includes(normalizedSearch));
-      })
-      .sort((a, b) => (sortMode === 'newest' ? getDateKey(b) - getDateKey(a) : getDateKey(a) - getDateKey(b)));
-  }, [searchTerm, selectedLevel, sortMode]);
+  const papers = examsQuery.data?.exams ?? [];
+  const totalAvailable = examsQuery.data?.total ?? 0;
+  const totalPages = Math.max(1, examsQuery.data?.totalPages ?? 1);
+
+  const pageNumbers = useMemo(() => {
+    const visible = Math.min(5, totalPages);
+    const start = Math.max(1, Math.min(page - 2, totalPages - visible + 1));
+    return Array.from({ length: visible }, (_, index) => start + index);
+  }, [page, totalPages]);
 
   return (
     <div className="min-h-full bg-[#f8fafc] px-4 py-6 sm:px-6 lg:px-8 dark:bg-slate-950">
@@ -271,14 +176,16 @@ export default function ExamLibrary() {
                 Kho đề thi <span className="text-[#007a5a] dark:text-emerald-300">JLPT</span>
               </h1>
               <p className="mt-4 max-w-2xl text-base font-medium text-slate-600 dark:text-slate-400">
-                Luyện tập với đề thi chính thức từ năm 2010 đến nay
+                Luyện tập theo 3 phần: Từ vựng & Ngữ pháp, Đọc hiểu, Nghe hiểu.
               </p>
             </div>
 
             <div className="self-start lg:self-center">
               <div className="text-right">
-                <p className="text-4xl font-black leading-none text-slate-950 dark:text-white">{totalAvailable}</p>
-                <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">đề thi có sẵn</p>
+                <p className="text-4xl font-black leading-none text-slate-950 dark:text-white">
+                  {examsQuery.isLoading ? '...' : totalAvailable}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">đề thi đã xuất bản</p>
               </div>
             </div>
           </div>
@@ -291,7 +198,7 @@ export default function ExamLibrary() {
               <input
                 value={searchTerm}
                 onChange={event => setSearchTerm(event.target.value)}
-                placeholder="Tìm theo năm, tháng (VD: 2023, 07)"
+                placeholder="Tìm theo năm, tháng, tiêu đề"
                 className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-12 pr-4 text-sm font-medium text-slate-800 outline-none transition focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-emerald-500 dark:focus:ring-emerald-500/15"
               />
             </label>
@@ -331,9 +238,18 @@ export default function ExamLibrary() {
           </div>
         </section>
 
-        {filteredPapers.length > 0 ? (
+        {examsQuery.isLoading ? (
+          <LoadingGrid />
+        ) : examsQuery.isError ? (
+          <div className="rounded-3xl border border-rose-200 bg-white px-6 py-16 text-center shadow-sm dark:border-rose-900 dark:bg-slate-900">
+            <p className="text-lg font-bold text-rose-700 dark:text-rose-200">Không tải được kho đề thi</p>
+            <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+              {(examsQuery.error as Error).message}
+            </p>
+          </div>
+        ) : papers.length > 0 ? (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {filteredPapers.map(paper => (
+            {papers.map(paper => (
               <ExamCard key={paper.id} paper={paper} />
             ))}
           </div>
@@ -346,43 +262,43 @@ export default function ExamLibrary() {
           </div>
         )}
 
-        <nav className="flex items-center justify-center gap-2 pt-1" aria-label="Phân trang kho đề thi">
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
-            aria-label="Trang trước"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          {[1, 2, 3].map(page => (
+        {totalPages > 1 && (
+          <nav className="flex items-center justify-center gap-2 pt-1" aria-label="Phân trang kho đề thi">
             <button
-              key={page}
               type="button"
-              className={cn(
-                'inline-flex h-11 w-11 items-center justify-center rounded-full border text-sm font-bold transition-colors',
-                page === 1
-                  ? 'border-transparent bg-emerald-500 text-white shadow-md'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-200 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-              )}
+              onClick={() => setPage(current => Math.max(1, current - 1))}
+              disabled={page === 1}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+              aria-label="Trang trước"
             >
-              {page}
+              <ChevronLeft className="h-5 w-5" />
             </button>
-          ))}
-          <span className="px-2 text-sm font-bold text-slate-500 dark:text-slate-400">...</span>
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-bold text-slate-700 transition-colors hover:border-emerald-200 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-          >
-            15
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
-            aria-label="Trang sau"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </button>
-        </nav>
+            {pageNumbers.map(pageNumber => (
+              <button
+                key={pageNumber}
+                type="button"
+                onClick={() => setPage(pageNumber)}
+                className={cn(
+                  'inline-flex h-11 w-11 items-center justify-center rounded-full border text-sm font-bold transition-colors',
+                  pageNumber === page
+                    ? 'border-transparent bg-emerald-500 text-white shadow-md'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-200 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+                )}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setPage(current => Math.min(totalPages, current + 1))}
+              disabled={page === totalPages}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+              aria-label="Trang sau"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </nav>
+        )}
       </div>
     </div>
   );
