@@ -181,19 +181,6 @@ export default function CompactBanner({
 
               <div className="flex gap-2 w-full min-w-0">
                 <Button
-                  type="button"
-                  variant="outline"
-                  className="
-                    flex-1 min-w-0 h-11 rounded-xl
-                    text-slate-600 border-slate-200
-                    hover:bg-slate-50 hover:text-teal-600 px-2
-                  "
-                >
-                  <Upload className="w-4 h-4 sm:mr-2 shrink-0" />
-                  <span className="hidden sm:inline truncate">Tải File</span>
-                </Button>
-
-                <Button
                   type="submit"
                   className="
                     flex-[1.4] min-w-0 h-11 rounded-xl
