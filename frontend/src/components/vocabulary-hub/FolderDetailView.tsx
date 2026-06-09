@@ -113,8 +113,8 @@ export function FolderDetailView({
             onClick={() => setFlashcardOpen(true)}
             className="
               inline-flex h-11 w-full shrink-0 items-center justify-center gap-2.5 
-              rounded-xl bg-slate-900 px-6 text-sm font-semibold text-white 
-              transition-colors hover:bg-slate-800 disabled:bg-slate-100 disabled:text-slate-400
+              rounded-xl bg-emerald-700 px-6 text-sm font-semibold text-white 
+              transition-colors hover:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400
               sm:w-auto
             "
           >

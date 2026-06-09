@@ -256,7 +256,7 @@ export function VocabCard({
             <Button
               type="button"
               size="sm"
-              className="bg-slate-900 px-5 font-bold text-white hover:bg-slate-800"
+              className="bg-emerald-700 px-5 font-bold text-white hover:bg-emerald-800"
               onClick={(event) => {
                 event.stopPropagation();
                 onSave?.(item);

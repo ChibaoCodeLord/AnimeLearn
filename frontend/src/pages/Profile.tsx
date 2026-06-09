@@ -85,26 +85,6 @@ const updateVideo = async (videoId: string, data: { title: string; visibility?: 
   return videoApi.updateVideo(videoId, data);
 };
 
-// Mock data fallback for videos display
-const mockVideos = [
-  {
-    _id: '1',
-    title: 'Kanji Mastery: N3 Essentials',
-    jlpt_level: 'N3',
-    views_count: 234,
-    status: 'approved',
-    thumbnail_url: '',
-  },
-  {
-    _id: '2',
-    title: 'Street Japanese: Casual Talk',
-    jlpt_level: 'N4',
-    views_count: 156,
-    status: 'pending',
-    thumbnail_url: '',
-  },
-];
-
 export default function Profile() {
   const queryClient = useQueryClient();
   const { isDark } = useTheme();
@@ -816,7 +796,7 @@ export default function Profile() {
             </div>
 
             <div className="space-y-4">
-              {(videosResponse?.videos && videosResponse.videos.length > 0 ? videosResponse.videos : mockVideos).map((video: any) => (
+              {(videosResponse?.videos || []).map((video: any) => (
                 <div key={video._id || video.id} className="flex items-center gap-4 pb-4 border-b border-gray-200 last:border-0">
                   <div
                     className="w-16 h-16 rounded flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden"

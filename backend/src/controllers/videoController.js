@@ -180,3 +180,61 @@ export const getPublicVideosController = async (req, res) => {
     return handleControllerError(res, error, 'Lỗi server khi tải danh sách video');
   }
 };
+
+export const analyzeVideoController = async (req, res) => {
+  if (req.user?.role === 'admin') return res.status(403).json({ error: 'Admin khong duoc dang video' });
+  if (!req.body.url) return res.status(400).json({ error: 'URL is required' });
+
+  try {
+    const result = await analyzeVideoScriptService(req.body.url);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to analyze video', details: error?.message || 'Unknown error', cause: error?.cause?.code || null });
+  }
+};
+
+export const translateWordController = async (req, res) => {
+  if (!req.body.word) return res.status(400).json({ error: 'Word is required' });
+  try {
+    const result = await translateWordService(req.body.word);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed' });
+  }
+};
+
+export const saveWordController = async (req, res) => {
+  const userId = req.user?.id || req.user?.userId;
+  if(!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const vocab = await saveWordService(userId, req.body);
+    res.status(201).json({ message: 'Lưu từ vựng thành công!', vocab });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ message: error.message });
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const saveVideoController = async (req, res) => {
+  if (req.user?.role === 'admin') return res.status(403).json({ error: 'Admin khong duoc dang video' });
+  const userId = req.user?.id || req.user?.userId;
+  try {
+    const { newVideo, newQuiz, aiResult } = await saveVideoWithQuizService(userId, req.body.youtube_url, req.body.script);
+    res.status(201).json({
+      message: aiResult ? 'Hoàn tất bóc băng và tạo bài tập!' : 'Đã bóc băng xong! (AI đang bận nên chưa tạo Quiz được)',
+      videoId: newVideo._id, jlptLevel: newVideo.jlpt_level, script: newVideo.script, vocab_list: newVideo.vocab_list, quiz: newQuiz
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Lỗi khi xử lý dữ liệu video và AI' });
+  }
+};
+
+export const convertFuriganaController = async (req, res) => {
+  try {
+    const html = await convertFuriganaService(req.body.text);
+    return res.json({ html });
+  } catch (error) {
+    return res.status(500).json({ html: '', error: 'Không thể xử lý Furigana' });
+  }
+};
