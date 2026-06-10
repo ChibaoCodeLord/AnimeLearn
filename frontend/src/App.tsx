@@ -1,19 +1,19 @@
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { queryClientInstance } from '@/lib/query-client'; // Đảm bảo file này tồn tại hoặc dùng new QueryClient()
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { useParams, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
+import GlobalAudioPlayer from '@/components/player/GlobalAudioPlayer';
+import { PlayerStoreProvider } from '@/stores/usePlayerStore';
 
 // Page imports
 import Home from './pages/Home';
 import Home_guest from './pages/Home_guest';
 import VideoWorkspace from './pages/VideoWorkspace';
 import Vocabulary from './pages/Vocabulary';
-// import VocabularyNotebook from './pages/VocabularyNotebook';
 import QuizPage from './pages/QuizPage';
-import Dashboard from './pages/Dashboard';
-import AIChatTutor from './pages/AIChatTutor';
+import ExamLibrary from './pages/ExamLibrary';
+import ExamDetail from './pages/ExamDetail';
 import AdminPanel from './pages/AdminPanel';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
@@ -21,11 +21,46 @@ import Signup from './pages/Signup';
 import Layout from './components/Layout';
 import DictionaryPage from './pages/DictionaryPage';
 import UserBannedError from './components/UserBannedError';
+import { authApi } from '@/api/auth.api';
+import type { AuthUser } from '@/api/types';
 
-// Authentication check function
-const isAuthenticated = (): boolean => {
-  return !!localStorage.getItem('token');
+const CURRENT_USER_QUERY_KEY = ['current-user'] as const;
+
+interface AuthRouteError {
+  status?: number;
+  data?: {
+    error?: string;
+    bannedAt?: string;
+    unbannedAt?: string;
+    banReason?: string;
+  };
+}
+
+const fetchCurrentUser = () => authApi.getMe<AuthUser>();
+
+const rememberBanInfo = (data?: AuthRouteError['data']) => {
+  if (data?.error !== 'User is banned') return;
+
+  try {
+    sessionStorage.setItem('banInfo', JSON.stringify(data));
+  } catch (error) {
+    console.error('Cannot persist ban info', error);
+  }
 };
+
+const AuthLoadingScreen = () => (
+  <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm font-semibold text-slate-500">
+    Đang kiểm tra đăng nhập...
+  </div>
+);
+
+const useCurrentUser = () =>
+  useQuery<AuthUser>({
+    queryKey: CURRENT_USER_QUERY_KEY,
+    queryFn: fetchCurrentUser,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
 
 // Mock Component cho trường hợp 404
 const PageNotFound = () => (
@@ -59,9 +94,48 @@ const BannedRoute = () => {
   );
 };
 
+const GuestLandingRoute = () => {
+  const { data: user, isLoading, isFetching, error } = useCurrentUser();
+  const authError = error as AuthRouteError | undefined;
+
+  if (user) return <Navigate to="/home" replace />;
+  if (authError?.status === 403) {
+    rememberBanInfo(authError.data);
+    return <Navigate to="/banned" replace />;
+  }
+  if (isLoading || isFetching) return <AuthLoadingScreen />;
+
+  return <Home_guest />;
+};
+
+const GuestOnlyRoute = ({ element }: { element: React.ReactNode }) => {
+  const { data: user, isLoading, isFetching, error } = useCurrentUser();
+  const authError = error as AuthRouteError | undefined;
+
+  if (user) return <Navigate to="/home" replace />;
+  if (authError?.status === 403) {
+    rememberBanInfo(authError.data);
+    return <Navigate to="/banned" replace />;
+  }
+  if (isLoading || isFetching) return <AuthLoadingScreen />;
+
+  return element;
+};
+
 // Protected Route Component
 const ProtectedRoute = ({ element }: { element: React.ReactNode }) => {
-  return isAuthenticated() ? element : <Navigate to="/login" replace />;
+  const { data: user, isLoading, isFetching, error } = useCurrentUser();
+  const authError = error as AuthRouteError | undefined;
+
+  if (user) return element;
+  if (authError?.status === 403) {
+    rememberBanInfo(authError.data);
+    return <Navigate to="/banned" replace />;
+  }
+  if (isLoading || isFetching) return <AuthLoadingScreen />;
+
+  localStorage.removeItem('token');
+  return <Navigate to="/login" replace />;
 };
 
 const AuthenticatedApp = () => {
@@ -72,49 +146,24 @@ const AuthenticatedApp = () => {
     // Initialize session start time inside useEffect to avoid impure function call during render
     sessionStartRef.current = Date.now();
 
-    const handleBeforeUnload = () => {
-      // Calculate session duration in seconds
+    const trackCurrentSession = () => {
       const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
-      
-      // Only track if duration is at least 5 seconds (to avoid accidental page refreshes)
-      if (durationSeconds >= 5) {
-        const token = localStorage.getItem('token');
-        if (token) {
-          // Use sendBeacon to ensure data is sent even if page is unloading
-          const payload = JSON.stringify({
-            durationSeconds,
-            page: window.location.pathname
-          });
-          const blob = new Blob([payload], { type: 'application/json' });
+      if (durationSeconds < 5 || !localStorage.getItem('token')) return;
 
-          navigator.sendBeacon(
-            'http://localhost:5000/api/auth/track-session',
-            blob
-          );
-        }
-      }
+      authApi.trackSessionBeacon({
+        durationSeconds,
+        page: window.location.pathname,
+      });
+    };
+
+    const handleBeforeUnload = () => {
+      trackCurrentSession();
     };
 
     const handlePageVisibilityChange = () => {
       // Send beacon when tab becomes hidden
       if (document.hidden) {
-        const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
-        
-        if (durationSeconds >= 5) {
-          const token = localStorage.getItem('token');
-          if (token) {
-            const payload = JSON.stringify({
-              durationSeconds,
-              page: window.location.pathname
-            });
-            const blob = new Blob([payload], { type: 'application/json' });
-
-            navigator.sendBeacon(
-              'http://localhost:5000/api/auth/track-session',
-              blob
-            );
-          }
-        }
+        trackCurrentSession();
         
         // Reset session start when tab becomes visible again
       } else {
@@ -134,11 +183,11 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       {/* Landing Page - Public */}
-      <Route path="/" element={<Home_guest />} />
+      <Route path="/" element={<GuestLandingRoute />} />
 
       {/* Login & Signup - Public Routes (không bọc trong Layout) */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
+      <Route path="/login" element={<GuestOnlyRoute element={<Login />} />} />
+      <Route path="/signup" element={<GuestOnlyRoute element={<Signup />} />} />
       <Route path="/banned" element={<BannedRoute />} />
 
       {/* Authenticated Routes bọc trong Layout (Sidebar + Header) */}
@@ -150,9 +199,9 @@ const AuthenticatedApp = () => {
         <Route path="/VideoWorkspace" element={<ProtectedRoute element={<VideoWorkspace />} />} />
         <Route path="/Vocabulary" element={<ProtectedRoute element={<Vocabulary />} />} />
         <Route path="/QuizPage" element={<ProtectedRoute element={<QuizPage />} />} />
-        <Route path="/Dashboard" element={<ProtectedRoute element={<Dashboard />} />} />
+        <Route path="/ExamLibrary" element={<ProtectedRoute element={<ExamLibrary />} />} />
+        <Route path="/ExamLibrary/:examId" element={<ProtectedRoute element={<ExamDetail />} />} />
         <Route path="/Dictionary" element={<ProtectedRoute element={<DictionaryPage />} />} />
-        <Route path="/AIChatTutor" element={<ProtectedRoute element={<AIChatTutor />} />} />
         <Route path="/Profile" element={<ProtectedRoute element={<Profile />} />} />
         <Route path="/AdminPanel" element={<ProtectedRoute element={<AdminPanel />} />} />
       </Route>
@@ -167,11 +216,14 @@ function App() {
   return (
     // QueryClientProvider là bắt buộc vì bạn dùng useQuery ở hầu hết các trang
     <QueryClientProvider client={queryClientInstance}>
-      <Router>
-        <AuthenticatedApp />
-      </Router>
-      {/* Toaster của Sonner để hiển thị thông báo "Đã lưu từ", "Đã xóa"... */}
-      <Toaster position="top-right" richColors closeButton />
+      <PlayerStoreProvider>
+        <Router>
+          <AuthenticatedApp />
+          <GlobalAudioPlayer />
+        </Router>
+        {/* Toaster của Sonner để hiển thị thông báo "Đã lưu từ", "Đã xóa"... */}
+        <Toaster position="top-right" richColors closeButton />
+      </PlayerStoreProvider>
     </QueryClientProvider>
   );
 }

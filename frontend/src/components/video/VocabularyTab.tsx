@@ -3,6 +3,10 @@ import { BookOpen, BookmarkPlus, Loader2, Volume2, X, ArrowLeft, SpellCheck2, La
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { ApiError } from '@/api/client';
+import { videoApi } from '@/api/video.api';
+import { LearningSaveModal } from '@/components/vocabulary-hub/LearningSaveModal';
+import type { FlashcardItem } from '@/components/vocabulary-hub/types';
 
 // Bảng màu JLPT
 const jlptBadgeColors: Record<string, string> = {
@@ -22,6 +26,38 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
   const [selectedVocab, setSelectedVocab] = useState<any | null>(null);
   const [selectedKanji, setSelectedKanji] = useState<any | null>(null);
   const [savingMap, setSavingMap] = useState<Record<string, boolean>>({});
+  const [saveTarget, setSaveTarget] = useState<FlashcardItem | null>(null);
+
+  const vocabToFlashcard = (vocab: any): FlashcardItem => ({
+    id: vocab._id || vocab.id || vocab.word,
+    item_type: 'vocab',
+    word: vocab.word,
+    reading: vocab.reading || '',
+    meaning_vi: vocab.meaning || vocab.meaning_vi || '',
+    meaning_en: vocab.meaning_en || '',
+    part_of_speech: vocab.pos || vocab.part_of_speech || '',
+    jlpt_level: vocab.jlpt_level || 'Unknown',
+    example_sentence: vocab.example_sentence || '',
+    example_meaning: vocab.example_meaning || '',
+  });
+
+  const kanjiToFlashcard = (kanji: any): FlashcardItem => {
+    const level = kanji.level ? String(kanji.level).replace(/^N/i, '') : '';
+
+    return {
+      id: kanji._id || kanji.id || kanji.kanji,
+      item_type: 'kanji',
+      word: kanji.kanji,
+      meaning_vi: kanji.mean || '',
+      mean: kanji.mean || '',
+      on: kanji.on || '',
+      kun: kanji.kun || '',
+      jlpt_level: level ? `N${level}` : undefined,
+      stroke_count: Number(kanji.stroke_count) || undefined,
+      detail: kanji.detail || '',
+      freq: Number(kanji.freq) || undefined,
+    };
+  };
 
   // 1. Logic lọc từ không phải tiếng Nhật (Chỉ lấy Hiragana, Katakana, Kanji)
   const isJapaneseWord = (word: string) => {
@@ -34,10 +70,12 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
   // 2. Logic Lưu từ vựng
   const handleSave = async (vocab: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    setSaveTarget(vocabToFlashcard(vocab));
+    return;
+
     setSavingMap(prev => ({ ...prev, [vocab.word]: true }));
     
     try {
-      const token = localStorage.getItem('token') || '';
       const payload = {
         word: vocab.word,
         reading: vocab.reading || '',
@@ -47,16 +85,14 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
         kanji_info: vocab.kanji_info || []
       };
 
-      const res = await fetch('http://localhost:5000/api/video/save-word', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (res.ok) toast.success(`Đã lưu "${vocab.word}" vào sổ tay!`);
-      else toast.info(data.message || 'Lỗi khi lưu.');
-    } catch (error) {
-      toast.error('Lỗi kết nối khi lưu!');
+      const data = await videoApi.saveWord<{ message?: string }>(payload);
+      toast.success(data.message || `Đã lưu "${vocab.word}" vào sổ tay!`);
+    } catch (error: any) {
+      if (error instanceof ApiError) {
+        toast.info(error.message || 'Lỗi khi lưu.');
+      } else {
+        toast.error('Lỗi kết nối khi lưu!');
+      }
     } finally {
       setSavingMap(prev => ({ ...prev, [vocab.word]: false }));
     }
@@ -83,7 +119,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
   };
 
   return (
-    <div className="bg-slate-50/50 rounded-[2rem] border border-slate-200 shadow-sm h-full p-4 md:p-6 overflow-y-auto custom-scrollbar min-h-[500px]">
+    <div className="bg-slate-50/50 rounded-[2rem] border border-slate-200 shadow-sm h-full p-4 md:p-6 overflow-y-auto custom-scrollbar min-h-[500px] dark:border-slate-700 dark:bg-slate-950/70">
       
       {/* ======================================================== */}
       {/* 1. DANH SÁCH CARD TỪ VỰNG */}
@@ -99,7 +135,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
             <div 
               key={index} 
               onClick={() => setSelectedVocab(vocab)}
-              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg hover:border-violet-300 hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between"
+              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-lg hover:border-violet-300 hover:-translate-y-1 transition-all duration-300 group cursor-pointer flex flex-col justify-between dark:border-slate-700 dark:bg-slate-900 dark:hover:border-violet-500"
             >
               <div>
                 <div className="flex justify-between items-start mb-3 border-b border-slate-100 pb-3">
@@ -143,37 +179,46 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
       {/* ======================================================== */}
       {selectedVocab && (
         <div 
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 transition-all"
+          className="fixed inset-0 z-[99] flex items-center justify-center p-4 bg-slate-900/40 transition-all dark:bg-slate-950/70"
           onClick={closeModal}
         >
           <div 
-            className="w-full max-w-5xl bg-white shadow-2xl rounded-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-[85vh] md:h-[70vh] overscroll-contain"
+            className="w-full max-w-5xl bg-white shadow-2xl rounded-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col md:flex-row h-[85vh] md:h-[70vh] overscroll-contain dark:border dark:border-slate-800 dark:bg-slate-950"
             onClick={(e) => e.stopPropagation()} 
           >
             
             {/* --- CỘT TRÁI: NỘI DUNG CHÍNH (Từ vựng hoặc Kanji chi tiết) --- */}
-            <div className="flex-1 flex flex-col relative bg-[#fcfcfd]">
+            <div className="flex-1 flex flex-col relative bg-[#fcfcfd] dark:bg-slate-950">
               {/* Nút tắt góc trái (Mobile) hoặc không gian trống */}
-              <button onClick={closeModal} className="md:hidden absolute top-4 right-4 p-2 bg-slate-100 rounded-full z-10">
-                <X className="w-5 h-5 text-slate-500" />
+              <button onClick={closeModal} className="md:hidden absolute top-4 right-4 p-2 bg-slate-100 rounded-full z-10 dark:bg-slate-800">
+                <X className="w-5 h-5 text-slate-500 dark:text-slate-200" />
               </button>
 
               {selectedKanji ? (
                 // VIEW 2: CHI TIẾT KANJI
                 <div className="flex-1 flex flex-col h-full overflow-hidden overscroll-contain animate-in slide-in-from-right-4 duration-300">
-                  <div className="p-6 bg-gradient-to-br from-rose-50 to-pink-50 border-b border-rose-100 shrink-0">
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedKanji(null)} className="mb-4 text-rose-500 hover:text-rose-700 hover:bg-rose-100/50 -ml-2">
+                  <div className="p-6 bg-gradient-to-br from-rose-50 to-pink-50 border-b border-rose-100 shrink-0 dark:from-rose-950/50 dark:to-pink-950/40 dark:border-rose-900/60">
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedKanji(null)} className="mb-4 text-rose-500 hover:text-rose-700 hover:bg-rose-100/50 -ml-2 dark:text-rose-300 dark:hover:bg-rose-900/40 dark:hover:text-rose-100">
                       <ArrowLeft className="w-4 h-4 mr-1" /> Quay lại từ vựng
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setSaveTarget(kanjiToFlashcard(selectedKanji))}
+                      className="mb-4 ml-2 rounded-xl bg-rose-600 font-bold text-white hover:bg-rose-700"
+                    >
+                      <BookmarkPlus className="mr-1.5 h-4 w-4" />
+                      Lưu Kanji
                     </Button>
                     <div className="flex items-end gap-6">
                       <div className="text-8xl md:text-[120px] font-black text-rose-600 leading-none drop-shadow-sm select-none">
                         {selectedKanji.kanji}
                       </div>
                       <div className="pb-2">
-                        <h2 className="text-3xl font-black text-slate-800 mb-2 tracking-tight">{selectedKanji.mean}</h2>
+                        <h2 className="text-3xl font-black text-slate-800 mb-2 tracking-tight dark:text-slate-50">{selectedKanji.mean}</h2>
                         <div className="flex gap-2">
                           <Badge className="bg-rose-100 text-rose-700 border-none font-bold">{selectedKanji.level ? `N${selectedKanji.level}` : 'JLPT Level Unknown'}</Badge>
-                          <Badge variant="outline" className="bg-white text-slate-600 border-slate-200 font-bold">{selectedKanji.stroke_count} nét</Badge>
+                          <Badge variant="outline" className="bg-white text-slate-600 border-slate-200 font-bold dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{selectedKanji.stroke_count} nét</Badge>
                         </div>
                       </div>
                     </div>
@@ -182,13 +227,13 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                   <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8">
                     {/* Kun/On */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         <p className="text-xs font-bold text-pink-400 uppercase tracking-widest mb-3 flex items-center"><Volume2 className="w-3.5 h-3.5 mr-1.5"/> Âm KUN (Âm Nhật)</p>
-                        <p className="text-lg font-medium text-slate-700">{selectedKanji.kun || 'Không có'}</p>
+                        <p className="text-lg font-medium text-slate-700 dark:text-slate-200">{selectedKanji.kun || 'Không có'}</p>
                       </div>
-                      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         <p className="text-xs font-bold text-pink-400 uppercase tracking-widest mb-3 flex items-center"><Volume2 className="w-3.5 h-3.5 mr-1.5"/> Âm ON (Âm Hán)</p>
-                        <p className="text-lg font-medium text-slate-700">{selectedKanji.on || 'Không có'}</p>
+                        <p className="text-lg font-medium text-slate-700 dark:text-slate-200">{selectedKanji.on || 'Không có'}</p>
                       </div>
                     </div>
 
@@ -197,18 +242,18 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                       <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center">
                         <SpellCheck2 className="w-4 h-4 mr-2"/> Ý nghĩa chi tiết
                       </p>
-                      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+                      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                         {formatKanjiDetail(selectedKanji.detail).length > 0 ? (
                           <ul className="space-y-4">
                             {formatKanjiDetail(selectedKanji.detail).map((meaning, idx) => (
-                              <li key={idx} className="flex gap-3 text-slate-700 text-lg">
+                              <li key={idx} className="flex gap-3 text-slate-700 text-lg dark:text-slate-200">
                                 <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">{idx + 1}</span>
                                 <span className="font-medium leading-relaxed">{meaning}</span>
                               </li>
                             ))}
                           </ul>
                         ) : (
-                          <p className="text-slate-400 italic">Không có giải nghĩa chi tiết.</p>
+                          <p className="text-slate-400 italic dark:text-slate-500">Không có giải nghĩa chi tiết.</p>
                         )}
                       </div>
                     </div>
@@ -218,14 +263,14 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
               ) : (
                 // VIEW 1: CHI TIẾT TỪ VỰNG
                 <div className="flex-1 flex flex-col h-full overflow-hidden animate-in slide-in-from-left-4 duration-300 overscroll-contain">
-                  <div className="p-8 bg-violet-50/50 border-b border-violet-100 shrink-0">
+                  <div className="p-8 bg-violet-50/50 border-b border-violet-100 shrink-0 dark:border-violet-900/50 dark:bg-violet-950/30">
                     <p className="text-violet-500 font-bold tracking-widest mb-2 flex items-center gap-2">
                       {selectedVocab.reading || '---'}
-                      <button onClick={() => playAudio(selectedVocab.word)} className="text-violet-400 hover:text-violet-700 bg-violet-100 hover:bg-violet-200 p-1.5 rounded-full transition-colors"><Volume2 className="w-4 h-4"/></button>
+                      <button onClick={() => playAudio(selectedVocab.word)} className="text-violet-400 hover:text-violet-700 bg-violet-100 hover:bg-violet-200 p-1.5 rounded-full transition-colors dark:bg-violet-900/60 dark:text-violet-200 dark:hover:bg-violet-800 dark:hover:text-white"><Volume2 className="w-4 h-4"/></button>
                     </p>
-                    <h2 className="text-6xl font-black text-slate-800 tracking-tight mb-4">{selectedVocab.word}</h2>
+                    <h2 className="text-6xl font-black text-slate-800 tracking-tight mb-4 dark:text-slate-50">{selectedVocab.word}</h2>
                     <div className="flex gap-2">
-                      {selectedVocab.pos && <Badge className="bg-violet-100 text-violet-700 hover:bg-violet-200 border-none font-bold text-sm px-3">{selectedVocab.pos}</Badge>}
+                      {selectedVocab.pos && <Badge className="bg-violet-100 text-violet-700 hover:bg-violet-200 border-none font-bold text-sm px-3 dark:bg-violet-900 dark:text-violet-100 dark:hover:bg-violet-800">{selectedVocab.pos}</Badge>}
                       {selectedVocab.jlpt_level && selectedVocab.jlpt_level !== 'Unknown' && (
                         <Badge className={`${jlptBadgeColors[selectedVocab.jlpt_level]} border font-bold px-3`}>{selectedVocab.jlpt_level}</Badge>
                       )}
@@ -241,24 +286,24 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                         {selectedVocab.meaning.split('\n').filter(Boolean).map((line: string, idx: number) => {
                           const match = line.match(/^([0-9]+\.)(.*)/);
                           if (match) return (
-                            <li key={idx} className="flex gap-3 text-lg text-slate-700">
+                            <li key={idx} className="flex gap-3 text-lg text-slate-700 dark:text-slate-200">
                               <span className="font-black text-violet-500">{match[1]}</span>
                               <span className="font-medium">{match[2]}</span>
                             </li>
                           );
                           return (
-                            <li key={idx} className="text-lg font-medium text-slate-700 relative pl-6 before:absolute before:left-0 before:top-2.5 before:w-2 before:h-2 before:bg-violet-300 before:rounded-full">
+                            <li key={idx} className="text-lg font-medium text-slate-700 relative pl-6 before:absolute before:left-0 before:top-2.5 before:w-2 before:h-2 before:bg-violet-300 before:rounded-full dark:text-slate-200 dark:before:bg-violet-400">
                               {line}
                             </li>
                           );
                         })}
                       </ul>
                     ) : (
-                      <p className="text-slate-400 italic">Đang cập nhật...</p>
+                      <p className="text-slate-400 italic dark:text-slate-500">Đang cập nhật...</p>
                     )}
                   </div>
                   
-                  <div className="p-6 border-t border-slate-100 bg-white shrink-0">
+                  <div className="p-6 border-t border-slate-100 bg-white shrink-0 dark:border-slate-800 dark:bg-slate-950">
                     <Button onClick={(e) => handleSave(selectedVocab, e)} disabled={savingMap[selectedVocab.word]} className="w-full h-12 text-base font-bold rounded-xl bg-violet-600 hover:bg-violet-700 text-white">
                       {savingMap[selectedVocab.word] ? <Loader2 className="w-5 h-5 animate-spin mr-2"/> : <BookmarkPlus className="w-5 h-5 mr-2" />}
                       Lưu từ vựng này
@@ -269,12 +314,12 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
             </div>
 
             {/* --- CỘT PHẢI: SIDEBAR KANJI --- */}
-            <div className="w-full md:w-80 bg-slate-50 border-l border-slate-200 flex flex-col shrink-0">
-              <div className="p-4 border-b border-slate-200 bg-white flex justify-between items-center shrink-0">
-                <h3 className="font-bold text-slate-700 uppercase tracking-wider text-xs flex items-center gap-2">
+            <div className="w-full md:w-80 bg-slate-50 border-l border-slate-200 flex flex-col shrink-0 dark:border-slate-800 dark:bg-slate-900">
+              <div className="p-4 border-b border-slate-200 bg-white flex justify-between items-center shrink-0 dark:border-slate-800 dark:bg-slate-950">
+                <h3 className="font-bold text-slate-700 uppercase tracking-wider text-xs flex items-center gap-2 dark:text-slate-200">
                   <BookOpen className="w-4 h-4 text-rose-400"/> Thành phần Hán tự
                 </h3>
-                <button onClick={closeModal} className="hidden md:block p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors">
+                <button onClick={closeModal} className="hidden md:block p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors dark:hover:bg-slate-800 dark:hover:text-slate-100">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -288,7 +333,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                       className={`p-4 rounded-2xl border cursor-pointer transition-all duration-200 flex gap-4 items-center ${
                         selectedKanji?.kanji === kanji.kanji 
                           ? 'bg-rose-500 border-rose-600 text-white shadow-md scale-[1.02]' 
-                          : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-md text-slate-700'
+                          : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-md text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-rose-500'
                       }`}
                     >
                       <div className={`text-4xl font-black shrink-0 ${selectedKanji?.kanji === kanji.kanji ? 'text-white' : 'text-rose-500'}`}>
@@ -296,7 +341,7 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
                       </div>
                       <div>
                         <p className="font-bold text-lg">{kanji.mean}</p>
-                        <p className={`text-xs mt-1 ${selectedKanji?.kanji === kanji.kanji ? 'text-rose-100' : 'text-slate-500'}`}>
+                        <p className={`text-xs mt-1 ${selectedKanji?.kanji === kanji.kanji ? 'text-rose-100' : 'text-slate-500 dark:text-slate-400'}`}>
                           {kanji.level ? `N${kanji.level}` : 'JLPT Level Unknown'} • {kanji.stroke_count} nét
                         </p>
                       </div>
@@ -313,6 +358,11 @@ export default function VocabularyTab({ vocabList }: VocabularyTabProps) {
           </div>
         </div>
       )}
+
+      <LearningSaveModal
+        item={saveTarget}
+        onClose={() => setSaveTarget(null)}
+      />
     </div>
   );
 }

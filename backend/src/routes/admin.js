@@ -2,6 +2,7 @@ import express from 'express';
 import { authMiddleware, restrictTo } from '../middleware/auth.js';
 import Video from '../models/Video.js';
 import User from '../models/User.js';
+import Exam from '../models/Exam.js';
 import { sendVideoRejectedEmail } from '../services/emailService.js';
 import { banUser, unbanUser } from '../controllers/adminController.js';
 
@@ -36,6 +37,7 @@ router.get('/videos', async (req, res) => {
     const videos = await Video.find(filter)
       .select('-vocab_list -script.vocabulary -script.text') 
       .sort({ created_date: -1 })
+      .allowDiskUse(true)
       .skip(skip)
       .limit(limit)
       .populate('creator', 'fullName email')
@@ -241,13 +243,14 @@ router.patch('/users/:id/unban', unbanUser);
 // GET /api/admin/stats - Thống kê tổng quan
 router.get('/stats', async (req, res) => {
   try {
-    const [totalVideos, totalUsers, totalAdmins] = await Promise.all([
+    const [totalVideos, totalUsers, totalAdmins, totalExams] = await Promise.all([
       Video.countDocuments(),
       User.countDocuments({ role: 'user' }),
-      User.countDocuments({ role: 'admin' })
+      User.countDocuments({ role: 'admin' }),
+      Exam.countDocuments(),
     ]);
 
-    res.json({ totalVideos, totalUsers, totalAdmins });
+    res.json({ totalVideos, totalUsers, totalAdmins, totalExams });
   } catch (error) {
     console.error('[Admin] Error fetching stats:', error);
     res.status(500).json({ error: 'Lỗi thống kê' });

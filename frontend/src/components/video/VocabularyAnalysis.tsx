@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { BookmarkPlus, Loader2, BookOpen } from 'lucide-react'; // Thêm BookOpen cho icon tiêu đề
 import { toast } from 'sonner';
+import { videoApi } from '@/api/video.api';
+import { LearningSaveModal } from '@/components/vocabulary-hub/LearningSaveModal';
+import type { FlashcardItem } from '@/components/vocabulary-hub/types';
 
 // Định nghĩa cấu trúc của một từ vựng hiển thị
 export interface VocabItem {
@@ -13,7 +16,6 @@ export interface VocabItem {
 
 interface VocabularyAnalysisProps {
   vocabulary: VocabItem[];
-  // THÊM PROP NÀY ĐỂ KÍCH HOẠT MODAL Ở SCRIPT PANEL
   onWordClick?: (vocab: any) => void; 
 }
 
@@ -49,8 +51,22 @@ const saveVocabToStorage = (vocabList: any[]) => {
 
 export default function VocabularyAnalysis({ vocabulary, onWordClick }: VocabularyAnalysisProps) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [saveTarget, setSaveTarget] = useState<FlashcardItem | null>(null);
+
+  const vocabToFlashcard = (vocab: VocabItem): FlashcardItem => ({
+    id: vocab.word,
+    item_type: 'vocab',
+    word: vocab.word,
+    reading: vocab.reading || '',
+    meaning_vi: vocab.meaning || '',
+    part_of_speech: vocab.pos || '',
+    jlpt_level: 'Unknown',
+  });
 
   const saveWord = async (vocab: VocabItem) => {
+    setSaveTarget(vocabToFlashcard(vocab));
+    return;
+
     setSaving((prev) => ({ ...prev, [vocab.word]: true }));
 
     try {
@@ -86,25 +102,7 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
         example_meaning: mockResult.example_meaning || ''
       };
 
-      const response = await fetch('http://localhost:5000/api/video/save-word', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        credentials: 'omit',
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        if (data.message === 'Từ này đã có trong sổ tay') {
-          toast.info(data.message);
-        } else {
-          toast.error(data.error || 'Lỗi khi lưu từ vựng!');
-        }
-        return;
-      }
+      const data = await videoApi.saveWord<{ message?: string; vocab?: any }>(payload);
 
       const savedFromServer = data?.vocab || {};
       const newSavedVocab = {
@@ -136,9 +134,14 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
       saveVocabToStorage(currentSavedList);
       toast.success(data.message || `Đã lưu từ "${vocab.word}" vào Database`);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Lỗi khi lưu từ vựng:", error);
-      toast.error(`Không thể lưu từ "${vocab.word}"`);
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'Từ này đã có trong sổ tay') {
+        toast.info(message);
+      } else {
+        toast.error(`Không thể lưu từ "${vocab.word}"`);
+      }
     } finally {
       // Tắt trạng thái loading
       setSaving((prev) => ({ ...prev, [vocab.word]: false }));
@@ -187,7 +190,7 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
                   {v.reading && (
                     <span
                       title={v.reading}
-                      className="inline-block max-w-[120px] truncate align-middle text-[14px] font-bold text-emerald-700 border border-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-md"
+                      className="inline-block max-w-[120px] truncate align-middle text-[14px] font-bold text-emerald-900 border border-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-md"
                     >
                       {v.reading}
                     </span>
@@ -232,6 +235,11 @@ export default function VocabularyAnalysis({ vocabulary, onWordClick }: Vocabula
           </div>
         ))}
       </div>
+
+      <LearningSaveModal
+        item={saveTarget}
+        onClose={() => setSaveTarget(null)}
+      />
     </div>
   );
 }

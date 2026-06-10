@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Upload, ArrowRight, Youtube, PlayCircle, BookOpen, TrendingUp, Shield } from 'lucide-react';
 import animeLogo from '@/assets/demon_slayer.gif';
+import { authApi } from '@/api/auth.api';
 
 interface CompactBannerProps {
   totalVideos?: number;
@@ -17,19 +18,7 @@ interface CurrentUser {
 }
 
 const fetchCurrentUser = async (): Promise<CurrentUser> => {
-  const response = await fetch('http://localhost:5000/api/auth/me', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch current user');
-  }
-
-  return response.json();
+  return authApi.getMe<CurrentUser>();
 };
 
 export default function CompactBanner({ 
@@ -191,19 +180,6 @@ export default function CompactBanner({
               </div>
 
               <div className="flex gap-2 w-full min-w-0">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="
-                    flex-1 min-w-0 h-11 rounded-xl
-                    text-slate-600 border-slate-200
-                    hover:bg-slate-50 hover:text-teal-600 px-2
-                  "
-                >
-                  <Upload className="w-4 h-4 sm:mr-2 shrink-0" />
-                  <span className="hidden sm:inline truncate">Tải File</span>
-                </Button>
-
                 <Button
                   type="submit"
                   className="

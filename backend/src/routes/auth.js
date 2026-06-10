@@ -153,6 +153,7 @@ router.put('/update-profile', authMiddleware, handleAvatarUpload, async (req, re
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
+    const isAdmin = req.user.role === 'admin';
     const { fullName, jlptLevel, bio, phone, location } = req.body;
     let profilePicture = req.body.profilePicture; // Fallback in case of string
 
@@ -179,7 +180,7 @@ router.put('/update-profile', authMiddleware, handleAvatarUpload, async (req, re
       req.user.id,
       {
         fullName: fullName || undefined,
-        jlptLevel: jlptLevel || undefined,
+        jlptLevel: !isAdmin && jlptLevel ? jlptLevel : undefined,
         bio: bio !== undefined ? bio : undefined,
         profilePicture: profilePicture !== undefined ? profilePicture : undefined,
         phone: phone || undefined,
@@ -206,6 +207,43 @@ router.put('/update-profile', authMiddleware, handleAvatarUpload, async (req, re
   } catch (error) {
     console.error('Error updating profile:', error);
     res.status(500).json({ error: 'Lỗi cập nhật profile' });
+  }
+});
+
+// Change current user's password
+router.put('/change-password', authMiddleware, async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Vui long nhap mat khau hien tai va mat khau moi' });
+    }
+
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ error: 'Mat khau moi phai co it nhat 6 ky tu' });
+    }
+
+    const user = await User.findById(req.user.id).select('+password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Mat khau hien tai khong dung' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ success: true, message: 'Doi mat khau thanh cong' });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Loi doi mat khau' });
   }
 });
 

@@ -49,12 +49,12 @@ export default function SubtitleOverlay({
     px-1 py-0.5
     rounded-md
     cursor-pointer
-    text-slate-100
+    text-slate-800
     underline decoration-emerald-400 decoration-2 underline-offset-[5px]
     transition-colors duration-150
-    hover:bg-emerald-400/20
-    hover:text-emerald-200
-    hover:decoration-emerald-300
+    hover:bg-emerald-50
+    hover:text-emerald-700
+    hover:decoration-emerald-500
   `;
 
   // 🚀 HÀM PHỤ: Bóc chữ Kanji ra khỏi thẻ HTML để gọi hàm tra từ điển
@@ -191,8 +191,8 @@ export default function SubtitleOverlay({
       <div
         className="
           w-full h-full
-          border border-white/10
-          bg-slate-800
+          border border-slate-200
+          bg-white
           px-4 py-4 md:px-6 md:py-3
           text-center
           shadow-sm
@@ -206,7 +206,7 @@ export default function SubtitleOverlay({
             font-semibold
             leading-relaxed
             tracking-wide
-            text-slate-100
+            text-slate-800
             break-words
           "
         >
@@ -222,7 +222,7 @@ export default function SubtitleOverlay({
               text-sm md:text-lg
               font-medium
               leading-relaxed
-              text-slate-300
+              text-slate-600
               wrap-anywhere
             "
           >

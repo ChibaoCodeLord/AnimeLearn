@@ -1,7 +1,7 @@
-import React from 'react';
 import type { WordData } from './types';
 
 export default function ExampleSentence({ word }: { word: WordData }) {
+  void word;
   // Tùy thuộc vào Database của bạn có chứa ví dụ hay không. 
   // Dưới đây là UI chuẩn để hiển thị ví dụ nếu có data.
   return (

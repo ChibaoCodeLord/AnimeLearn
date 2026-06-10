@@ -22,9 +22,7 @@ const VideoSchema = new mongoose.Schema({
     required: true
   },
   
-  // ==========================================
   // THÊM MỚI: KHO CHỨA TỪ VỰNG KÈM KANJI ĐÃ XỬ LÝ
-  // ==========================================
   vocab_list: [{
     word: String,
     reading: String,
@@ -32,7 +30,6 @@ const VideoSchema = new mongoose.Schema({
     pos: String,
     kanji_info: { type: Array, default: [] } // Chứa full object thông tin Kanji
   }],
-  // ==========================================
 
   creator: {
     type: mongoose.Schema.Types.ObjectId,
@@ -61,17 +58,24 @@ const VideoSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  // 🚀 TRƯỜNG MỚI 1: Thời lượng video (Lưu bằng tổng số giây - ví dụ: 750 giây)
+  // Thời lượng video (Lưu bằng tổng số giây - ví dụ: 750 giây)
   duration: {
     type: Number,
     default: 0
   },
-  // 🚀 TRƯỜNG MỚI 2: Chủ đề của video (Ví dụ: Anime, Podcast, Tin tức, Kinh doanh...)
+  // Chủ đề của video (Ví dụ: Anime, Podcast, Tin tức, Kinh doanh...)
   video_theme: {
     type: String,
     default: 'Khác',
     trim: true
   },
 });
+
+VideoSchema.index({ status: 1, visibility: 1, created_date: -1 });
+VideoSchema.index({ status: 1, visibility: 1, jlpt_level: 1, created_date: -1 });
+VideoSchema.index({ status: 1, created_date: -1 });
+VideoSchema.index({ creator: 1, created_date: -1 });
+VideoSchema.index({ created_date: -1 });
+VideoSchema.index({ jlpt_level: 1, created_date: -1 });
 
 export default mongoose.model('Video', VideoSchema);

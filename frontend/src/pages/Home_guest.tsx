@@ -7,28 +7,23 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import moment from 'moment'
 import { FaBook, FaCheckCircle, FaGamepad } from 'react-icons/fa'
+import { videoApi } from '@/api/video.api'
+import { getYouTubeVideoId } from '@/lib/youtube'
 
 // Interfaces
 interface VideoItem {
-  id: string;
+  id?: string;
+  _id?: string;
   title: string;
-  created_date: string;
+  created_date?: string;
+  createdAt?: string;
   jlpt_level?: string;
   youtube_id?: string;
+  youtubeUrl?: string;
+  youtube_url?: string;
+  thumbnailUrl?: string;
+  thumbnail_url?: string;
 }
-
-// Mock Data
-const mockVideos: VideoItem[] = [
-  { id: 'vid1', title: 'My Hero Academia Final Season Opening Cover', created_date: '2026-03-13T10:00:00Z', jlpt_level: 'N3', youtube_id: 'Y0MZQMQrOLU' },
-  { id: 'vid2', title: '呪術廻戦 懐玉・玉折(過去編) [青のすみか/キタニタツヤ]', created_date: '2026-03-12T15:30:00Z', jlpt_level: 'N4', youtube_id: 'ED1zGslwM8o' },
-  { id: 'vid3', title: 'Attack on Titan - Advanced Grammar & Expressions N2', created_date: '2026-03-11T09:00:00Z', jlpt_level: 'N2', youtube_id: 'd6qCbdXqsOs' },
-];
-
-// Mock API
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-const mockApi = {
-  getVideos: async () => { await delay(800); return mockVideos; },
-};
 function Header() {
   const navigate = useNavigate()
   
@@ -43,18 +38,6 @@ function Header() {
             <span className="font-bold text-lg">AnimeLearn</span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-8">
-            <a href="#" className="text-sm text-gray-700 hover:text-gray-900">
-              Courses
-            </a>
-            <a href="#" className="text-sm text-gray-700 hover:text-gray-900">
-              Pricing
-            </a>
-            <a href="#" className="text-sm text-gray-700 hover:text-gray-900">
-              About
-            </a>
-          </nav>
-
           <div className="flex items-center gap-3">
             <Button variant="ghost" className="text-sm" onClick={() => navigate('/login')}>
               Login
@@ -67,12 +50,21 @@ function Header() {
       </div>
     </header>
   )
-}
+} 
 
-// Hero Component
 function Hero() {
-  const navigate = useNavigate()
-  
+  const { data: responseData, isLoading } = useQuery({
+    queryKey: ['home-hero-video'],
+    queryFn: () => videoApi.getPublicVideos<{ data?: VideoItem[] } | VideoItem[]>({ limit: 1, sort: '-views_count' }),
+  });
+
+  const videos = Array.isArray(responseData) ? responseData : responseData?.data || [];
+  const topVideo = videos[0];
+
+  const ytbUrl = topVideo?.youtubeUrl || topVideo?.youtube_url;
+  const ytbId = topVideo?.youtube_id || (ytbUrl ? getYouTubeVideoId(ytbUrl) : 'XMeQeIG_rQg');
+  const title = topVideo?.title;
+
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
       <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -91,52 +83,40 @@ function Hero() {
             <br />
             <span className="text-emerald-600">Favorite Anime</span>
           </h1>
-
-          <p className="text-lg text-gray-600 mb-8 leading-relaxed">
-            Join 50,000+ learners who turned their passion into fluency with our immersive video-based curriculum.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white text-base px-8 py-6" onClick={() => navigate('/signup')}>
-              Start Free Lesson
-            </Button>
-            <Button 
-              variant="outline"
-              className="text-base px-8 py-6 border-gray-300 hover:bg-gray-50"
-              onClick={() => navigate('/login')}
-            >
-              Browse Library
-            </Button>
-          </div>
         </div>
 
         <div className="relative">
           <div className="bg-gray-900 rounded-lg overflow-hidden shadow-2xl">
             <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-900 relative">
-              <iframe
-                width="100%"
-                height="100%"
-                src="https://www.youtube.com/embed/XMeQeIG_rQg"
-                title="Anime Lessons"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="absolute inset-0"
-              ></iframe>
+              {isLoading ? (
+                <Skeleton className="absolute inset-0" />
+              ) : (
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src={`https://www.youtube.com/embed/${ytbId}`}
+                  title={title}
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="absolute inset-0"
+                ></iframe>
+              )}
 
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-r from-gray-900/98 to-transparent backdrop-blur p-6 z-10">
-                <div className="flex items-center gap-4">
-                  <button className="flex-shrink-0 w-14 h-14 bg-white rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shadow-lg">
-                    <svg className="w-6 h-6 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                    </svg>
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-emerald-400 text-xs font-bold uppercase tracking-wide">NOW STREAMING</p>
-                    <h3 className="text-white font-bold text-lg leading-tight truncate">Black Clover Opening 10 | Black Catcher</h3>
+              {!isLoading && (
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-r from-gray-900/98 to-transparent backdrop-blur p-6 z-10 pointer-events-none">
+                  <div className="flex items-center gap-4">
+                    <button className="flex-shrink-0 w-14 h-14 bg-white rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shadow-lg pointer-events-auto">
+                      <svg className="w-6 h-6 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                      </svg>
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-white font-bold text-lg leading-tight truncate">{title}</h3>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -147,11 +127,12 @@ function Hero() {
 
 // Trending Lessons Component
 function TrendingLessons() {
-  const { data: videos = [], isLoading: videoLoading } = useQuery<VideoItem[]>({
+  const { data: responseData, isLoading: videoLoading } = useQuery({
     queryKey: ['home-trending-videos'],
-    queryFn: mockApi.getVideos,
-    initialData: [],
+    queryFn: () => videoApi.getPublicVideos<{ data?: VideoItem[] } | VideoItem[]>({ limit: 3, sort: '-likes_count' }),
   });
+
+  const videos = Array.isArray(responseData) ? responseData : responseData?.data || [];
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -181,24 +162,36 @@ function TrendingLessons() {
       ) : (
         <div className="grid md:grid-cols-3 gap-6">
           {videos.slice(0, 3).map((video) => {
+            const videoId = video.id || video._id || Math.random().toString();
+            const ytbUrl = video.youtubeUrl || video.youtube_url;
+            const ytbId = video.youtube_id || getYouTubeVideoId(ytbUrl);
+            const thumbUrl = video.thumbnailUrl || video.thumbnail_url || (ytbId ? `https://img.youtube.com/vi/${ytbId}/hqdefault.jpg` : '');
+            const createdDate = video.created_date || video.createdAt || new Date().toISOString();
+            
             return (
               <Card 
-                key={video.id}
+                key={videoId}
                 className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group border-0 flex flex-col h-full"
               >
                 <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-900 relative overflow-hidden">
-                  {video.youtube_id && (
+                  {thumbUrl ? (
+                    <img
+                      src={thumbUrl}
+                      alt={video.title}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  ) : ytbId ? (
                     <iframe
                       width="100%"
                       height="100%"
-                      src={`https://www.youtube.com/embed/${video.youtube_id}`}
+                      src={`https://www.youtube.com/embed/${ytbId}`}
                       title={video.title}
                       frameBorder="0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                       className="absolute inset-0"
                     ></iframe>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="p-6 flex-1 flex flex-col justify-between">
@@ -215,7 +208,7 @@ function TrendingLessons() {
                     </div>
                   </div>
                   <p className="text-gray-600 text-sm mt-2">
-                    {moment(video.created_date).fromNow()}
+                    {moment(createdDate).fromNow()}
                   </p>
                 </div>
               </Card>
@@ -272,102 +265,6 @@ function WhyLearn() {
             </div>
           )
         })}
-      </div>
-    </section>
-  )
-}
-
-// Choose Path Component
-function ChoosePath() {
-  const paths = [
-    {
-      id: 1,
-      level: 'Beginner (N5-N4)',
-      description: 'Start from zero. Learn Hiragana, Katakana, and basic survival phrases using slice-of-the-anime.',
-      lessons: '240+'
-    },
-    {
-      id: 2,
-      level: 'Intermediate (N3-N2)',
-      description: 'Bridge the gap. Dive into complex grammar and thousands of Kanji through iconic scenes.',
-      lessons: '180+'
-    },
-    {
-      id: 3,
-      level: 'Advanced (N1)',
-      description: 'Master the nuances. Study political drama and philosophical dialogue for near-native comprehension.',
-      lessons: '95+'
-    }
-  ]
-
-  return (
-    <section className="bg-gray-100 py-16">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-12">Choose Your Path</h2>
-
-        <div className="space-y-4">
-          {paths.map((path) => (
-            <Card
-              key={path.id}
-              className="p-8 border-l-4 border-l-emerald-600 bg-white hover:shadow-md transition-shadow cursor-pointer group"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">
-                    {path.level}
-                  </h3>
-                  <p className="text-gray-600 text-sm leading-relaxed">
-                    {path.description}
-                  </p>
-                </div>
-                <div className="text-right ml-8 flex items-center gap-4 shrink-0">
-                  <div>
-                    <p className="text-3xl font-bold text-emerald-700 mb-1">
-                      {path.lessons}
-                    </p>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">
-                      Lessons Available
-                    </p>
-                  </div>
-                  <button className="text-emerald-600 hover:text-emerald-700 transition-colors">
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// CTA Section Component
-function CTASection() {
-  const navigate = useNavigate()
-  
-  return (
-    <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-      <div className="bg-emerald-700 rounded-3xl p-12 text-center text-white">
-        <h2 className="text-4xl font-bold mb-4">
-          Ready to start your journey?
-        </h2>
-        <p className="text-lg mb-8 text-emerald-50">
-          Stop watching with subtitles. Start living the language. Join thousands of fans today.
-        </p>
-        
-        <Button 
-          className="bg-white hover:bg-gray-100 text-emerald-700 font-semibold px-8 py-3 text-base rounded-full"
-          onClick={() => navigate('/signup')}
-        >
-          Sign Up Now
-        </Button>
-
-        <p className="mt-6 text-sm text-emerald-100">
-          7-day free trial • No credit card required
-        </p>
       </div>
     </section>
   )
@@ -442,8 +339,6 @@ export default function Home() {
       <Hero />
       <TrendingLessons />
       <WhyLearn />
-      <ChoosePath />
-      <CTASection />
       <Footer />
     </main>
   )

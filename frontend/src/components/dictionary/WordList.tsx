@@ -39,86 +39,144 @@ export default function WordList({
   }
 
   return (
-    // Khóa khung ngoài cùng
-    <div className="flex flex-col h-[70vh] w-full bg-slate-50 overflow-hidden overscroll-contain">
-      {/* --- PHẦN MỚI: HIỂN THỊ KANJI Ở ĐẦU DANH SÁCH --- */}
-        {kanjiResults.length > 0 && (
-            <div className="p-5 border-b border-slate-200 bg-rose-50/30">
-            <h3 className="text-[10px] font-black text-rose-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                <Layers className="w-3.5 h-3.5" /> Hán tự liên quan
-            </h3>
-            <div className="flex flex-wrap gap-2">
-                {kanjiResults.map((k, i) => (
-                <button 
-                    key={i} 
-                    onClick={() => onOpenKanji?.(k)}
-                    className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-rose-500 text-rose-600 hover:text-white rounded-xl transition-all border border-rose-100 shadow-sm group"
-                >
-                    <span className="text-xl font-black group-hover:scale-110 transition-transform">{k.kanji}</span>
-                    <div className="flex flex-col items-start leading-none">
-                    <span className="text-[10px] font-bold uppercase">{k.mean}</span>
-                    <span className="text-[8px] opacity-60 font-bold">N{k.level}</span>
-                    </div>
-                </button>
-                ))}
-            </div>
-            </div>
-        )}
-      {/* Cho phép cuộn phần ruột */}
-      <div className="flex-1 overflow-y-scroll custom-scrollbar">
-        <ul className="flex flex-col">
-          {searchResults.map((word, index) => {
-            const isSelected = selectedWord?.id === word.id || selectedWord?._id === word._id;
-            const isLast = searchResults.length === index + 1;
+  <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-slate-50">
+    {kanjiResults.length > 0 && (
+      <div className="shrink-0 border-b border-slate-200 bg-rose-50/30 p-5">
+        <h3 className="mb-4 flex items-center gap-2 text-[15px] font-black uppercase tracking-[0.2em] text-rose-400">
+          <Layers className="h-3.5 w-3.5" />
+          Hán tự liên quan
+        </h3>
 
-            return (
-              <li
-                key={word.id || word._id || index}
-                ref={isLast ? lastElementRef : null}
-                onClick={() => onWordSelect(word)}
-                className={`group relative cursor-pointer transition-all duration-200 p-5 border-b border-slate-300 ${
-                    isSelected
-                    ? 'bg-white border-l-4 border-l-red-400 shadow-sm'
-                    : 'bg-transparent border-l-4 border-l-transparent hover:bg-slate-100'
-                }`}
-                >
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-200 pointer-events-none" />
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-2xl font-black text-slate-800">{word.word}</span>
-                    <span className="text-rose-500 font-bold text-lg">{word.reading}</span>
-                  </div>
-                  
-                  <p className="text-slate-600 font-medium text-sm line-clamp-2 leading-relaxed">
-                    {Array.isArray(word.meaning) ? word.meaning.join(', ') : word.meaning || word.meaning_vi || 'Chưa có định nghĩa'}
-                  </p>
+        <div className="flex flex-wrap gap-2">
+          {kanjiResults.map((kanji, index) => (
+            <button
+              type="button"
+              key={kanji.kanji || index}
+              onClick={() => onOpenKanji?.(kanji)}
+              className="group flex items-center gap-2 rounded-xl border border-rose-100 bg-white px-3 py-2 text-rose-600 shadow-sm transition-all hover:bg-rose-500 hover:text-white"
+            >
+              <span className="text-2xl font-black transition-transform group-hover:scale-110">
+                {kanji.kanji}
+              </span>
 
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {word.is_common && (
-                      <Badge className="bg-emerald-100 text-emerald-700 border-none font-bold text-[10px]">Phổ biến</Badge>
-                    )}
-                    {word.partOfSpeech && (
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-medium text-[10px]">
-                        {typeof word.partOfSpeech === 'string' ? word.partOfSpeech : 
-                          word.partOfSpeech === 1 ? 'Danh từ' : word.partOfSpeech === 2 ? 'Động từ' : 'Tính từ'}
-                      </Badge>
-                    )}
-                    {word.pos && !word.partOfSpeech && (
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700 uppercase border-blue-200 font-medium text-[12px]">{word.pos}</Badge>
-                    )}
-                    {word.jlpt && word.jlpt.length > 0 && (
-                      <Badge className="bg-rose-100 text-rose-700 border-none font-bold text-[10px]">JLPT {word.jlpt[0].toUpperCase()}</Badge>
-                    )}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-        {loading && (
-          <div className="py-6 flex justify-center"><Loader2 className="w-6 h-6 text-violet-400 animate-spin" /></div>
-        )}
+              <div className="flex flex-col items-start leading-none">
+                <span className="text-[13px] font-bold uppercase">
+                  {kanji.mean}
+                </span>
+
+                <span className="text-[13px] font-bold opacity-70">
+                  {kanji.level ? `N${kanji.level}` : ""}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
+    )}
+
+    <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <ul className="flex flex-col">
+        {searchResults.map((word, index) => {
+          const currentWord =
+            word.word || word.japanese?.[0]?.word || '';
+
+          const selectedWordText =
+            selectedWord?.word || selectedWord?.japanese?.[0]?.word || '';
+
+          const isSelected =
+            selectedWord?.id === word.id ||
+            selectedWord?._id === word._id ||
+            selectedWordText === currentWord;
+
+          const isLast = searchResults.length === index + 1;
+
+          return (
+            <li
+              key={
+                word.id ||
+                word._id ||
+                word.word ||
+                word.japanese?.[0]?.word ||
+                index
+              }
+              ref={isLast ? lastElementRef : null}
+              onClick={() => onWordSelect(word)}
+              className={`group relative cursor-pointer border-b border-slate-300 p-5 transition-all duration-200 ${
+                isSelected
+                  ? "border-l-4 border-l-red-400 bg-white shadow-sm"
+                  : "border-l-4 border-l-transparent bg-transparent hover:bg-slate-100"
+              }`}
+            >
+              <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors duration-200 group-hover:bg-black/5" />
+
+              <div className="relative flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-2xl font-black text-slate-800">
+                    {word.word || word.japanese?.[0]?.word || '---'}
+                  </span>
+
+                  <span className="text-lg font-bold text-rose-500">
+                    {word.reading || word.japanese?.[0]?.reading || ''}
+                  </span>
+                </div>
+
+                <p className="line-clamp-2 text-sm font-medium leading-relaxed text-slate-600">
+                  {Array.isArray(word.meaning)
+                    ? word.meaning.join(", ")
+                    : word.meaning ||
+                      word.meaning_vi ||
+                      "Chưa có định nghĩa"}
+                </p>
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {word.is_common && (
+                    <Badge className="border-none bg-emerald-100 text-[10px] font-bold text-emerald-700">
+                      Phổ biến
+                    </Badge>
+                  )}
+
+                  {word.partOfSpeech && (
+                    <Badge
+                      variant="outline"
+                      className="border-blue-200 bg-blue-50 text-[10px] font-medium text-blue-700"
+                    >
+                      {typeof word.partOfSpeech === "string"
+                        ? word.partOfSpeech
+                        : word.partOfSpeech === 1
+                          ? "Danh từ"
+                          : word.partOfSpeech === 2
+                            ? "Động từ"
+                            : "Tính từ"}
+                    </Badge>
+                  )}
+
+                  {word.pos && !word.partOfSpeech && (
+                    <Badge
+                      variant="outline"
+                      className="border-blue-200 bg-blue-50 text-[12px] font-medium uppercase text-blue-700"
+                    >
+                      {word.pos}
+                    </Badge>
+                  )}
+
+                  {word.jlpt && word.jlpt.length > 0 && (
+                    <Badge className="border-none bg-rose-100 text-[10px] font-bold text-rose-700">
+                      JLPT {word.jlpt[0].toUpperCase()}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {loading && (
+        <div className="flex justify-center py-6">
+          <Loader2 className="h-6 w-6 animate-spin text-violet-400" />
+        </div>
+      )}
     </div>
-  );
+  </div>
+);
 }

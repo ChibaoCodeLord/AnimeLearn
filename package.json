@@ -11,9 +11,14 @@
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "vite-plugin-react-source-locator": "^0.2.1"
   },
   "dependencies": {
-    "cloudinary": "^2.9.0"
+    "axios": "^1.16.1",
+    "cloudinary": "^2.9.0",
+    "kuroshiro": "^1.2.0",
+    "kuroshiro-analyzer-kuromoji": "^1.1.0",
+    "undici": "^7.26.0"
   }
 }

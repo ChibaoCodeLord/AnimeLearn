@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { chatApi } from '@/api/chat.api';
 
 type ChatRole = 'user' | 'assistant';
 
@@ -19,8 +20,6 @@ interface VideoRagChatWidgetProps {
   videoId: string | null;
   bottomOffsetClassName?: string;
 }
-
-const API_BASE_URL = 'http://localhost:5000';
 
 function toHistory(messages: ChatMessage[]) {
   const history: Array<{ question: string; answer: string }> = [];
@@ -94,18 +93,7 @@ export default function VideoRagChatWidget({ videoId, bottomOffsetClassName = 'b
 
     setIsSyncing(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat/video/${videoId}/index`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.details || result?.error || 'Không thể đồng bộ dữ liệu RAG.');
-      }
+      const result = await chatApi.indexVideo<{ chunks_indexed?: number }>(videoId);
 
       toast.success(`Đã đồng bộ RAG: ${result?.chunks_indexed ?? 0} đoạn.`);
     } catch (error: any) {
@@ -136,19 +124,7 @@ export default function VideoRagChatWidget({ videoId, bottomOffsetClassName = 'b
 
     try {
       const history = toHistory(messages);
-      const response = await fetch(`${API_BASE_URL}/api/chat/video/${videoId}/ask`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ question, history }),
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result?.details || result?.error || 'Chat API lỗi.');
-      }
+      const result = await chatApi.sendMessage<{ answer?: string }>(videoId, { question, history });
 
       appendMessage('assistant', result?.answer || 'Mình chưa có câu trả lời phù hợp.');
     } catch (error: any) {
