@@ -1,4 +1,6 @@
 import {
+  analyzeVideoScriptService,
+  convertFuriganaService,
   countVideoLikeService,
   countVideoViewService,
   createVideoCommentService,
@@ -12,7 +14,10 @@ import {
   getWatchHistoryService,
   markVideoWatchedService,
   removeVideoLikeService,
+  saveVideoWithQuizService,
+  saveWordService,
   toggleVideoCommentLikeService,
+  translateWordService,
   updateVideoCommentService,
   updateVideoService,
 } from '../services/videoService.js';
@@ -235,6 +240,11 @@ export const convertFuriganaController = async (req, res) => {
     const html = await convertFuriganaService(req.body.text);
     return res.json({ html });
   } catch (error) {
-    return res.status(500).json({ html: '', error: 'Không thể xử lý Furigana' });
+    console.error('[Furigana] Cannot convert text:', error);
+    return res.status(500).json({
+      html: '',
+      error: 'Không thể xử lý Furigana',
+      detail: process.env.NODE_ENV === 'production' ? undefined : error?.message,
+    });
   }
 };

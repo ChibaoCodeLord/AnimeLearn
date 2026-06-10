@@ -639,7 +639,7 @@ export default function VideoWorkspace() {
     const activeLineText = script[currentIndex]?.japanese?.trim() || '';
     activeFuriganaText.current = activeLineText;
     
-    if (!activeLineText) {
+    if (!showFurigana || !activeLineText) {
       setCurrentFurigana('');
       return;
     }
@@ -658,7 +658,7 @@ export default function VideoWorkspace() {
         setCurrentFurigana(html);
       }
     });
-  }, [currentIndex, fetchFurigana, script]); // Chỉ chạy lại khi nhảy sang câu mới
+  }, [currentIndex, fetchFurigana, script, showFurigana]); // Chạy lại khi đổi câu hoặc bật/tắt furigana
 
   useEffect(() => {
     const upcomingTexts = [currentIndex + 1, currentIndex + 2]
