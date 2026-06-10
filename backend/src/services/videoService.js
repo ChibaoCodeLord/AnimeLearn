@@ -95,9 +95,18 @@ let kuroshiroInitPromise = null;
 
 async function initKuroshiro() {
   if (isKuroshiroInit) return;
-  if (!kuroshiroInitPromise) kuroshiroInitPromise = kuroshiro.init(new KuromojiAnalyzer());
+  if (!kuroshiroInitPromise) {
+    kuroshiroInitPromise = kuroshiro.init(new KuromojiAnalyzer())
+      .then(() => {
+        isKuroshiroInit = true;
+      })
+      .catch(error => {
+        kuroshiroInitPromise = null;
+        isKuroshiroInit = false;
+        throw error;
+      });
+  }
   await kuroshiroInitPromise;
-  isKuroshiroInit = true;
 }
 
 const createError = (message, status) => {
@@ -814,7 +823,16 @@ export const saveVideoWithQuizService = async (userId, youtube_url, script) => {
 };
 
 export const convertFuriganaService = async (text) => {
-  if (!text || !String(text).trim()) return "";
-  await initKuroshiro();
-  return await kuroshiro.convert(String(text), { mode: "furigana", to: "hiragana" });
+  const normalizedText = String(text || '').trim();
+  if (!normalizedText) return "";
+
+  try {
+    await initKuroshiro();
+    return await kuroshiro.convert(normalizedText, { mode: "furigana", to: "hiragana" });
+  } catch (error) {
+    kuroshiroInitPromise = null;
+    isKuroshiroInit = false;
+    await initKuroshiro();
+    return await kuroshiro.convert(normalizedText, { mode: "furigana", to: "hiragana" });
+  }
 };
